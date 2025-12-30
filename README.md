@@ -146,7 +146,8 @@ I will only focus on fixing issues for those (which is what I use personally.) E
 If you ask and pinky promise you won't just nuke everything I can just give you collaborator permissions.
 
 ## Disclosure
-Something Something this is for educational purposes only. Please do not misuse to break umamusume or cygames terms of service.   
+Something Something 
+# This is for educational purposes only. Please do not misuse to break umamusume or cygames terms of service.   
 ![uma](docs/flower.gif)  
 *cough cough*
 
