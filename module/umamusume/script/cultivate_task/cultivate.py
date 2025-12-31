@@ -796,6 +796,10 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
 
         ctx.cultivate_detail.turn_info.parse_train_info_finish = True
 
+        for idx in range(5):
+            if extra_weight[idx] == -1:
+                computed_scores[idx] = -float('inf')
+
         try:
             d = int(ctx.cultivate_detail.turn_info.date)
         except Exception:
