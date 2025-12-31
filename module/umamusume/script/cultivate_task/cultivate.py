@@ -229,15 +229,18 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
         return
 
     if not ctx.cultivate_detail.turn_info.parse_train_info_finish:
-        from bot.conn.fetch import read_energy
-        energy = read_energy()
-        if energy == 0:
-            time.sleep(0.37)
-            energy = read_energy()
         limit = int(getattr(ctx.cultivate_detail, 'rest_treshold', getattr(ctx.cultivate_detail, 'fast_path_energy_limit', 48)))
         if has_extra_race:
             ctx.cultivate_detail.turn_info.parse_train_info_finish = True
             return
+        if limit == 0:
+            energy = 100
+        else:
+            from bot.conn.fetch import read_energy
+            energy = read_energy()
+            if energy == 0:
+                time.sleep(0.37)
+                energy = read_energy()
         if energy <= limit:
             if should_use_pal_outing_simple(ctx):
                 ctx.ctrl.click_by_point(CULTIVATE_TRIP)
@@ -373,12 +376,15 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_MAIN_MENU)
             return
 
-    from bot.conn.fetch import read_energy
-    energy = read_energy()
-    if energy == 0:
-        time.sleep(0.37)
-        energy = read_energy()
     limit = int(getattr(ctx.cultivate_detail, 'rest_treshold', getattr(ctx.cultivate_detail, 'fast_path_energy_limit', 48)))
+    if limit == 0:
+        energy = 100
+    else:
+        from bot.conn.fetch import read_energy
+        energy = read_energy()
+        if energy == 0:
+            time.sleep(0.37)
+            energy = read_energy()
     if energy <= limit:
         op = TurnOperation()
         if should_use_pal_outing_simple(ctx):
