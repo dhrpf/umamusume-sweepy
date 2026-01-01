@@ -13,7 +13,7 @@
 
 # **A automation tool for Uma Musume: Pretty Derby**
 
-# [GPU acceleration guide (click me later)](#gpu-setup)    oh yeah good luck to AMD fuckers. not my problem lolol 
+# [GPU acceleration guide (click me later)](#gpu-setup)   
   
 
 
@@ -37,12 +37,7 @@
 ## 🚨 Safety
 Question: Is this safe?  
 
-Answer: Safer than the steam release (All of your processes are transparent lmao), I have done what I can to humanize the inputs. **BUT** if they decide to put in the effort they **WILL** find you. It is near impossible to simulate perfect human behavior with code so use at your own risk. I take no responsibility.  **HIDING BEHIND A EMULATOR DOES NOT MAKE YOU UNDETECTABLE YOU HAVE BEEN WARNED.** That being said it is still very difficult to detect as they have nothing to look at apart from metadata of your clicks. So you're likely fine  
-Answer 2: As long as there are people cheating on the steam release we are chilling (if ykyk)  
-https://en.wikipedia.org/wiki/Sentinel_species    
-
-Running this 24/7 looks sus as hell so I would suggest turning it off for a few hours every day.  
-you can edit the start and end time in `main.py` (24 hours format) to dictate when the bot can run)
+Answer: idk
 
 ### Emulator Setup
 
