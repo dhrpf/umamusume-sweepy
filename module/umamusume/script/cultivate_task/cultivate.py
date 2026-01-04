@@ -524,9 +524,20 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         else:
             w_lv1, w_lv2, w_rainbow, w_hint, w_special = resolve_weights(sv, 4)
         try:
-            se_weights = getattr(ctx.cultivate_detail, 'spirit_explosion', [0.16, 0.16, 0.16, 0.06, 0.11])
-            if not isinstance(se_weights, (list, tuple)) or len(se_weights) != 5:
-                se_weights = [0.16, 0.16, 0.16, 0.06, 0.11]
+            se_config = getattr(ctx.cultivate_detail, 'spirit_explosion', [0.16, 0.16, 0.16, 0.06, 0.11])
+            if isinstance(se_config, list) and len(se_config) > 0 and isinstance(se_config[0], list):
+                if date <= 24:
+                    se_weights = se_config[0]
+                elif 24 < date <= 48:
+                    se_weights = se_config[1]
+                elif 48 < date <= 60:
+                    se_weights = se_config[2]
+                elif 60 < date <= 72:
+                    se_weights = se_config[3]
+                else:
+                    se_weights = se_config[4]
+            else:
+                se_weights = se_config
         except Exception:
             se_weights = [0.16, 0.16, 0.16, 0.06, 0.11]
 

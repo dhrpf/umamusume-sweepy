@@ -125,7 +125,8 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
             detail.extra_weight = []
         
         try:
-            detail.spirit_explosion = list(getattr(task.detail, 'spirit_explosion', [0.16, 0.16, 0.16, 0.06, 0.11]))
+            se = getattr(task.detail, 'spirit_explosion', [0.16, 0.16, 0.16, 0.06, 0.11])
+            detail.spirit_explosion = list(se) if se else [0.16, 0.16, 0.16, 0.06, 0.11]
         except Exception:
             detail.spirit_explosion = [0.16, 0.16, 0.16, 0.06, 0.11]
         

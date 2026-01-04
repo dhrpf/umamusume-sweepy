@@ -621,12 +621,45 @@
                 <div v-if="selectedScenario === 2" class="row mb-2" style="margin-top: 16px; border-top: 1px solid var(--accent); padding-top: 12px;">
                   <div class="col-12">
                     <label style="color: var(--accent);">Spirit Explosion Score</label>
-                    <p style="font-size: 0.9em; margin-bottom: 8px;">Score bonus for spirit explosion training (applies to all training types)</p>
+                    <p style="font-size: 0.9em; margin-bottom: 8px;">Score bonus for spirit explosion training per period</p>
+                    <div style="margin-bottom: 10px; color: var(--accent);">Junior</div>
                     <div class="row">
-                      <div v-for="(v, i) in extraSpiritExplosion" :key="i" class="col-md-2 col-6">
+                      <div v-for="(v, i) in spiritExplosionJunior" :key="i" class="col-md-2 col-6">
                         <div class="form-group mb-1"><small>{{ ['Speed','Stamina','Power','Guts','Wit'][i] }}</small></div>
-                        <input type="number" step="0.01" v-model.number="extraSpiritExplosion[i]" class="form-control"
-                          @input="onExtraWeightInput(extraSpiritExplosion, i)">
+                        <input type="number" step="0.01" v-model.number="spiritExplosionJunior[i]" class="form-control"
+                          @input="onExtraWeightInput(spiritExplosionJunior, i)">
+                      </div>
+                    </div>
+                    <div style="margin-bottom: 10px; color: var(--accent); margin-top: 10px;">Classic</div>
+                    <div class="row">
+                      <div v-for="(v, i) in spiritExplosionClassic" :key="i" class="col-md-2 col-6">
+                        <div class="form-group mb-1"><small>{{ ['Speed','Stamina','Power','Guts','Wit'][i] }}</small></div>
+                        <input type="number" step="0.01" v-model.number="spiritExplosionClassic[i]" class="form-control"
+                          @input="onExtraWeightInput(spiritExplosionClassic, i)">
+                      </div>
+                    </div>
+                    <div style="margin-bottom: 10px; color: var(--accent); margin-top: 10px;">Senior</div>
+                    <div class="row">
+                      <div v-for="(v, i) in spiritExplosionSenior" :key="i" class="col-md-2 col-6">
+                        <div class="form-group mb-1"><small>{{ ['Speed','Stamina','Power','Guts','Wit'][i] }}</small></div>
+                        <input type="number" step="0.01" v-model.number="spiritExplosionSenior[i]" class="form-control"
+                          @input="onExtraWeightInput(spiritExplosionSenior, i)">
+                      </div>
+                    </div>
+                    <div style="margin-bottom: 10px; color: var(--accent); margin-top: 10px;">Senior After Summer</div>
+                    <div class="row">
+                      <div v-for="(v, i) in spiritExplosionSeniorAfterSummer" :key="i" class="col-md-2 col-6">
+                        <div class="form-group mb-1"><small>{{ ['Speed','Stamina','Power','Guts','Wit'][i] }}</small></div>
+                        <input type="number" step="0.01" v-model.number="spiritExplosionSeniorAfterSummer[i]" class="form-control"
+                          @input="onExtraWeightInput(spiritExplosionSeniorAfterSummer, i)">
+                      </div>
+                    </div>
+                    <div style="margin-bottom: 10px; color: var(--accent); margin-top: 10px;">Finale</div>
+                    <div class="row">
+                      <div v-for="(v, i) in spiritExplosionFinale" :key="i" class="col-md-2 col-6">
+                        <div class="form-group mb-1"><small>{{ ['Speed','Stamina','Power','Guts','Wit'][i] }}</small></div>
+                        <input type="number" step="0.01" v-model.number="spiritExplosionFinale[i]" class="form-control"
+                          @input="onExtraWeightInput(spiritExplosionFinale, i)">
                       </div>
                     </div>
                   </div>
@@ -1837,7 +1870,11 @@ export default {
       extraWeight2: [0, 0, 0, 0, 0],
       extraWeight3: [0, 0, 0, 0, 0],
       extraWeightSummer: [0, 0, 0, 0, 0],
-      extraSpiritExplosion: [0.16, 0.16, 0.16, 0.06, 0.11],
+      spiritExplosionJunior: [0.16, 0.16, 0.16, 0.06, 0.11],
+      spiritExplosionClassic: [0.16, 0.16, 0.16, 0.06, 0.11],
+      spiritExplosionSenior: [0.16, 0.16, 0.16, 0.06, 0.11],
+      spiritExplosionSeniorAfterSummer: [0.16, 0.16, 0.16, 0.06, 0.11],
+      spiritExplosionFinale: [0.16, 0.16, 0.16, 0.06, 0.11],
 
       // Motivation thresholds for trip decisions
       motivationThresholdYear1: 3,
@@ -2837,7 +2874,13 @@ export default {
           "use_last_parents": this.useLastParents,
           "learn_skill_only_user_provided": this.learnSkillOnlyUserProvided,
           "extra_weight": [this.extraWeight1, this.extraWeight2, this.extraWeight3, this.extraWeightSummer],
-          "spirit_explosion": this.extraSpiritExplosion.map(v => Math.max(-1, Math.min(1, v))),
+          "spirit_explosion": [
+            this.spiritExplosionJunior.map(v => Math.max(-1, Math.min(1, v))),
+            this.spiritExplosionClassic.map(v => Math.max(-1, Math.min(1, v))),
+            this.spiritExplosionSenior.map(v => Math.max(-1, Math.min(1, v))),
+            this.spiritExplosionSeniorAfterSummer.map(v => Math.max(-1, Math.min(1, v))),
+            this.spiritExplosionFinale.map(v => Math.max(-1, Math.min(1, v)))
+          ],
           "score_value": [
             (this.selectedScenario === 2 ? [...this.scoreValueJunior.slice(0,4), this.specialJunior] : this.scoreValueJunior.slice(0,4)),
             (this.selectedScenario === 2 ? [...this.scoreValueClassic.slice(0,4), this.specialClassic] : this.scoreValueClassic.slice(0,4)),
@@ -3027,22 +3070,41 @@ export default {
         this.extraWeight2 = this.presetsUse.extraWeight[1].map(v => Math.max(-1, Math.min(1, v)));
         this.extraWeight3 = this.presetsUse.extraWeight[2].map(v => Math.max(-1, Math.min(1, v)));
         this.extraWeightSummer = (this.presetsUse.extraWeight.length >= 4 ? this.presetsUse.extraWeight[3] : [0, 0, 0, 0, 0]).map(v => Math.max(-1, Math.min(1, v)));
-        this.extraSpiritExplosion = (this.presetsUse.spirit_explosion || this.presetsUse.spiritExplosion || [0.16, 0.16, 0.16, 0.06, 0.11]).map(v => Math.max(-1, Math.min(1, v)));
+        
+        const se = this.presetsUse.spirit_explosion || this.presetsUse.spiritExplosion || [[0.16, 0.16, 0.16, 0.06, 0.11]];
+        if (Array.isArray(se) && se.length > 0 && Array.isArray(se[0])) {
+          this.spiritExplosionJunior = (se[0] || [0.16, 0.16, 0.16, 0.06, 0.11]).map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionClassic = (se[1] || [0.16, 0.16, 0.16, 0.06, 0.11]).map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionSenior = (se[2] || [0.16, 0.16, 0.16, 0.06, 0.11]).map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionSeniorAfterSummer = (se[3] || [0.16, 0.16, 0.16, 0.06, 0.11]).map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionFinale = (se[4] || [0.16, 0.16, 0.16, 0.06, 0.11]).map(v => Math.max(-1, Math.min(1, v)));
+        } else {
+          const single = Array.isArray(se) ? se : [0.16, 0.16, 0.16, 0.06, 0.11];
+          this.spiritExplosionJunior = single.map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionClassic = single.map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionSenior = single.map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionSeniorAfterSummer = single.map(v => Math.max(-1, Math.min(1, v)));
+          this.spiritExplosionFinale = single.map(v => Math.max(-1, Math.min(1, v)));
+        }
       }
       else {
         this.extraWeight1 = [0, 0, 0, 0, 0]
         this.extraWeight2 = [0, 0, 0, 0, 0]
         this.extraWeight3 = [0, 0, 0, 0, 0]
         this.extraWeightSummer = [0, 0, 0, 0, 0]
-        this.extraSpiritExplosion = [0.16, 0.16, 0.16, 0.06, 0.11]
+        this.spiritExplosionJunior = [0.16, 0.16, 0.16, 0.06, 0.11]
+        this.spiritExplosionClassic = [0.16, 0.16, 0.16, 0.06, 0.11]
+        this.spiritExplosionSenior = [0.16, 0.16, 0.16, 0.06, 0.11]
+        this.spiritExplosionSeniorAfterSummer = [0.16, 0.16, 0.16, 0.06, 0.11]
+        this.spiritExplosionFinale = [0.16, 0.16, 0.16, 0.06, 0.11]
       }
 
       if ('specialTraining' in this.presetsUse && Array.isArray(this.presetsUse.specialTraining)) {
-        if (this.specialJunior === 0.095) this.specialJunior = this.presetsUse.specialTraining[0] !== undefined ? this.presetsUse.specialTraining[0] : 0.095
-        if (this.specialClassic === 0.095) this.specialClassic = this.presetsUse.specialTraining[1] !== undefined ? this.presetsUse.specialTraining[1] : 0.095
-        if (this.specialSenior === 0.095) this.specialSenior = this.presetsUse.specialTraining[2] !== undefined ? this.presetsUse.specialTraining[2] : 0.095
-        this.specialSeniorAfterSummer = 0.095
-        this.specialFinale = 0
+        this.specialJunior = this.presetsUse.specialTraining[0] !== undefined ? this.presetsUse.specialTraining[0] : 0.095
+        this.specialClassic = this.presetsUse.specialTraining[1] !== undefined ? this.presetsUse.specialTraining[1] : 0.095
+        this.specialSenior = this.presetsUse.specialTraining[2] !== undefined ? this.presetsUse.specialTraining[2] : 0.095
+        this.specialSeniorAfterSummer = this.presetsUse.specialTraining[3] !== undefined ? this.presetsUse.specialTraining[3] : 0.095
+        this.specialFinale = this.presetsUse.specialTraining[4] !== undefined ? this.presetsUse.specialTraining[4] : 0
       }
 
       if ('selectedSkills' in this.presetsUse && 'blacklistedSkills' in this.presetsUse && 'skillAssignments' in this.presetsUse && 'activePriorities' in this.presetsUse) {
@@ -3282,7 +3344,13 @@ export default {
           this.extraWeight3.map(v => Math.max(-1, Math.min(1, v))),
           this.extraWeightSummer.map(v => Math.max(-1, Math.min(1, v)))
         ],
-        spirit_explosion: this.extraSpiritExplosion.map(v => Math.max(-1, Math.min(1, v))),
+        spirit_explosion: [
+          this.spiritExplosionJunior.map(v => Math.max(-1, Math.min(1, v))),
+          this.spiritExplosionClassic.map(v => Math.max(-1, Math.min(1, v))),
+          this.spiritExplosionSenior.map(v => Math.max(-1, Math.min(1, v))),
+          this.spiritExplosionSeniorAfterSummer.map(v => Math.max(-1, Math.min(1, v))),
+          this.spiritExplosionFinale.map(v => Math.max(-1, Math.min(1, v)))
+        ],
         specialTraining: [
           this.specialJunior,
           this.specialClassic,
