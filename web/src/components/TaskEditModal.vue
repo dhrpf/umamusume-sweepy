@@ -480,6 +480,17 @@
                 </div>
                 <hr style="border-color: var(--accent); opacity: 0.5; margin: 12px 0;">
                 <div class="form-group" style="margin-top: 16px;">
+                  <div style="color: var(--accent);">Base Score</div>
+                </div>
+                <p>Starting score value before adding bonuses (applied before multipliers)</p>
+                <div class="row">
+                  <div v-for="(v, i) in baseScore" :key="i" class="col-md-2 col-6">
+                    <div class="form-group mb-1"><small>{{ ['Speed','Stamina','Power','Guts','Wit'][i] }}</small></div>
+                    <input type="number" step="0.01" v-model.number="baseScore[i]" class="form-control">
+                  </div>
+                </div>
+                <hr style="border-color: var(--accent); opacity: 0.5; margin: 12px 0;">
+                <div class="form-group" style="margin-top: 16px;">
                   <div style="color: var(--accent);">Score Value</div>
                 </div>
                 <div class="row mb-2">
@@ -1870,6 +1881,7 @@ export default {
       extraWeight2: [0, 0, 0, 0, 0],
       extraWeight3: [0, 0, 0, 0, 0],
       extraWeightSummer: [0, 0, 0, 0, 0],
+      baseScore: [0, 0, 0, 0, 0.07],
       spiritExplosionJunior: [0.16, 0.16, 0.16, 0.06, 0.11],
       spiritExplosionClassic: [0.16, 0.16, 0.16, 0.06, 0.11],
       spiritExplosionSenior: [0.16, 0.16, 0.16, 0.06, 0.11],
@@ -2874,6 +2886,7 @@ export default {
           "use_last_parents": this.useLastParents,
           "learn_skill_only_user_provided": this.learnSkillOnlyUserProvided,
           "extra_weight": [this.extraWeight1, this.extraWeight2, this.extraWeight3, this.extraWeightSummer],
+          "base_score": [...this.baseScore],
           "spirit_explosion": [
             this.spiritExplosionJunior.map(v => Math.max(-1, Math.min(1, v))),
             this.spiritExplosionClassic.map(v => Math.max(-1, Math.min(1, v))),
@@ -3063,6 +3076,12 @@ export default {
           if (arr.length > targetLen) arr.splice(targetLen)
           while (arr.length < targetLen) arr.push(0.09)
         })
+      }
+
+      if ('baseScore' in this.presetsUse && Array.isArray(this.presetsUse.baseScore)) {
+        this.baseScore = [...this.presetsUse.baseScore];
+      } else {
+        this.baseScore = [0, 0, 0, 0, 0.07];
       }
 
       if ('extraWeight' in this.presetsUse && this.presetsUse.extraWeight != []) {
@@ -3365,6 +3384,7 @@ export default {
           this.scoreValueSeniorAfterSummer,
           this.scoreValueFinale
         ],
+        baseScore: [...this.baseScore],
         // Motivation thresholds for trip decisions
         motivation_threshold_year1: this.motivationThresholdYear1,
         motivation_threshold_year2: this.motivationThresholdYear2,

@@ -35,6 +35,7 @@ class TaskDetail:
     pal_card_multiplier: float
     score_value: list
     compensate_failure: bool
+    base_score: list
     event_weights: dict
     scenario_config: ScenarioConfig
     fujikiseki_show_mode: bool
@@ -110,6 +111,8 @@ def build_task(task_execute_mode: TaskExecuteMode, task_type: int,
         [0.03, 0.05, 0.15, 0.09],
         [0, 0, 0.15, 0, 0]
     ])
+    
+    td.base_score = attachment_data.get('base_score', [0.0, 0.0, 0.0, 0.0, 0.07])
     
     td.cultivate_result = {}
     # 剧本相关设置

@@ -38,6 +38,7 @@ class CultivateContextDetail:
     pal_name: str
     pal_friendship_score: list[float]
     pal_card_multiplier: float
+    base_score: list
     summer_score_threshold: float
     wit_fallback_threshold: float
 
@@ -151,6 +152,7 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         ])
         detail.compensate_failure = getattr(task.detail, 'compensate_failure', True)
         detail.use_last_parents = getattr(task.detail, 'use_last_parents', False)
+        detail.base_score = list(getattr(task.detail, 'base_score', [0.0, 0.0, 0.0, 0.0, 0.07]))
         detail.summer_score_threshold = float(getattr(task.detail, 'summer_score_threshold', 0.34))
         detail.wit_fallback_threshold = float(getattr(task.detail, 'wit_fallback_threshold', 0.01))
         # Event overrides

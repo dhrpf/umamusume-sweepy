@@ -580,6 +580,8 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             rest_threshold = int(getattr(ctx.cultivate_detail, 'rest_treshold', getattr(ctx.cultivate_detail, 'fast_path_energy_limit', 48)))
         except Exception:
             rest_threshold = 48
+        
+        base_scores = getattr(ctx.cultivate_detail, 'base_score', [0.0, 0.0, 0.0, 0.0, 0.07])
 
         for idx in range(5):
             til = ctx.cultivate_detail.turn_info.training_info_list[idx]
@@ -589,7 +591,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             rbc = 0
             npc = 0
             pal_count = 0
-            score = 0.0
+            score = base_scores[idx] if isinstance(base_scores, (list, tuple)) and len(base_scores) > idx else 0.0
             for sc in (getattr(til, "support_card_info_list", []) or []):
                 favor = getattr(sc, "favor", SupportCardFavorLevel.SUPPORT_CARD_FAVOR_LEVEL_UNKNOWN)
                 ctype = getattr(sc, "card_type", SupportCardType.SUPPORT_CARD_TYPE_UNKNOWN)
