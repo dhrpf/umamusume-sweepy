@@ -734,7 +734,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 if getattr(ctx.cultivate_detail, 'compensate_failure', True):
                     fr_val = int(getattr(til, 'failure_rate', -1))
                     if fr_val >= 0:
-                        mult_fr = max(0.0, 1.0 - (float(fr_val) / 100.0))
+                        mult_fr = max(0.0, 1.0 - (float(fr_val) / 50.0))
                         if mult_fr != 1.0:
                             log.info(f"  Failure compensation: x{mult_fr:.2f}")
                         score *= mult_fr

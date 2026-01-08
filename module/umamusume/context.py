@@ -69,6 +69,7 @@ class CultivateContextDetail:
         self.pal_name = ""
         self.pal_friendship_score = [0.08, 0.057, 0.018]
         self.pal_card_multiplier = 0.1
+        self.base_score = [0.0, 0.0, 0.0, 0.0, 0.07]
         self.summer_score_threshold = 0.34
         self.wit_fallback_threshold = 0.01
 

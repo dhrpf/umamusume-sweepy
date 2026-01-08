@@ -192,7 +192,7 @@ def get_operation(ctx: UmamusumeContext) -> TurnOperation | None:
             for idx in range(5):
                 fr = int(getattr(turn_info.training_info_list[idx], 'failure_rate', -1))
                 if fr >= 0:
-                    mult = max(0.0, 1.0 - (float(fr) / 100.0))
+                    mult = max(0.0, 1.0 - (float(fr) / 50.0))
                     training_score[idx] *= mult
         except Exception:
             pass
