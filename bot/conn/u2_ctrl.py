@@ -215,27 +215,45 @@ class U2AndroidController(AndroidController):
                 log.error(f"Failed to connect to device {self.config.device_name}: {e2}")
                 raise
 
+    def reinit_connection(self):
+        try:
+            if self.u2client:
+                self.u2client = None
+        except Exception:
+            pass
+        try:
+            subprocess.run([self.path + "adb.exe", "-s", self.config.device_name, "forward", "--remove-all"], 
+                          capture_output=True, timeout=5)
+        except Exception:
+            pass
+        time.sleep(0.2)
+        self.init_env()
+
     # get_screen 获取图片
     def get_screen(self, to_gray=False):
-        try:
-            cur_screen = self.u2client.screenshot(format='opencv')
-        except Exception:
-            time.sleep(0.05)
+        for attempt in range(3):
             try:
                 cur_screen = self.u2client.screenshot(format='opencv')
+                if cur_screen is None or getattr(cur_screen, 'size', 0) == 0:
+                    if attempt < 2:
+                        time.sleep(0.1)
+                        continue
+                    return None
+                h, w = cur_screen.shape[:2]
+                if h < 100 or w < 100:
+                    if attempt < 2:
+                        time.sleep(0.1)
+                        continue
+                    return None
+                if to_gray:
+                    return cv2.cvtColor(cur_screen, cv2.COLOR_BGR2GRAY)
+                return cur_screen
             except Exception:
+                if attempt < 2:
+                    time.sleep(0.1)
+                    continue
                 return None
-        try:
-            if cur_screen is None or getattr(cur_screen, 'size', 0) == 0:
-                return None
-            h, w = cur_screen.shape[:2]
-            if h < 100 or w < 100:
-                return None
-            if to_gray:
-                return cv2.cvtColor(cur_screen, cv2.COLOR_BGR2GRAY)
-            return cur_screen
-        except Exception:
-            return None
+        return None
 
     # ===== ctrl =====
     def click_by_point(self, point: ClickPoint, random_offset=True, hold_duration=0):

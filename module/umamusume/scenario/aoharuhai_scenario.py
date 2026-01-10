@@ -102,6 +102,8 @@ class AoharuHaiScenario(BaseScenario):
         return [speed_icr, stamina_incr, power_incr, will_incr, intelligence_incr, skill_point_incr]
 
     def parse_training_support_card(self, img: any) -> list[SupportCardInfo]:
+        if img is None or getattr(img, 'size', 0) == 0:
+            return []
         base_x = 550
         base_y = 177
         inc = 115
@@ -213,6 +215,9 @@ class AoharuHaiScenario(BaseScenario):
 
             base_y += inc
 
+        unknown_count = sum(1 for sc in support_card_list_info_result if sc.favor == SupportCardFavorLevel.SUPPORT_CARD_FAVOR_LEVEL_UNKNOWN)
+        if unknown_count == len(support_card_list_info_result) and len(support_card_list_info_result) > 0:
+            return []
         return support_card_list_info_result
 
 

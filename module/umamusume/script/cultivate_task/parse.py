@@ -522,6 +522,13 @@ def parse_train_main_menu_operations_availability(ctx: UmamusumeContext, img):
 
 def parse_training_support_card(ctx: UmamusumeContext, img, train_type: TrainingType):
     support_card_info_list = ctx.cultivate_detail.scenario.parse_training_support_card(img)
+    if len(support_card_info_list) == 0:
+        import time
+        ctx.ctrl.reinit_connection()
+        time.sleep(0.2)
+        fresh_img = ctx.ctrl.get_screen()
+        if fresh_img is not None:
+            support_card_info_list = ctx.cultivate_detail.scenario.parse_training_support_card(fresh_img)
     from module.umamusume.define import SupportCardType
     tt_map = {
         TrainingType.TRAINING_TYPE_SPEED: SupportCardType.SUPPORT_CARD_TYPE_SPEED,
