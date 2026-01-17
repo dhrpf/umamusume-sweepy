@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-import hashlib
 from collections import OrderedDict
 
 from bot.base.common import ImageMatchMode
@@ -149,6 +148,8 @@ def template_match(target, template, accuracy: float = 0.86) -> ImageMatchResult
 
 
 def compare_color_equal(p: list, target: list, tolerance: int = 10) -> bool:
-    diff = np.array(target) - np.array(p)
-    distance_sq = np.sum(diff * diff)
-    return distance_sq < (tolerance * tolerance)
+    tol_sq = tolerance * tolerance
+    d0 = target[0] - p[0]
+    d1 = target[1] - p[1]
+    d2 = target[2] - p[2]
+    return (d0*d0 + d1*d1 + d2*d2) < tol_sq

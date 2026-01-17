@@ -31,18 +31,6 @@ class Scheduler:
         cron = croniter.croniter(cron_expr, now)
         return cron.get_next(datetime.datetime)
 
-    def clone_to_mode(self, task, to_task_execute_mode: TaskExecuteMode):
-        new_task = copy.deepcopy(task)
-        new_task.task_id = str(int(round(time.time() * 1000)))
-        if (to_task_execute_mode == TaskExecuteMode.TASK_EXECUTE_MODE_ONE_TIME and task.task_execute_mode ==
-                TaskExecuteMode.TASK_EXECUTE_MODE_CRON_JOB):
-            new_task.task_id = "CRONJOB_" + new_task.task_id
-            new_task.cron_job_config = None
-        new_task.task_execute_mode = to_task_execute_mode
-        if new_task.task_execute_mode == TaskExecuteMode.TASK_EXECUTE_MODE_ONE_TIME:
-            new_task.task_status = TaskStatus.TASK_STATUS_PENDING
-        self.task_list.append(new_task)
-
     def delete_task(self, task_id):
         remove_idx = -1
         for i, v in enumerate(self.task_list):

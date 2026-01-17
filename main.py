@@ -9,7 +9,6 @@ import random
 import datetime
 import bot.base.log as logger
 import bot.base.gpu_utils as gpu_utils
-import os
 
 try:
     cores = str(os.cpu_count() or 1)

@@ -9,7 +9,6 @@ import unicodedata
 import json
 import os
 from functools import lru_cache
-import hashlib
 
 DIGITS_ONLY = re.compile(r"\D")
 
@@ -23,6 +22,9 @@ from module.umamusume.asset import *
 from module.umamusume.define import *
 import bot.base.log as logger
 from module.umamusume.script.cultivate_task.const import DATE_YEAR, DATE_MONTH
+from module.umamusume.constants.cache_constants import (
+    PARSE_EVENT_CACHE_SIZE, OCR_CACHE_SIZE, GRAY_IMAGE_CACHE_SIZE, TEMPLATE_MATCH_CACHE_SIZE
+)
 
 log = logger.get_logger(__name__)
 
@@ -50,10 +52,10 @@ class LRUCache:
     def __contains__(self, key):
         return key in self.cache
 
-_parse_event_cache = LRUCache(maxsize=2000)
-_ocr_cache = LRUCache(maxsize=3000)
-_gray_image_cache = LRUCache(maxsize=1200)
-_template_match_cache = LRUCache(maxsize=3000)
+_parse_event_cache = LRUCache(maxsize=PARSE_EVENT_CACHE_SIZE)
+_ocr_cache = LRUCache(maxsize=OCR_CACHE_SIZE)
+_gray_image_cache = LRUCache(maxsize=GRAY_IMAGE_CACHE_SIZE)
+_template_match_cache = LRUCache(maxsize=TEMPLATE_MATCH_CACHE_SIZE)
 
 def _compute_image_hash(img):
     try:
@@ -73,12 +75,10 @@ def clear_parse_caches():
 
 
 def normalize_skill_name(skill_name: str) -> str:
-    """Normalize skill name by removing spaces and converting to lowercase for better matching"""
     return skill_name.replace(" ", "").lower()
 
 
 def find_similar_skill_name(target_text: str, ref_text_list: list[str], threshold: float = 0.7) -> str:
-    """Enhanced skill name matching that handles spacing variations"""
     result = ""
     best_ratio = 0
     
@@ -250,7 +250,6 @@ def try_alt_cost_regions(skill_info_img):
 
 
 def parse_date(img, ctx: UmamusumeContext) -> int:
-    # Youth Cup and URA UI positions are different
     if ctx.cultivate_detail.scenario.scenario_type() == ScenarioType.SCENARIO_TYPE_AOHARUHAI:
         sub_img_date = ctx.cultivate_detail.scenario.get_date_img(img)
         sub_img_date = cv2.copyMakeBorder(sub_img_date, 20, 20, 20, 20, cv2.BORDER_CONSTANT, None, (255, 255, 255))
@@ -674,7 +673,6 @@ def find_support_card(ctx: UmamusumeContext, img):
     return False
 
 
-# 111 237 480 283
 def parse_cultivate_event(ctx: UmamusumeContext, img) -> tuple[str, list[int]]:
     img_hash = _compute_image_hash(img)
     if img_hash:
@@ -790,7 +788,6 @@ def parse_cultivate_event(ctx: UmamusumeContext, img) -> tuple[str, list[int]]:
 
 
 def convert_race_name_to_ingame_format(race_id: int) -> str:
-    """Convert CSV race data to in-game display format using only available data"""
     try:
         import csv
         # Read race data from CSV
@@ -855,12 +852,11 @@ def find_race(ctx: UmamusumeContext, img, race_id: int = 0) -> bool:
     target_race_template = RACE_LIST[race_id][2]
     img_height, img_width = img.shape
     
-    # Debug: Log race template info
     if target_race_template is not None:
-        log.info(f"🔍 Looking for race ID {race_id}: {RACE_LIST[race_id][1]}")
-        log.info(f"🔍 Template exists: {target_race_template is not None}")
+        log.info(f"Looking for race ID {race_id}: {RACE_LIST[race_id][1]}")
+        log.info(f"Template exists: {target_race_template is not None}")
     else:
-        log.warning(f"❌ No template found for race ID {race_id}")
+        log.warning(f"No template found for race ID {race_id}")
         return False
     
     iterations = 0
@@ -892,9 +888,9 @@ def find_race(ctx: UmamusumeContext, img, race_id: int = 0) -> bool:
                         template_success = template_match.find_match
                         
                         if template_success:
-                            log.info(f"✅ Template match successful for race {race_id}")
+                            log.info(f"Template match successful for race {race_id}")
                         else:
-                            log.debug(f"❌ Template match failed for race {race_id}")
+                            log.debug(f"Template match failed for race {race_id}")
                             
                             # Try with preprocessed template (wiki image optimization)
                             try:
@@ -933,7 +929,7 @@ def find_race(ctx: UmamusumeContext, img, race_id: int = 0) -> bool:
                                 
                                 if csv_match or ingame_match:
                                     ocr_race_id = search_race_id
-                                    log.info(f"🔍 OCR identified race ID: {ocr_race_id} ({RACE_LIST[ocr_race_id][1]})")
+                                    log.info(f"OCR identified race ID: {ocr_race_id} ({RACE_LIST[ocr_race_id][1]})")
                                     break
                                     
                         except Exception as e:
@@ -960,7 +956,7 @@ def find_race(ctx: UmamusumeContext, img, race_id: int = 0) -> bool:
 
 
 def find_skill(ctx: UmamusumeContext, img, skill: list[str], learn_any_skill: bool) -> bool:
-    log.debug(f"🔍 find_skill called with {len(skill)} skills: {skill}")
+    log.debug(f"find_skill called with {len(skill)} skills: {skill}")
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     find = False
     iterations = 0
@@ -1039,23 +1035,23 @@ def find_skill(ctx: UmamusumeContext, img, skill: list[str], learn_any_skill: bo
                         if pt_text != "" and skill_pt_cost_text != "":
                             pt = int(pt_text)
                             skill_pt_cost = int(skill_pt_cost_text)
-                            log.debug(f"🔍 find_skill - Points: {pt}, Cost: {skill_pt_cost}, Can buy: {pt >= skill_pt_cost}")
+                            log.debug(f"find_skill - Points: {pt}, Cost: {skill_pt_cost}, Can buy: {pt >= skill_pt_cost}")
                             
                             if pt >= skill_pt_cost:
-                                log.info(f"✅ Buying skill '{detected_text}' - Points: {pt}, Cost: {skill_pt_cost}")
+                                log.info(f"Buying skill '{detected_text}' - Points: {pt}, Cost: {skill_pt_cost}")
                                 ctx.ctrl.click(match_result.center_point[0] + 128, match_result.center_point[1],
                                                "Bonus Skills：" + detected_text)
                                 if target_match is not None and target_match in skill:
                                     skill.remove(target_match)
-                                    log.info(f"✅ Removed '{target_match}' from skill list. Remaining: {skill}")
+                                    log.info(f"Removed '{target_match}' from skill list. Remaining: {skill}")
                                 elif target_match is not None:
-                                    log.warning(f"⚠️ Skill '{target_match}' not found in skill list: {skill}")
+                                    log.warning(f"Skill '{target_match}' not found in skill list: {skill}")
                                 ctx.cultivate_detail.learn_skill_selected = True
                                 find = True
                             else:
-                                log.debug(f"❌ Not enough points for '{detected_text}' - Need {skill_pt_cost}, have {pt}")
+                                log.debug(f"Not enough points for '{detected_text}' - Need {skill_pt_cost}, have {pt}")
                         else:
-                            log.debug(f"❌ Failed to extract points/cost - Points: '{pt_text}', Cost: '{skill_pt_cost_text}'")
+                            log.debug(f"Failed to extract points/cost - Points: '{pt_text}', Cost: '{skill_pt_cost_text}'")
 
             img[match_result.matched_area[0][1]:match_result.matched_area[1][1],
             match_result.matched_area[0][0]:match_result.matched_area[1][0]] = 0
@@ -1238,7 +1234,6 @@ def parse_factor(ctx: UmamusumeContext):
 
 
 def preprocess_wiki_image_for_ingame_matching(template_img):
-    """Preprocess wiki images to better match in-game conditions"""
     try:
         import cv2
         import numpy as np

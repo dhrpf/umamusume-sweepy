@@ -3,6 +3,10 @@ from module.umamusume.scenario import base_scenario, ura_scenario, aoharuhai_sce
 from module.umamusume.task import UmamusumeTask, UmamusumeTaskType
 from module.umamusume.define import *
 from module.umamusume.types import TurnInfo
+from module.umamusume.constants.scoring_constants import (
+    DEFAULT_BASE_SCORES, DEFAULT_SPIRIT_EXPLOSION, DEFAULT_PAL_FRIENDSHIP_SCORES,
+    DEFAULT_PAL_CARD_MULTIPLIER, DEFAULT_SUMMER_SCORE_THRESHOLD, DEFAULT_WIT_FALLBACK_THRESHOLD
+)
 import bot.base.log as logger
 
 log = logger.get_logger(__name__)
@@ -67,11 +71,11 @@ class CultivateContextDetail:
         self.use_last_parents = False
         self.pal_event_stage = 0
         self.pal_name = ""
-        self.pal_friendship_score = [0.08, 0.057, 0.018]
-        self.pal_card_multiplier = 0.1
-        self.base_score = [0.0, 0.0, 0.0, 0.0, 0.07]
-        self.summer_score_threshold = 0.34
-        self.wit_fallback_threshold = 0.01
+        self.pal_friendship_score = list(DEFAULT_PAL_FRIENDSHIP_SCORES)
+        self.pal_card_multiplier = DEFAULT_PAL_CARD_MULTIPLIER
+        self.base_score = list(DEFAULT_BASE_SCORES)
+        self.summer_score_threshold = DEFAULT_SUMMER_SCORE_THRESHOLD
+        self.wit_fallback_threshold = DEFAULT_WIT_FALLBACK_THRESHOLD
 
     def reset_skill_learn(self):
         self.learn_skill_done = False
@@ -127,10 +131,10 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
             detail.extra_weight = []
         
         try:
-            se = getattr(task.detail, 'spirit_explosion', [0.16, 0.16, 0.16, 0.06, 0.11])
-            detail.spirit_explosion = list(se) if se else [0.16, 0.16, 0.16, 0.06, 0.11]
+            se = getattr(task.detail, 'spirit_explosion', DEFAULT_SPIRIT_EXPLOSION)
+            detail.spirit_explosion = list(se) if se else list(DEFAULT_SPIRIT_EXPLOSION)
         except Exception:
-            detail.spirit_explosion = [0.16, 0.16, 0.16, 0.06, 0.11]
+            detail.spirit_explosion = list(DEFAULT_SPIRIT_EXPLOSION)
         
         detail.rest_treshold = getattr(task.detail, 'rest_treshold', getattr(task.detail, 'fast_path_energy_limit', 48))
         # Load motivation thresholds from preset (with defaults) - ensure they are integers
@@ -141,8 +145,8 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         detail.pal_name = getattr(task.detail, 'pal_name', "")
         detail.pal_thresholds = list(getattr(task.detail, 'pal_thresholds', []))
 
-        detail.pal_friendship_score = list(getattr(task.detail, 'pal_friendship_score', [0.08, 0.057, 0.018]))
-        detail.pal_card_multiplier = float(getattr(task.detail, 'pal_card_multiplier', 0.1))
+        detail.pal_friendship_score = list(getattr(task.detail, 'pal_friendship_score', DEFAULT_PAL_FRIENDSHIP_SCORES))
+        detail.pal_card_multiplier = float(getattr(task.detail, 'pal_card_multiplier', DEFAULT_PAL_CARD_MULTIPLIER))
 
         detail.score_value = getattr(task.detail, 'score_value', [
             [0.11, 0.10, 0.01, 0.09],
@@ -153,9 +157,9 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         ])
         detail.compensate_failure = getattr(task.detail, 'compensate_failure', True)
         detail.use_last_parents = getattr(task.detail, 'use_last_parents', False)
-        detail.base_score = list(getattr(task.detail, 'base_score', [0.0, 0.0, 0.0, 0.0, 0.07]))
-        detail.summer_score_threshold = float(getattr(task.detail, 'summer_score_threshold', 0.34))
-        detail.wit_fallback_threshold = float(getattr(task.detail, 'wit_fallback_threshold', 0.01))
+        detail.base_score = list(getattr(task.detail, 'base_score', DEFAULT_BASE_SCORES))
+        detail.summer_score_threshold = float(getattr(task.detail, 'summer_score_threshold', DEFAULT_SUMMER_SCORE_THRESHOLD))
+        detail.wit_fallback_threshold = float(getattr(task.detail, 'wit_fallback_threshold', DEFAULT_WIT_FALLBACK_THRESHOLD))
         # Event overrides
         try:
             eo = getattr(task.detail, 'event_overrides', {})

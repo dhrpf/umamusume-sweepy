@@ -6,7 +6,7 @@ from bot.base.manifest import AppManifest
 from bot.base.resource import NOT_FOUND_UI
 from bot.server.handler import server
 from module.umamusume.asset.ui import *
-from module.umamusume.context import build_context
+from module.umamusume.context import build_context, UmamusumeContext
 from module.umamusume.hook import after_hook, before_hook
 from module.umamusume.script.cultivate_task.cultivate import *
 from module.umamusume.script.cultivate_task.info import script_info

@@ -13,8 +13,8 @@ class Config(dict):
 
 
 def load() -> Config:
-    config_file = open("config.yaml", 'r', encoding='utf-8')
-    config = config_file.read()
+    with open("config.yaml", 'r', encoding='utf-8') as config_file:
+        config = config_file.read()
     return Config(yaml.load(config, yaml.FullLoader))
 
 

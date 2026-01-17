@@ -9,7 +9,6 @@ import os
 from config import CONFIG
 import bot.base.gpu_utils as gpu_utils
 from bot.recog.timeout_tracker import reset_timeout
-import hashlib
 
 log = logger.get_logger(__name__)
 _paddleocr_import_lock = threading.RLock()
