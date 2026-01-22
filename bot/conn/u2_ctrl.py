@@ -1,9 +1,11 @@
 import time
 import random
+import subprocess
+import struct
 from typing import Optional
 
 import cv2
-import uiautomator2 as u2
+import numpy as np
 
 import bot.conn.os as os
 import bot.base.log as logger
@@ -68,13 +70,15 @@ class U2AndroidController(AndroidController):
     recent_point = None
     recent_operation_time = None
     same_point_operation_interval = 0.27
-    u2client = None
 
     repetitive_click_name = None
     repetitive_click_count = 0
     repetitive_other_clicks = 0
     last_click_time = 0.0
     min_click_interval = 0.15
+
+    _screen_width = None
+    _screen_height = None
 
     def __init__(self):
         self.recent_click_buckets = []
@@ -208,49 +212,95 @@ class U2AndroidController(AndroidController):
         self.last_click_time = time.time()
         time.sleep(self.config.delay)
 
-    # init_env 初始化环境
     def init_env(self) -> None:
         try:
-            # Short timeout for initial connection attempt
-            self.u2client = u2.connect(self.config.device_name)
-            # Try a simple RPC to verify connection
-            _ = self.u2client.window_size()
+            result = subprocess.run(
+                [self.path + "adb.exe", "-s", self.config.device_name, "shell", "echo", "ok"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode != 0:
+                raise Exception(f"ADB connection failed: {result.stderr.decode()}")
+            log.debug(f"ADB connection verified for {self.config.device_name}")
         except Exception as e:
-            log.warning(f"Initial u2 connection failed: {e}. Retrying with forward cleanup...")
-            try:
-                # Clean forwards which often cause 7912 port conflicts on Windows
-                subprocess.run([self.path + "adb.exe", "-s", self.config.device_name, "forward", "--remove-all"], 
-                             capture_output=True, timeout=5)
-                time.sleep(0.5)
-                self.u2client = u2.connect(self.config.device_name)
-            except Exception as e2:
-                log.error(f"Failed to connect to device {self.config.device_name}: {e2}")
-                raise
+            log.error(f"Failed to connect to device {self.config.device_name}: {e}")
+            raise
 
     def reinit_connection(self):
         try:
-            if self.u2client:
-                self.u2client = None
-        except Exception:
-            pass
-        try:
-            subprocess.run([self.path + "adb.exe", "-s", self.config.device_name, "forward", "--remove-all"], 
+            subprocess.run([self.path + "adb.exe", "-s", self.config.device_name, "reconnect"], 
                           capture_output=True, timeout=5)
         except Exception:
             pass
         time.sleep(0.2)
+        self._screen_width = None
+        self._screen_height = None
         self.init_env()
 
-    # get_screen 获取图片
+    def _get_screen_dimensions(self):
+        if self._screen_width is not None and self._screen_height is not None:
+            return self._screen_width, self._screen_height
+        try:
+            result = subprocess.run(
+                [self.path + "adb.exe", "-s", self.config.device_name, "shell", "wm", "size"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode == 0:
+                output = result.stdout.decode().strip()
+                for line in output.split('\n'):
+                    if 'x' in line:
+                        parts = line.split(':')[-1].strip().split('x')
+                        if len(parts) == 2:
+                            self._screen_width = int(parts[0])
+                            self._screen_height = int(parts[1])
+                            return self._screen_width, self._screen_height
+        except Exception:
+            pass
+        return None, None
+
     def get_screen(self, to_gray=False):
         for attempt in range(2):
             try:
-                cur_screen = self.u2client.screenshot(format='opencv')
+                result = subprocess.run(
+                    [self.path + "adb.exe", "-s", self.config.device_name, "exec-out", "screencap"],
+                    capture_output=True, timeout=10
+                )
+                if result.returncode != 0 or not result.stdout:
+                    if attempt < 1:
+                        continue
+                    return None
+                raw = result.stdout
+                if len(raw) < 16:
+                    if attempt < 1:
+                        continue
+                    return None
+                w, h, fmt = struct.unpack('<III', raw[:12])
+                if w <= 0 or h <= 0 or w > 10000 or h > 10000:
+                    if attempt < 1:
+                        continue
+                    return None
+                pixel_size = w * h * 4
+                if len(raw) == 16 + pixel_size:
+                    header_size = 16
+                elif len(raw) == 12 + pixel_size:
+                    header_size = 12
+                elif len(raw) > 16 + pixel_size:
+                    header_size = 16
+                elif len(raw) > 12 + pixel_size:
+                    header_size = 12
+                else:
+                    if attempt < 1:
+                        continue
+                    return None
+                data = np.frombuffer(raw[header_size:header_size + pixel_size], dtype=np.uint8)
+                img = data.reshape((h, w, 4))
+                if fmt == 5:
+                    cur_screen = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                else:
+                    cur_screen = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
                 if cur_screen is None or getattr(cur_screen, 'size', 0) == 0:
                     if attempt < 1:
                         continue
                     return None
-                h, w = cur_screen.shape[:2]
                 if h < 100 or w < 100:
                     if attempt < 1:
                         continue
@@ -384,15 +434,14 @@ class U2AndroidController(AndroidController):
 
     def start_app(self, package_name, activity_name=None):
         if activity_name:
-            # Use direct ADB command to bypass uiautomator2 split APK issues
             component = f"{package_name}/{activity_name}"
             cmd = f"shell am start -n {component}"
             self.execute_adb_shell(cmd, True)
             log.debug("starting app using ADB: " + component)
         else:
-            # Fallback to uiautomator2 method (may have split APK issues)
-            self.u2client.app_start(package_name)
-            log.debug("starting app <" + package_name + ">")
+            cmd = f"shell monkey -p {package_name} -c android.intent.category.LAUNCHER 1"
+            self.execute_adb_shell(cmd, True)
+            log.debug("starting app using ADB: " + package_name)
 
     # get_front_activity 获取前台正在运行的应用
     def get_front_activity(self):
@@ -443,9 +492,5 @@ class U2AndroidController(AndroidController):
         log.debug("device cpu info: " + cpu_info)
         return cpu_info
 
-    # destroy 销毁
     def destroy(self):
-        try:
-            self.u2client = None
-        except Exception:
-            pass
+        pass
