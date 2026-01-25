@@ -110,7 +110,7 @@ As single run mode is deprecated if you wish to emulated it you can enable "Manu
 
 
 ## Changelogs 
- **25/1/2025**
+- **25/1/2025**
 made even less detectable     
 now relies on stat gains to make decision instead of guessing based on number of rainbows    
 
