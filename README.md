@@ -3,8 +3,6 @@ usually on /uma/ during 9-11am+pm UTC.
 
 # GOT RID OF RAINBOWS IN SCORING GO REDO UR PRESETS WE READING STAT GAINS DIRECTLY NOW
 
-looping broken mb 
-
 
 ## Reinstall your device/emulator if you have used this bot before 22/1/2026
 This is to get rid of residual traces of uiautomator2, likewise if your emulator has ever used anything that captures the screen without ADB direct screen capture it is recommended that you reinstall.     
@@ -115,8 +113,8 @@ As single run mode is deprecated if you wish to emulated it you can enable "Manu
 ## Changelogs 
 - **25/1/2025**
 made even less detectable     
-now relies on stat gains to make decision instead of guessing based on number of rainbows    
-
+now relies on stat gains to make decision instead of guessing based on number of rainbows
+fixed clicking the team rank button on accident
 
 - **16/1/2025**
 scroll faster    
