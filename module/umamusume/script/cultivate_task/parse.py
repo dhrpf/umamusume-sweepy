@@ -61,7 +61,10 @@ def _compute_image_hash(img):
     try:
         if img is None:
             return None
-        h = hash(img.tobytes())
+        if img.size > 50000:
+            h = hash(img[::4, ::4].tobytes())
+        else:
+            h = hash(img.tobytes())
         return h
     except:
         return None

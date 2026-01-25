@@ -38,7 +38,10 @@ _image_match_cache = LRUCache(maxsize=8000)
 
 def _compute_match_cache_key(img, template):
     try:
-        img_hash = hash(img.tobytes())
+        if img.size > 50000:
+            img_hash = hash(img[::4, ::4].tobytes())
+        else:
+            img_hash = hash(img.tobytes())
         template_hash = hash(template.template_img.tobytes()) if hasattr(template, 'template_img') and template.template_img is not None else id(template)
         area = template.image_match_config.match_area
         if area:
