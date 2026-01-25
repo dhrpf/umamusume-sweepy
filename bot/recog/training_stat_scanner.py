@@ -80,17 +80,26 @@ def find_digit_regions(mask):
         right_edge = x + w
         if right_edge >= w_img and x >= w_img - 20:
             continue
-        all_candidates.append((x, y, w, h))
+        all_candidates.append((x, y, w, h, area))
     all_candidates.sort(key=lambda r: r[0])
     if len(all_candidates) >= 3:
         min_x = int(w_img * 0.25)
     else:
         min_x = int(w_img * 0.35)
     regions = []
-    for x, y, w, h in all_candidates:
+    for x, y, w, h, area in all_candidates:
         if x < min_x:
             continue
         regions.append((x, y, w, h))
+    if len(regions) > 3:
+        areas = [(r[2] * r[3], r) for r in regions]
+        areas.sort(key=lambda a: a[0], reverse=True)
+        top_areas = [a[0] for a in areas[:3]]
+        if len(top_areas) >= 3:
+            avg_area = sum(top_areas) / len(top_areas)
+            threshold = avg_area * 0.4
+            regions = [r for _, r in areas if _ >= threshold]
+            regions.sort(key=lambda r: r[0])
     return regions
 
 def classify_digit_region(roi, mask, region):
