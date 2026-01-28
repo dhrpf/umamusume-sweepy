@@ -1,5 +1,6 @@
 usually on /uma/ during 9-11am+pm UTC.   
-(you guys act like using discord will make your sons infertile or something)    
+
+no upd8 for 5 days I'm transfering my free rolls to fuku ok thx bye
 
 ## If you do not see "Stats" in scoring go install/reinstall vcc+ redistributable and update requirements.txt
 <img width="1080" height="171" alt="image" src="https://github.com/user-attachments/assets/1f68af35-cf9d-41ce-9392-c26ecf83cc70" />.    
