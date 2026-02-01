@@ -305,9 +305,9 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             try:
                 arr = sv_list[idx]
             except Exception:
-                arr = [0.11, 0.10, 0.01, 0.09]
+                arr = [0.11, 0.10, 0.006, 0.09]
             if not isinstance(arr, (list, tuple)):
-                arr = [0.11, 0.10, 0.01, 0.09]
+                arr = [0.11, 0.10, 0.006, 0.09]
             base = list(arr[:4])
             if len(base) < 4:
                 base += [0.09] * (4 - len(base))
@@ -559,7 +559,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             if lv2_contrib > 0:
                 formula_parts.append(f"lv2({lv2c}):+{lv2_contrib:.3f}")
             if energy_change_contrib != 0:
-                formula_parts.append(f"nrg({energy_change_val:+.1f}):+{energy_change_contrib:.3f}")
+                formula_parts.append(f"nrg({energy_change_val:+.1f}):{energy_change_contrib:+.3f}")
             if npc_contrib > 0:
                 formula_parts.append(f"npc({npc}):+{npc_contrib:.3f}")
             if hint_bonus > 0:

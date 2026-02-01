@@ -103,7 +103,6 @@ def scan_energy(ctrl, y=ENERGY_BAR_Y):
             reference_brightness = float(np.mean(current_row))
             return base_energy, 0, "base_hp"
         prev_row = current_row
-        time.sleep(0.035)
 
 
 def scan_training_energy_change_single(img, y=ENERGY_BAR_Y):
@@ -135,14 +134,12 @@ def scan_training_energy_change(ctrl, facility_name, y=ENERGY_BAR_Y, initial_img
     img = initial_img
     if img is not None:
         prev_value = scan_training_energy_change_single(img, y)
-        time.sleep(0.035)
     while True:
         img = ctrl.get_screen()
         current_value = scan_training_energy_change_single(img, y)
         if prev_value is not None and current_value == prev_value:
             return current_value, img
         prev_value = current_value
-        time.sleep(0.035)
 
 
 def scan_base_energy(img, y=ENERGY_BAR_Y):
