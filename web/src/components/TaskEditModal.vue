@@ -1913,7 +1913,7 @@ export default {
       extraWeight2: [0, 0, 0, 0, 0],
       extraWeight3: [0, 0, 0, 0, 0],
       extraWeightSummer: [0, 0, 0, 0, 0],
-      baseScore: [0, 0, 0, 0, 0.07],
+      baseScore: [0, 0, 0, 0, 0],
       spiritExplosionJunior: [0.16, 0.16, 0.16, 0.06, 0.11],
       spiritExplosionClassic: [0.16, 0.16, 0.16, 0.06, 0.11],
       spiritExplosionSenior: [0.16, 0.16, 0.16, 0.06, 0.11],
