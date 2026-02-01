@@ -212,6 +212,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
 
         threads: list[threading.Thread] = []
         blocked_trainings = [False] * 5
+        energy_changes: list[tuple[int, float]] = []
 
         date = ctx.cultivate_detail.turn_info.date
         if date == 0:
@@ -247,10 +248,12 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 TrainingType.TRAINING_TYPE_INTELLIGENCE: "wits",
             }
             facility_name = facility_map.get(train_type)
-            energy_change, settled_img = scan_training_energy_change(ctx.ctrl, facility_name)
-            thread = threading.Thread(target=parse_training_with_retry, args=(ctx, settled_img, train_type, energy_change))
+            immediate_img = ctx.ctrl.get_screen()
+            thread = threading.Thread(target=parse_training_with_retry, args=(ctx, immediate_img, train_type, None))
             threads.append(thread)
             thread.start()
+            energy_change, _ = scan_training_energy_change(ctx.ctrl, facility_name)
+            energy_changes.append((viewed - 1, energy_change))
         else:
             clear_training(ctx, train_type)
 
@@ -283,18 +286,21 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                   
                     train_type_i = TrainingType(i + 1)
                     facility_name = facility_map.get(train_type_i)
-                    energy_change, settled_img = scan_training_energy_change(ctx.ctrl, facility_name)
-                    
-                    thread = threading.Thread(target=parse_training_with_retry, args=(ctx, settled_img, train_type_i, energy_change))
+                    immediate_img = ctx.ctrl.get_screen()
+                    thread = threading.Thread(target=parse_training_with_retry, args=(ctx, immediate_img, train_type_i, None))
                     threads.append(thread)
                     thread.start()
+                    energy_change, _ = scan_training_energy_change(ctx.ctrl, facility_name)
+                    energy_changes.append((i, energy_change))
                 else:
                     clear_training(ctx, TrainingType(i + 1))
 
         for thread in threads:
             thread.join()
 
-        
+        for idx, energy_val in energy_changes:
+            ctx.cultivate_detail.turn_info.training_info_list[idx].energy_change = energy_val
+
         date = ctx.cultivate_detail.turn_info.date
         sv = getattr(ctx.cultivate_detail, 'score_value', DEFAULT_SCORE_VALUE)
         def resolve_weights(sv_list, idx):
@@ -360,7 +366,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
 
         base_energy = getattr(ctx.cultivate_detail.turn_info, 'base_energy', None)
         if base_energy is not None:
-            log.info(f"Base Energy: {base_energy:.1f}%")
+            log.info(f"Base Energy: {base_energy:.1f}%{' (high energy)' if base_energy >= 80 else ''}")
 
         for idx in range(5):
             til = ctx.cultivate_detail.turn_info.training_info_list[idx]
@@ -432,6 +438,8 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             score += hint_bonus
             energy_change_val = getattr(til, 'energy_change', 0.0)
             energy_change_contrib = energy_change_val * w_energy_change
+            if base_energy is not None and base_energy >= 80 and energy_change_val < 0:
+                energy_change_contrib *= 0.9
             score += energy_change_contrib
             stc_lane = special_counts[idx]
             special_bonus = 0.0
