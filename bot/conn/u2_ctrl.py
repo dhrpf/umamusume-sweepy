@@ -107,43 +107,79 @@ class U2AndroidController(AndroidController):
             pass
 
     def _capture_via_socket(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2097152)
-        sock.connect(('127.0.0.1', 5037))
-        sock.sendall(self._transport_bytes)
-        sock.recv(4)
-        sock.sendall(self._exec_bytes)
-        sock.recv(4)
-        chunks = []
-        while True:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-        sock.close()
-        return b''.join(chunks)
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5.0)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2097152)
+            sock.connect(('127.0.0.1', 5037))
+            sock.sendall(self._transport_bytes)
+            resp = sock.recv(4)
+            if not resp or b'OKAY' not in resp:
+                return None
+            sock.sendall(self._exec_bytes)
+            resp = sock.recv(4)
+            if not resp or b'OKAY' not in resp:
+                return None
+            chunks = []
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return b''.join(chunks) if chunks else None
+        except Exception:
+            return None
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
 
     def screencap(self):
         now = time.time()
         if self._cached_frame is not None and (now - self._cache_time) < self._cache_max_age:
             return self._cached_frame
-        raw = self._capture_via_socket()
         
-        w, h, fmt = struct.unpack('<III', raw[:12])
-        pixel_size = w * h * 4
-        header_size = 16 if len(raw) >= 16 + pixel_size else 12
-        img = np.frombuffer(raw[header_size:header_size + pixel_size], dtype=np.uint8).reshape((h, w, 4))
+        for attempt in range(3):
+            raw = self._capture_via_socket()
+            
+            if raw is None or len(raw) < 16:
+                time.sleep(0.1)
+                continue
+            
+            try:
+                w, h, fmt = struct.unpack('<III', raw[:12])
+                if w <= 0 or h <= 0 or w > 10000 or h > 10000:
+                    time.sleep(0.1)
+                    continue
+                
+                pixel_size = w * h * 4
+                header_size = 16 if len(raw) >= 16 + pixel_size else 12
+                
+                if len(raw) < header_size + pixel_size:
+                    time.sleep(0.1)
+                    continue
+                
+                img = np.frombuffer(raw[header_size:header_size + pixel_size], dtype=np.uint8).reshape((h, w, 4))
+                
+                if fmt == 5:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                else:
+                    img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+                
+                self._cached_frame = img
+                self._cache_time = time.time()
+                
+                return img
+            except Exception:
+                time.sleep(0.1)
+                continue
         
-        if fmt == 5:
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-        else:
-            img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-        
-        self._cached_frame = img
-        self._cache_time = time.time()
-        
-        return img
+        self._cached_frame = None
+        return None
 
     def in_fallback_block(self, name):
         if isinstance(name, str) and name == "Default fallback click":
