@@ -340,6 +340,17 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         computed_scores = [0.0, 0.0, 0.0, 0.0, 0.0]
         special_counts = [0, 0, 0, 0, 0]
         spirit_counts = [0, 0, 0, 0, 0]
+        stat_contributions = [[0.0] * 6 for _ in range(5)]
+
+        pre_highest_stat_idx = None
+        try:
+            d_pre = int(ctx.cultivate_detail.turn_info.date)
+            if isinstance(d_pre, int) and d_pre > 48 and d_pre <= 72:
+                uma_pre = ctx.cultivate_detail.turn_info.uma_attribute
+                stats_pre = [uma_pre.speed, uma_pre.stamina, uma_pre.power, uma_pre.will, uma_pre.intelligence]
+                pre_highest_stat_idx = int(np.argmax(stats_pre)) if len(stats_pre) == 5 else None
+        except Exception:
+            pass
 
         stat_mult = getattr(ctx.cultivate_detail, 'stat_value_multiplier', DEFAULT_STAT_VALUE_MULTIPLIER)
         if not isinstance(stat_mult, (list, tuple)) or len(stat_mult) < 6:
@@ -421,7 +432,11 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 if sv_val > 0:
                     contrib = sv_val * stat_mult[sk_idx]
                     stat_score += contrib
-                    stat_parts.append(f"{sk}:{sv_val}")
+                    stat_contributions[idx][sk_idx] = contrib
+                    if pre_highest_stat_idx is not None and sk_idx == pre_highest_stat_idx:
+                        stat_parts.append(f"{sk}:{sv_val} (-5% score)")
+                    else:
+                        stat_parts.append(f"{sk}:{sv_val}")
             
             score += stat_score
             try:
@@ -600,16 +615,22 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             d = int(ctx.cultivate_detail.turn_info.date)
         except Exception:
             d = -1
+        highest_stat_idx = None
         if isinstance(d, int) and d > 48 and d <= 72:
             try:
                 uma = ctx.cultivate_detail.turn_info.uma_attribute
                 stats = [uma.speed, uma.stamina, uma.power, uma.will, uma.intelligence]
-                names = ["Speed", "Stamina", "Power", "Guts", "Wit"]
-                max_idx = int(np.argmax(stats)) if len(stats) == 5 else None
-                if max_idx is not None:
-                    computed_scores[max_idx] *= 0.9
+                highest_stat_idx = int(np.argmax(stats)) if len(stats) == 5 else None
+                if highest_stat_idx is not None:
+                    computed_scores[highest_stat_idx] *= 0.95
+                    penalty_parts = []
+                    for i in range(5):
+                        penalty = stat_contributions[i][highest_stat_idx] * 0.05
+                        if penalty > 0:
+                            computed_scores[i] -= penalty
+                            penalty_parts.append(f"{names[i]}:-{penalty:.3f}")
                     try:
-                        log.info(f"-10% to {names[max_idx]}, the current highest stat")
+                        log.info(f"-5% to {names[highest_stat_idx]} facility (highest stat); -5% {stat_keys[highest_stat_idx]} score across: {', '.join(penalty_parts) if penalty_parts else 'none'}")
                     except Exception:
                         pass
             except Exception:
