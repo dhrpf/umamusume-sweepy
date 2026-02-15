@@ -1,17 +1,16 @@
 import cv2
+import numpy as np
 
 from module.umamusume.scenario.ura_scenario import URAScenario
 from module.umamusume.scenario.registry import register
 from module.umamusume.asset import *
 from module.umamusume.define import ScenarioType, SupportCardFavorLevel, SupportCardType
 from module.umamusume.types import SupportCardInfo
-from bot.recog.image_matcher import image_match, compare_color_equal, multi_template_match
+from bot.recog.image_matcher import image_match, compare_color_equal
 from module.umamusume.asset.template import (
     REF_SUPPORT_CARD_TYPE_SPEED, REF_SUPPORT_CARD_TYPE_STAMINA,
     REF_SUPPORT_CARD_TYPE_POWER, REF_SUPPORT_CARD_TYPE_WILL,
     REF_SUPPORT_CARD_TYPE_INTELLIGENCE, REF_SUPPORT_CARD_TYPE_FRIEND,
-    REF_AOHARU_SPECIAL_TRAIN, REF_AOHARU_SPECIAL_TRAIN2, REF_AOHARU_SPECIAL_TRAIN3,
-    REF_SPIRIT_EXPLOSION, REF_SPIRIT_EXPLOSION2, REF_SPIRIT_EXPLOSION3
 )
 from bot.recog.training_stat_scanner import parse_training_result_template
 from .handlers import get_aoharuhai_ui_handlers
@@ -47,6 +46,18 @@ CARD_TYPE_NAMES = {
     SupportCardType.SUPPORT_CARD_TYPE_INTELLIGENCE: "support_card_type_intelligence",
     SupportCardType.SUPPORT_CARD_TYPE_FRIEND: "support_card_type_friend",
 }
+
+ORANGE_LO = np.array([5, 60, 80], dtype=np.uint8)
+ORANGE_HI = np.array([25, 255, 255], dtype=np.uint8)
+ORANGE_STRICT_LO = np.array([5, 150, 150], dtype=np.uint8)
+ORANGE_STRICT_HI = np.array([25, 255, 255], dtype=np.uint8)
+TEAL_LO = np.array([75, 60, 80], dtype=np.uint8)
+TEAL_HI = np.array([110, 255, 255], dtype=np.uint8)
+TEAL_STRICT_LO = np.array([75, 150, 150], dtype=np.uint8)
+TEAL_STRICT_HI = np.array([110, 255, 255], dtype=np.uint8)
+MIN_STRICT_COUNT = 80
+ORANGE_RATIO_THRESHOLD = 0.50
+TEAL_RATIO_THRESHOLD = 0.65
 
 
 @register(ScenarioType.SCENARIO_TYPE_AOHARUHAI)
@@ -96,29 +107,18 @@ class AoharuHaiScenario(URAScenario):
                 continue
 
             roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            ay1 = 0
-            ay2 = 37
-            ax1 = 116
-            ax2 = 141
-            arrow_roi = roi_gray[ay1:ay2, ax1:ax2]
+            arrow_bgr = roi[0:37, 116:141]
+            arrow_hsv = cv2.cvtColor(arrow_bgr, cv2.COLOR_BGR2HSV)
 
-            arrow_roi3 = roi_gray[max(ay1 - 10, 0):ay2, ax1:ax2]
-
-            special_train_templates = [
-                (REF_AOHARU_SPECIAL_TRAIN, arrow_roi),
-                (REF_AOHARU_SPECIAL_TRAIN2, arrow_roi),
-                (REF_AOHARU_SPECIAL_TRAIN3, arrow_roi3),
-            ]
-            can_incr_special_training, _ = multi_template_match(special_train_templates)
+            ol = int(np.count_nonzero(cv2.inRange(arrow_hsv, ORANGE_LO, ORANGE_HI)))
+            oh = int(np.count_nonzero(cv2.inRange(arrow_hsv, ORANGE_STRICT_LO, ORANGE_STRICT_HI)))
+            can_incr_special_training = oh >= MIN_STRICT_COUNT and (oh / max(ol, 1)) >= ORANGE_RATIO_THRESHOLD
 
             spirit_explosion = False
             if not can_incr_special_training:
-                spirit_templates = [
-                    (REF_SPIRIT_EXPLOSION, arrow_roi),
-                    (REF_SPIRIT_EXPLOSION2, arrow_roi),
-                    (REF_SPIRIT_EXPLOSION3, arrow_roi3),
-                ]
-                spirit_explosion, _ = multi_template_match(spirit_templates)
+                tl = int(np.count_nonzero(cv2.inRange(arrow_hsv, TEAL_LO, TEAL_HI)))
+                th = int(np.count_nonzero(cv2.inRange(arrow_hsv, TEAL_STRICT_LO, TEAL_STRICT_HI)))
+                spirit_explosion = th >= MIN_STRICT_COUNT and (th / max(tl, 1)) >= TEAL_RATIO_THRESHOLD
 
             favor_process_check_list = [roi[106, 56], roi[106, 60]]
             support_card_favor_process = SupportCardFavorLevel.SUPPORT_CARD_FAVOR_LEVEL_UNKNOWN
