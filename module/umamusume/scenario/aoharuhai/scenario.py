@@ -92,6 +92,13 @@ class AoharuHaiScenario(URAScenario):
     def compute_scenario_bonuses(self, ctx, idx, support_card_info_list, date, period_idx, current_energy):
         return compute_aoharu_bonuses(ctx, idx, support_card_info_list, date, period_idx, current_energy)
 
+    def get_support_card_slot_config(self):
+        return {
+            'base_x': 550, 'base_y': 177, 'inc': 115,
+            'width': 145, 'height': 115, 'num_slots': 5,
+            'circle_cx': 92, 'circle_cy': 62, 'circle_r': 46,
+        }
+
     def parse_training_support_card(self, img) -> list[SupportCardInfo]:
         if img is None or getattr(img, 'size', 0) == 0:
             return []

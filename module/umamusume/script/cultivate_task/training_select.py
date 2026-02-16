@@ -30,8 +30,11 @@ from module.umamusume.script.cultivate_task.parse import parse_train_type, parse
 from module.umamusume.script.cultivate_task.helpers import should_use_pal_outing_simple
 from bot.recog.training_stat_scanner import scan_facility_stats
 from bot.recog.energy_scanner import scan_training_energy_change
+from bot.recog.character_detector import CharacterDetector
 
 log = logger.get_logger(__name__)
+
+character_detector = CharacterDetector()
 
 
 def script_cultivate_training_select(ctx: UmamusumeContext):
@@ -89,6 +92,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 self.intelligence_incr = 0
                 self.skill_point_incr = 0
                 self.energy_change = 0.0
+                self.detected_characters = []
 
         def detect_training_once(ctx, img, train_type, energy_change=None):
             result = TrainingDetectionResult()
@@ -125,6 +129,15 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 result.support_card_info_list = ctx.cultivate_detail.scenario.parse_training_support_card(img)
             except Exception:
                 pass
+            try:
+                slot_config = ctx.cultivate_detail.scenario.get_support_card_slot_config()
+                if slot_config is not None:
+                    detections = character_detector.detect_facility(img, slot_config)
+                    result.detected_characters = [(name, score) for _, name, score in detections if name is not None]
+                else:
+                    result.detected_characters = []
+            except Exception:
+                result.detected_characters = []
             try:
                 from module.umamusume.asset.template import REF_TRAINING_HINT
                 import cv2 as cv2_local
@@ -174,6 +187,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             til.skill_point_incr = result.skill_point_incr
             til.stat_results = getattr(result, 'stat_results', {})
             til.energy_change = getattr(result, 'energy_change', 0.0)
+            til.detected_characters = getattr(result, 'detected_characters', [])
             tt_map = {
                 TrainingType.TRAINING_TYPE_SPEED: SupportCardType.SUPPORT_CARD_TYPE_SPEED,
                 TrainingType.TRAINING_TYPE_STAMINA: SupportCardType.SUPPORT_CARD_TYPE_STAMINA,
@@ -565,6 +579,10 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             nrg_change = getattr(til, 'energy_change', 0.0)
             nrg_str = f" | nrg:{nrg_change:+.1f}" if nrg_change != 0 else ""
             log.info(f"{names[idx]}: {score:.3f} = [{formula_str}]{stat_str}{nrg_str}")
+            char_list = getattr(til, 'detected_characters', [])
+            if char_list:
+                char_str = ", ".join(f"{n}" for n, s in char_list)
+                log.info(f"{names[idx]} supports: {char_str}")
 
         ctx.cultivate_detail.turn_info.parse_train_info_finish = True
         

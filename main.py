@@ -342,6 +342,11 @@ if __name__ == '__main__':
                                        args=(selected_device,), daemon=True)
     enforcer_thread.start()
     
+    from bake_templates import bake, BAKED_PATH
+    if not BAKED_PATH.exists():
+        print("Baking character templates...")
+        bake()
+
     from module.umamusume.script.cultivate_task.event.manifest import warmup_event_index
     warmup_event_index()
     

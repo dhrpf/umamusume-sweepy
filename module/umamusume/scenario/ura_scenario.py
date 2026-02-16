@@ -43,6 +43,13 @@ class URAScenario(BaseScenario):
     def parse_training_result(self, img) -> list[int]:
         return parse_training_result_template(img, scenario="ura")
 
+    def get_support_card_slot_config(self):
+        return {
+            'base_x': 590, 'base_y': 190, 'inc': 120,
+            'width': 105, 'height': 110, 'num_slots': 5,
+            'circle_cx': 52, 'circle_cy': 49, 'circle_r': 46,
+        }
+
     def parse_training_support_card(self, img) -> list[SupportCardInfo]:
         if img is None or getattr(img, 'size', 0) == 0:
             return []

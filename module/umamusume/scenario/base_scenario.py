@@ -40,5 +40,8 @@ class BaseScenario(ABC):
     def after_hook(self, ctx, img):
         pass
 
+    def get_support_card_slot_config(self):
+        return None
+
     def compute_scenario_bonuses(self, ctx, idx, support_card_info_list, date, period_idx, current_energy):
         return (0.0, 1.0, [], [])
