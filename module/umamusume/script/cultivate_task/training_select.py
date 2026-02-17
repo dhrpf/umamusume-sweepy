@@ -46,6 +46,20 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
     turn_op = ctx.cultivate_detail.turn_info.turn_operation
 
     if turn_op is not None:
+        try:
+            cached_stats = getattr(ctx.cultivate_detail, '_last_decision_stats', None)
+            if cached_stats is not None:
+                uma = ctx.cultivate_detail.turn_info.uma_attribute
+                current_stats = (uma.speed, uma.stamina, uma.power, uma.will, uma.intelligence)
+                if current_stats != cached_stats:
+                    log.info(f"Cache invalid. was {cached_stats}, now {current_stats})")
+                    ctx.cultivate_detail.turn_info.turn_operation = None
+                    ctx.cultivate_detail.turn_info.parse_train_info_finish = False
+                    turn_op = None
+        except Exception:
+            pass
+
+    if turn_op is not None:
         if turn_op.turn_operation_type == TurnOperationType.TURN_OPERATION_TYPE_TRAINING:
             training_type = turn_op.training_type
             ctx.ctrl.click_by_point(TRAINING_POINT_LIST[training_type.value - 1])
@@ -495,7 +509,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                     else:
                         energy_mult = 0.75
                 elif 85 > current_energy:
-                    energy_mult = 1.10
+                    energy_mult = 1.03
                 score *= energy_mult
 
             if scenario_multiplier != 1.0:
@@ -674,6 +688,11 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         local_training_type = TrainingType(chosen_idx + 1)
      
         ctx.cultivate_detail.turn_info.cached_training_type = local_training_type
+        try:
+            uma = ctx.cultivate_detail.turn_info.uma_attribute
+            ctx.cultivate_detail._last_decision_stats = (uma.speed, uma.stamina, uma.power, uma.will, uma.intelligence)
+        except Exception:
+            pass
        
 
     from module.umamusume.script.cultivate_task.ai import get_operation

@@ -3,16 +3,8 @@ setlocal
 cd /d "%~dp0"
 git pull --autostash -X ours --no-edit
 
-where winget >nul 2>nul
-if ERRORLEVEL 1 (
-    echo winget not found
-    exit /b 1
-)
+winget install -e --id Google.PlatformTools --accept-package-agreements --accept-source-agreements
 
-where adb >nul 2>nul
-if ERRORLEVEL 1 (
-    winget install -e --id Google.PlatformTools --accept-package-agreements --accept-source-agreements
-)
 
 adb kill-server
 adb start-server
