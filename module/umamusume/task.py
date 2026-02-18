@@ -43,6 +43,8 @@ class TaskDetail:
     stat_value_multiplier: list
     wit_special_multiplier: list
     skip_double_circle_unless_high_hint: bool
+    hint_boost_characters: list[str]
+    hint_boost_multiplier: int
 
 
 class EndTaskReason(Enum):
@@ -144,6 +146,8 @@ def build_task(task_execute_mode: TaskExecuteMode, task_type: int,
     td.do_tt_next = attachment_data.get('do_tt_next', False)
     td.wit_special_multiplier = attachment_data.get('wit_special_multiplier', [1.57, 1.37])
     td.skip_double_circle_unless_high_hint = attachment_data.get('skip_double_circle_unless_high_hint', False)
+    td.hint_boost_characters = attachment_data.get('hint_boost_characters', [])
+    td.hint_boost_multiplier = int(attachment_data.get('hint_boost_multiplier', 100))
     
     ut.detail = td
     return ut

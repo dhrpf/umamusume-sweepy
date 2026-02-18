@@ -243,6 +243,26 @@ def get_pal_defaults():
     return read_pal_defaults()
 
 
+@server.get("/api/training-characters")
+def get_training_characters():
+    icons_dir = os.path.join("resource", "umamusume", "trainingIcons")
+    if not os.path.isdir(icons_dir):
+        return []
+    names = []
+    for f in sorted(os.listdir(icons_dir)):
+        if f.lower().endswith(".png"):
+            names.append(f[:-4])
+    return names
+
+
+@server.get("/training-icon/{name:path}")
+async def get_training_icon(name: str):
+    file_path = os.path.join("resource", "umamusume", "trainingIcons", name + ".png")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path, media_type="image/png")
+    return JSONResponse(status_code=404, content={"error": "not found"})
+
+
 
 @server.get("/")
 async def get_index():

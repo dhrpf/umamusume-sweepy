@@ -469,10 +469,27 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             except Exception:
                 fr = -1
             hint_bonus = 0.0
+            selected_hint_count = 0
+            regular_hint_count = 0
             try:
-                hint_bonus = w_hint if bool(getattr(til, 'has_hint', False)) else 0.0
+                boost_chars = getattr(ctx.cultivate_detail, 'hint_boost_characters', [])
+                boost_mult = getattr(ctx.cultivate_detail, 'hint_boost_multiplier', 100) / 100.0
+                char_list_hint = getattr(til, 'detected_characters', [])
+                has_any_hint = False
+                for cname, cscore, c_has_hint in char_list_hint:
+                    if c_has_hint:
+                        has_any_hint = True
+                        if cname in boost_chars:
+                            hint_bonus += w_hint * boost_mult
+                            selected_hint_count += 1
+                        else:
+                            hint_bonus += w_hint
+                            regular_hint_count += 1
+                if not has_any_hint and bool(getattr(til, 'has_hint', False)):
+                    hint_bonus = w_hint
+                    regular_hint_count = 1
             except Exception:
-                hint_bonus = 0.0
+                hint_bonus = w_hint if bool(getattr(til, 'has_hint', False)) else 0.0
             score += hint_bonus
             energy_change_val = getattr(til, 'energy_change', 0.0)
             energy_change_contrib = energy_change_val * w_energy_change
@@ -575,8 +592,12 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 formula_parts.append(f"nrg({energy_change_val:+.1f}):{energy_change_contrib:+.3f}")
             if npc_total_contrib > 0:
                 formula_parts.append(f"npc({npc}):+{npc_total_contrib:.3f}")
-            if hint_bonus > 0:
-                formula_parts.append(f"hint:+{hint_bonus:.3f}")
+            if selected_hint_count > 0:
+                sel_contrib = w_hint * (getattr(ctx.cultivate_detail, 'hint_boost_multiplier', 100) / 100.0) * selected_hint_count
+                formula_parts.append(f"hint(selected):+{sel_contrib:.3f} ({selected_hint_count})")
+            if regular_hint_count > 0:
+                reg_contrib = w_hint * regular_hint_count
+                formula_parts.append(f"hint:+{reg_contrib:.3f} ({regular_hint_count})")
             formula_parts.extend(scenario_formula_parts)
             
             mult_parts = []
@@ -600,11 +621,6 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             nrg_change = getattr(til, 'energy_change', 0.0)
             nrg_str = f" | nrg:{nrg_change:+.1f}" if nrg_change != 0 else ""
             log.info(f"{names[idx]}: {score:.3f} = [{formula_str}]{stat_str}{nrg_str}")
-            char_list = getattr(til, 'detected_characters', [])
-            if char_list:
-                hint_chars = [n for n, s, h in char_list if h]
-                if hint_chars:
-                    log.info(f"{names[idx]} hints: {', '.join(hint_chars)}")
 
         ctx.cultivate_detail.turn_info.parse_train_info_finish = True
         

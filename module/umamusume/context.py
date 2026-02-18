@@ -54,6 +54,8 @@ class CultivateContextDetail:
     stat_value_multiplier: list
     wit_special_multiplier: list
     skip_double_circle_unless_high_hint: bool
+    hint_boost_characters: list[str]
+    hint_boost_multiplier: int
 
     def __init__(self):
         self.expect_attribute = None
@@ -174,6 +176,8 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         detail.stat_value_multiplier = list(getattr(task.detail, 'stat_value_multiplier', DEFAULT_STAT_VALUE_MULTIPLIER))
         detail.wit_special_multiplier = list(getattr(task.detail, 'wit_special_multiplier', DEFAULT_WIT_SPECIAL_MULTIPLIER))
         detail.skip_double_circle_unless_high_hint = getattr(task.detail, 'skip_double_circle_unless_high_hint', False)
+        detail.hint_boost_characters = list(getattr(task.detail, 'hint_boost_characters', []))
+        detail.hint_boost_multiplier = int(getattr(task.detail, 'hint_boost_multiplier', 100))
         try:
             eo = getattr(task.detail, 'event_overrides', {})
             detail.event_overrides = eo if isinstance(eo, dict) else {}

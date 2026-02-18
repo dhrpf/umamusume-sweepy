@@ -175,9 +175,9 @@ hr{border-color:rgba(255,255,255,.12)}
 .token-toggle.disabled{opacity:.6}
 .token-toggle.disabled .token{cursor:not-allowed}
 .skill-notes-alert{display:flex;align-items:center;gap:8px;padding:8px 12px;border-left:3px solid var(--accent);background:rgba(255,255,255,.04);color:var(--muted);border-radius:8px}
-.advanced-options-header,.race-options-header,.skill-list-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:transparent;cursor:pointer;color:var(--text)}
-.advanced-options-title,.race-options-title,.skill-list-title{color:var(--accent);font-weight:700}
-.advanced-options-toggle .toggle-text,.race-options-toggle .toggle-text{color:var(--muted)}
+.advanced-options-header,.race-options-header,.skill-list-header,.hint-boost-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:transparent;cursor:pointer;color:var(--text)}
+.advanced-options-title,.race-options-title,.skill-list-title,.hint-boost-title{color:var(--accent);font-weight:700}
+.advanced-options-toggle .toggle-text,.race-options-toggle .toggle-text,.hint-boost-toggle .toggle-text{color:var(--muted)}
 .selected-skills-box,.blacklist-box{border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px;background:transparent;color:#fff}
 .selected-skills-list,.blacklisted-skills-list{display:flex;flex-wrap:wrap;gap:8px}
 .selected-skill-item,.blacklisted-skill-item{padding:6px 10px;border-radius:9999px;border:1px solid var(--accent);color:#fff;font-size:12px;transition:all .2s;cursor:pointer}
@@ -250,7 +250,7 @@ hr{border-color:rgba(255,255,255,.12)}
 .form-select option{background:var(--surface)!important;color:#fff!important;padding:8px!important}
 .form-select:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3px rgba(255,45,163,.15)!important;outline:none}
 
-.skill-list-header .btn,.race-options-header .btn{background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;border-color:var(--accent)!important;color:#fff!important;box-shadow:0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent)}
+.skill-list-header .btn,.race-options-header .btn,.hint-boost-header .btn{background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;border-color:var(--accent)!important;color:#fff!important;box-shadow:0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent)}
 
 .selected-skills-box,.blacklist-box{background:var(--surface-2)!important;border:1px solid var(--accent)!important}
 
@@ -258,17 +258,19 @@ hr{border-color:rgba(255,255,255,.12)}
 .text-primary,.text-info,.text-success,.text-warning,.text-danger,.text-secondary{color:var(--accent)!important}
 .bg-white,.bg-light,.text-bg-light{background-color:var(--surface)!important;color:var(--text)!important}
 
-.advanced-options-header:hover,.race-options-header:hover,.skill-list-header:hover{background:rgba(255,45,163,.08)!important;border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(255,45,163,.15) inset!important}
+.advanced-options-header:hover,.race-options-header:hover,.skill-list-header:hover,.hint-boost-header:hover{background:rgba(255,45,163,.08)!important;border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(255,45,163,.15) inset!important}
 
 .race-filters .btn-group .btn span{background:transparent!important;color:var(--accent)!important;border:1px solid var(--accent)!important;border-radius:4px;font-weight:700}
 .race-badges .badge{background:transparent!important;color:var(--accent)!important;border:1px solid var(--accent)!important}
 
 body .advanced-options-header,
 body .race-options-header,
-body .skill-list-header{background:transparent!important;border:1px solid var(--accent)!important;color:var(--text)!important;border-radius:10px}
+body .skill-list-header,
+body .hint-boost-header{background:transparent!important;border:1px solid var(--accent)!important;color:var(--text)!important;border-radius:10px}
 body .advanced-options-header:hover,
 body .race-options-header:hover,
-body .skill-list-header:hover{background:rgba(255,45,163,.08)!important;border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(255,45,163,.15) inset!important}
+body .skill-list-header:hover,
+body .hint-boost-header:hover{background:rgba(255,45,163,.08)!important;border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(255,45,163,.15) inset!important}
 
 body .race-toggle.selected{background:transparent!important;border:2px solid var(--accent)!important;box-shadow:0 0 0 2px rgba(255,45,163,.35) inset,0 0 12px rgba(255,45,163,.18)!important;color:var(--text)!important}
 body .race-toggle.selected:hover{background:rgba(255,45,163,.08)!important;border-color:var(--accent-2)!important}
@@ -280,7 +282,8 @@ body .skill-item.selected{background:transparent!important;border-color:var(--ac
 body .empty-state{color:var(--muted)!important}
 
 body .skill-list-header .btn,
-body .race-options-header .btn{background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;border-color:var(--accent)!important;color:#fff!important;box-shadow:0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent)}
+body .race-options-header .btn,
+body .hint-boost-header .btn{background:linear-gradient(135deg,var(--accent),var(--accent-2))!important;border-color:var(--accent)!important;color:#fff!important;box-shadow:0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent)}
 
 body .race-filters .btn-group .btn span{background:transparent!important;color:var(--accent)!important;border:0!important;font-weight:700}
 

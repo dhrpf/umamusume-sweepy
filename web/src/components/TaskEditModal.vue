@@ -441,6 +441,59 @@
                 </div>
               </div>
 
+              <div class="hint-boost-section mt-3 mb-3">
+                <div class="hint-boost-header" @click="showHintBoostPanel = !showHintBoostPanel">
+                  <div class="hint-boost-title">
+                    <i class="fas fa-bolt"></i>
+                    Hint Score Boost
+                  </div>
+                  <div class="hint-boost-toggle">
+                    <span v-if="hintBoostCharacters.length" class="hint-boost-badge">{{ hintBoostCharacters.length }} selected · {{ hintBoostMultiplier }}%</span>
+                    <span class="toggle-text">{{ showHintBoostPanel ? 'Hide' : 'Show' }}</span>
+                    <i class="fas" :class="showHintBoostPanel ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                  </div>
+                </div>
+                <div v-if="showHintBoostPanel" class="hint-boost-content">
+                  <p style="font-size: 0.85em; color: var(--muted); margin-bottom: 10px;">
+                    Multiplies the hint scores of these characters by x%
+                  </p>
+                  <div class="row align-items-center mb-3">
+                    <div class="col-md-4 col-6">
+                      <label class="mb-1">Hint Multiplier</label>
+                      <div class="hint-slider-group">
+                        <input type="range" class="hint-slider" v-model.number="hintBoostMultiplier" min="100" max="1000" step="10">
+                        <div class="input-group input-group-sm" style="width:110px;">
+                          <input type="number" class="form-control" v-model.number="hintBoostMultiplier" min="100" max="1000" step="10">
+                          <span class="input-group-text">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-4 col-6">
+                      <label class="mb-1">Search</label>
+                      <input type="text" class="form-control form-control-sm" v-model="hintBoostSearch" placeholder="Search characters...">
+                    </div>
+                    <div class="col-md-4 col-6 d-flex align-items-end" style="padding-top: 4px;">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" @click="hintBoostCharacters = []">Clear All</button>
+                    </div>
+                  </div>
+                  <div v-if="hintBoostCharacters.length" class="hint-boost-selected mb-2">
+                    <div v-for="name in hintBoostCharacters" :key="'sel-'+name" class="hint-chip selected" @click="toggleHintBoostCharacter(name)">
+                      <img :src="'/training-icon/' + encodeURIComponent(name)" class="hint-chip-icon" loading="lazy" @error="$event.target.style.display='none'">
+                      <span>{{ name }}</span>
+                      <i class="fas fa-times hint-chip-remove"></i>
+                    </div>
+                  </div>
+                  <div class="hint-char-grid">
+                    <div v-for="name in filteredHintCharacters" :key="name"
+                      class="hint-char-item" :class="{ selected: hintBoostCharacters.includes(name) }"
+                      @click="toggleHintBoostCharacter(name)">
+                      <img :src="'/training-icon/' + encodeURIComponent(name)" class="hint-char-icon" loading="lazy" @error="$event.target.style.display='none'">
+                      <span class="hint-char-name">{{ name }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <div class="form-group">
                   <div class="advanced-options-header" @click="switchAdvanceOption">
@@ -2078,6 +2131,11 @@ export default {
       // Pal card scoring configuration
       palFriendshipScore: [0.08, 0.057, 0.018],
       palCardMultiplier: 0.01,
+      hintBoostCharacters: [],
+      hintBoostMultiplier: 100,
+      hintBoostSearch: '',
+      showHintBoostPanel: false,
+      allTrainingCharacters: [],
       npcScoreJunior: [0.05, 0.05, 0.05],
       npcScoreClassic: [0.05, 0.05, 0.05],
       npcScoreSenior: [0.05, 0.05, 0.05],
@@ -2196,6 +2254,11 @@ export default {
     window.removeEventListener('drop', this.onGlobalDrop, false);
   },
   computed: {
+    filteredHintCharacters() {
+      if (!this.hintBoostSearch) return this.allTrainingCharacters;
+      const q = this.hintBoostSearch.toLowerCase();
+      return this.allTrainingCharacters.filter(n => n.toLowerCase().includes(q));
+    },
     filteredRaces_1() {
       return this.umamusumeRaceList_1.filter(race => {
         const matchesSearch = !this.raceSearch ||
@@ -2463,6 +2526,7 @@ export default {
     this.loadEventList()
     this.loadRaceData()
     this.loadSkillData()
+    this.loadTrainingCharacters()
     this.initSelect()
     this.getPresets()
     this.loadPalCardStore()
@@ -2849,6 +2913,21 @@ export default {
       this.skillPriority1 = allSkills.filter(skill => skill.tier === 'S');
       this.skillPriority2 = allSkills.filter(skill => skill.tier === 'A');
     },
+    loadTrainingCharacters() {
+      this.axios.get("/api/training-characters").then(res => {
+        this.allTrainingCharacters = res.data || [];
+      }).catch(() => {
+        this.allTrainingCharacters = [];
+      });
+    },
+    toggleHintBoostCharacter(name) {
+      const idx = this.hintBoostCharacters.indexOf(name);
+      if (idx >= 0) {
+        this.hintBoostCharacters.splice(idx, 1);
+      } else {
+        this.hintBoostCharacters.push(name);
+      }
+    },
     deleteBox(item, index) {
       if (this.skillLearnPriorityList.length <= 1) {
         return false
@@ -3156,6 +3235,8 @@ export default {
           "clock_use_limit": this.clockUseLimit,
           "manual_purchase_at_end": this.manualPurchase,
           "skip_double_circle_unless_high_hint": this.skipDoubleCircleUnlessHighHint,
+          "hint_boost_characters": [...this.hintBoostCharacters],
+          "hint_boost_multiplier": this.hintBoostMultiplier,
           "override_insufficient_fans_forced_races": this.overrideInsufficientFansForcedRaces,
           "learn_skill_threshold": this.learnSkillThreshold,
           "allow_recover_tp": this.recoverTP,
@@ -3296,6 +3377,8 @@ export default {
       this.recoverTP = this.presetsUse.allow_recover_tp || 0
       this.manualPurchase = !!this.presetsUse.manual_purchase_at_end
       this.skipDoubleCircleUnlessHighHint = !!this.presetsUse.skip_double_circle_unless_high_hint
+      this.hintBoostCharacters = Array.isArray(this.presetsUse.hint_boost_characters) ? [...this.presetsUse.hint_boost_characters] : []
+      this.hintBoostMultiplier = this.presetsUse.hint_boost_multiplier !== undefined ? this.presetsUse.hint_boost_multiplier : 100
         this.learnSkillThreshold = this.presetsUse.learn_skill_threshold
         // Convert legacy race tactics to new condition system if actions not present
         if (this.presetsUse.tactic_actions && this.presetsUse.tactic_actions.length > 0) {
@@ -3636,6 +3719,8 @@ export default {
       this.recoverTP = data.allow_recover_tp || 0;
       this.manualPurchase = data.manual_purchase_at_end || false;
       this.skipDoubleCircleUnlessHighHint = data.skip_double_circle_unless_high_hint || false;
+      this.hintBoostCharacters = Array.isArray(data.hint_boost_characters) ? [...data.hint_boost_characters] : [];
+      this.hintBoostMultiplier = data.hint_boost_multiplier !== undefined ? data.hint_boost_multiplier : 100;
       this.learnSkillOnlyUserProvided = data.learn_skill_only_user_provided || false;
       if (data.tactic_list && data.tactic_list.length >= 3) {
         this.selectedRaceTactic1 = data.tactic_list[0];
@@ -3836,6 +3921,8 @@ export default {
         allow_recover_tp: this.recoverTP,
         manual_purchase_at_end: this.manualPurchase,
         skip_double_circle_unless_high_hint: this.skipDoubleCircleUnlessHighHint,
+        hint_boost_characters: [...this.hintBoostCharacters],
+        hint_boost_multiplier: this.hintBoostMultiplier,
         race_tactic_1: this.selectedRaceTactic1,
         race_tactic_2: this.selectedRaceTactic2,
         race_tactic_3: this.selectedRaceTactic3,
@@ -4008,6 +4095,8 @@ export default {
         allow_recover_tp: this.recoverTP,
         manual_purchase_at_end: this.manualPurchase,
         skip_double_circle_unless_high_hint: this.skipDoubleCircleUnlessHighHint,
+        hint_boost_characters: [...this.hintBoostCharacters],
+        hint_boost_multiplier: this.hintBoostMultiplier,
         race_tactic_1: this.selectedRaceTactic1,
         race_tactic_2: this.selectedRaceTactic2,
         race_tactic_3: this.selectedRaceTactic3,
@@ -4360,12 +4449,12 @@ export default {
 
 /* Category cards (section grouping) */
 .category-card {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: transparent;
+  border: 1px solid var(--accent);
   border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: none;
 }
 
 .category-title {
@@ -4611,41 +4700,43 @@ export default {
 }
 
 .skill-list-container {
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
   padding: 16px;
-  background: white;
-  max-height: 500px;
+  background: transparent;
+  max-height: 560px;
   overflow-y: auto;
 }
 
 .skill-type-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
 }
 
 .skill-type-card {
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  background: #f8f9fa;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  background: transparent;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
   transition: all 0.2s ease;
 }
 
 .skill-type-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: rgba(255,255,255,.2);
+  box-shadow: 0 2px 8px rgba(0,0,0,.2);
   transform: translateY(-1px);
 }
 
 .skill-type-header {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
+  background: transparent;
+  color: var(--text);
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,.08);
 }
 
 .skill-type-title {
@@ -4657,14 +4748,16 @@ export default {
 .skill-count {
   font-size: 11px;
   opacity: 0.9;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 10px;
   border-radius: 12px;
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,.1);
 }
 
 .skill-type-content {
   padding: 12px;
-  max-height: 300px;
+  max-height: 360px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -4672,33 +4765,33 @@ export default {
 }
 
 .skill-item {
-  border: 1px solid #dee2e6;
-  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
   padding: 10px;
-  background: white;
+  background: transparent;
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 11px;
 }
 
 .skill-item:hover {
-  border-color: #007bff;
-  box-shadow: 0 2px 6px rgba(0, 123, 255, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 15%, transparent);
   transform: translateY(-1px);
 }
 
 .skill-item.selected {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  border-color: #0056b3;
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+  background: rgba(52,133,227,.08);
+  border-color: #3485E3;
+  color: var(--text);
+  box-shadow: inset 0 0 0 2px rgba(52,133,227,.2);
 }
 
 .skill-item.blacklisted {
-  background: linear-gradient(135deg, #dc3545, #c82333);
-  border-color: #c82333;
-  color: white;
-  box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+  background: rgba(255,77,109,.08);
+  border-color: #ff4d6d;
+  color: var(--text);
+  box-shadow: inset 0 0 0 2px rgba(255,77,109,.15);
 }
 
 .skill-header {
@@ -4718,9 +4811,11 @@ export default {
   font-size: 10px;
   opacity: 0.9;
   font-weight: 500;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 8px;
   border-radius: 8px;
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,.08);
 }
 
 .skill-details {
@@ -4774,7 +4869,7 @@ export default {
   display: flex;
   align-items: center;
   font-size: 12px;
-  color: #6c757d;
+  color: var(--muted);
 }
 
 .skill-notes-alert i {
@@ -4796,14 +4891,15 @@ export default {
 .filter-label {
   font-weight: 600;
   margin-bottom: 5px;
+  color: var(--accent);
 }
 
 .skill-filter-section {
   margin-bottom: 20px;
-  padding: 15px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
+  padding: 16px;
+  background: transparent;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.12);
 }
 
 /* Toggle row switch alignment */
@@ -4825,8 +4921,8 @@ export default {
 /* Token toggles */
 .token-toggle {
   display: inline-flex;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
+  background: transparent;
+  border: 1px solid var(--accent);
   border-radius: 9999px;
   overflow: hidden;
 }
@@ -4836,12 +4932,12 @@ export default {
   border: none;
   padding: 6px 14px;
   font-size: 12px;
-  color: #374151;
+  color: var(--accent);
   cursor: pointer;
 }
 
 .token-toggle .token.active {
-  background: #1e40af;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #ffffff;
 }
 
@@ -5306,7 +5402,7 @@ export default {
 .race-toggle.selected{background:transparent!important;border-color:var(--accent)!important}
 .skill-toggle:hover{background:color-mix(in srgb, var(--accent) 8%, transparent)!important;border-color:var(--accent)!important;transform:translateY(-1px)}
 .skill-toggle.selected{background:transparent!important;border-color:var(--accent)!important}
-.skill-type-header,.section-heading,.skill-list-header{background:transparent!important;color:var(--text)!important}
+.skill-type-header,.section-heading,.skill-list-header,.hint-boost-header{background:transparent!important;color:var(--text)!important}
 .blacklist-box:hover{border-color:var(--accent)!important;background:color-mix(in srgb, var(--accent) 8%, transparent)!important}
 .blacklisted-skill-item{background:transparent!important;color:#ffb3c1!important}
 .skill-list-container{border:1px solid rgba(255,255,255,.12)!important;border-radius:12px!important;padding:12px!important;background:transparent!important;max-height:500px}
@@ -5324,7 +5420,7 @@ export default {
 .token-toggle .token.active{background:var(--accent)!important;color:#fff!important}
 #create-task-list-modal .modal-content.dimmed{opacity:.6;background:transparent!important;border:0!important}
 .category-card{border:1px solid var(--accent)!important}
-.race-options-header,.skill-list-header,.section-heading,.skill-type-header{background:transparent!important;color:var(--text)!important;border-color:var(--accent)!important}
+.race-options-header,.skill-list-header,.hint-boost-header,.section-heading,.skill-type-header{background:transparent!important;color:var(--text)!important;border-color:var(--accent)!important}
 .selected-skills-box,.blacklist-box{background:var(--surface-2)!important;border:1px solid var(--accent)!important;color:var(--text)!important}
 .skill-list-content,.skill-list-container,.skill-type-card,.skill-item{background:transparent!important;border:1px solid rgba(255,255,255,.12)!important}
 .skill-item:hover{border-color:var(--accent)!important;box-shadow:0 2px 6px color-mix(in srgb, var(--accent) 15%, transparent)!important}
@@ -5480,6 +5576,156 @@ export default {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--text);
+}
+
+.hint-boost-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text);
+}
+.hint-boost-header:hover {
+  background: rgba(255,45,163,.08);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255,45,163,.15) inset;
+}
+.hint-boost-title {
+  color: var(--accent);
+  font-weight: 700;
+}
+.hint-boost-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hint-boost-toggle .toggle-text {
+  color: var(--muted);
+}
+.hint-boost-badge {
+  font-size: 0.8em;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  background: rgba(255,45,163,.06);
+}
+.hint-boost-content {
+  padding: 16px 0 0 0;
+}
+.hint-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hint-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,.12);
+  outline: none;
+}
+.hint-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(255,45,163,.5);
+}
+.hint-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px rgba(255,45,163,.5);
+}
+.hint-boost-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hint-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--accent);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s;
+  background: rgba(255,45,163,.08);
+}
+.hint-chip:hover {
+  background: rgba(255,45,163,.15);
+  transform: scale(1.05);
+}
+.hint-chip-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.hint-chip-remove {
+  font-size: 10px;
+  opacity: .7;
+}
+.hint-char-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+}
+.hint-char-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  cursor: pointer;
+  transition: all .2s;
+  font-size: 12px;
+  color: #fff;
+  background: transparent;
+}
+.hint-char-item:hover {
+  border-color: var(--accent);
+  background: rgba(255,45,163,.06);
+}
+.hint-char-item.selected {
+  border-color: var(--accent);
+  background: rgba(255,45,163,.12);
+  box-shadow: 0 0 0 1px rgba(255,45,163,.3) inset;
+}
+.hint-char-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.hint-char-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 </style>
