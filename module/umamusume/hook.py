@@ -230,8 +230,12 @@ def after_hook(ctx: UmamusumeContext):
     if image_match(img, BTN_SKIP).find_match:
         ctx.ctrl.click_by_point(SKIP)
     if image_match(img, BTN_SKIP_OFF).find_match:
+        import bot.conn.u2_ctrl as u2c
+        u2c.IN_CAREER_RUN = True
         ctx.ctrl.click_by_point(SCENARIO_SKIP_OFF)
     if image_match(img, BTN_SKIP_SPEED_1).find_match:
+        import bot.conn.u2_ctrl as u2c
+        u2c.IN_CAREER_RUN = True
         ctx.ctrl.click_by_point(SCENARIO_SKIP_SPEED_1)
     if ctx.cultivate_detail and ctx.cultivate_detail.turn_info is not None:
         if ctx.cultivate_detail.turn_info.parse_train_info_finish and ctx.cultivate_detail.turn_info.parse_main_menu_finish:

@@ -31,6 +31,8 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
     if current_date == -1:
         log.warning("Failed to parse date")
         return
+    import bot.conn.u2_ctrl as u2c
+    u2c.IN_CAREER_RUN = True
     
     if ctx.cultivate_detail.turn_info is None or current_date != ctx.cultivate_detail.turn_info.date:
         if ctx.cultivate_detail.turn_info is not None:

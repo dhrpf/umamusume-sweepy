@@ -203,6 +203,8 @@ def script_follow_support_card_select(ctx: UmamusumeContext):
 
 
 def script_cultivate_finish(ctx: UmamusumeContext):
+    import bot.conn.u2_ctrl as u2c
+    u2c.IN_CAREER_RUN = False
     if not ctx.task.detail.manual_purchase_at_end:
         if not ctx.cultivate_detail.cultivate_finish:
             ctx.cultivate_detail.cultivate_finish = True

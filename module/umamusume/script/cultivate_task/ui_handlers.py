@@ -27,6 +27,8 @@ log = logger.get_logger(__name__)
 
 def script_main_menu(ctx: UmamusumeContext):
     if ctx.cultivate_detail.cultivate_finish:
+        import bot.conn.u2_ctrl as u2c
+        u2c.IN_CAREER_RUN = False
         mode_name = getattr(ctx.task.task_execute_mode, "name", None)
         if mode_name == "TASK_EXECUTE_MODE_FULL_AUTO":
             log.info("career run completed in full auto mode - resetting for next run")

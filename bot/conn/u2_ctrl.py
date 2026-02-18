@@ -22,6 +22,7 @@ from module.umamusume.asset.template import REF_DONT_CLICK
 log = logger.get_logger(__name__)
 
 INPUT_BLOCKED = False
+IN_CAREER_RUN = False
 
 
 @dataclass
@@ -300,6 +301,8 @@ class U2AndroidController(AndroidController):
         _ = self.execute_adb_shell("shell input swipe " + str(x) + " " + str(y) + " " + str(drift_x) + " " + str(drift_y) + " " + str(duration), True)
         self.last_click_time = time.time()
         time.sleep(self.config.delay)
+        if not IN_CAREER_RUN:
+            time.sleep(0.5)
 
     def init_env(self) -> None:
         try:
