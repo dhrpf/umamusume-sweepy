@@ -3327,10 +3327,11 @@ export default {
         }
       };
 
-      if (this.prioritizeRecreation && this.palSelected) {
+      const palThresholds = this.palCardStore[this.palSelected];
+      if (this.prioritizeRecreation && this.palSelected && Array.isArray(palThresholds) && palThresholds.length > 0) {
         payload.attachment_data.prioritize_recreation = true;
         payload.attachment_data.pal_name = this.palSelected;
-        payload.attachment_data.pal_thresholds = this.palCardStore[this.palSelected];
+        payload.attachment_data.pal_thresholds = palThresholds;
         payload.attachment_data.pal_friendship_score = [...this.palFriendshipScore];
         payload.attachment_data.pal_card_multiplier = this.palCardMultiplier;
       } else {
@@ -3404,7 +3405,12 @@ export default {
         this.palSelected = this.presetsUse.pal_selected || ""
       }
       if ('pal_card_store' in this.presetsUse && this.presetsUse.pal_card_store) {
-        Object.assign(this.palCardStore, this.presetsUse.pal_card_store)
+        const presetStore = this.presetsUse.pal_card_store
+        for (const key in presetStore) {
+          if (Array.isArray(presetStore[key]) && presetStore[key].length > 0) {
+            this.palCardStore[key] = presetStore[key]
+          }
+        }
       }
 
       if ('pal_friendship_score' in this.presetsUse && Array.isArray(this.presetsUse.pal_friendship_score)) {
@@ -3964,7 +3970,7 @@ export default {
         prioritize_recreation: this.prioritizeRecreation,
 
         pal_selected: this.palSelected,
-        pal_card_store: JSON.parse(JSON.stringify(this.palCardStore)),
+        pal_card_store: Object.fromEntries(Object.entries(this.palCardStore).filter(([k, v]) => Array.isArray(v) && v.length > 0)),
 
         pal_friendship_score: [...this.palFriendshipScore],
         pal_card_multiplier: this.palCardMultiplier,
@@ -4113,7 +4119,7 @@ export default {
         motivation_threshold_year3: this.motivationThresholdYear3,
         prioritize_recreation: this.prioritizeRecreation,
         pal_selected: this.palSelected,
-        pal_card_store: JSON.parse(JSON.stringify(this.palCardStore)),
+        pal_card_store: Object.fromEntries(Object.entries(this.palCardStore).filter(([k, v]) => Array.isArray(v) && v.length > 0)),
         pal_friendship_score: [...this.palFriendshipScore],
         pal_card_multiplier: this.palCardMultiplier,
         npc_score_value: [[...this.npcScoreJunior], [...this.npcScoreClassic], [...this.npcScoreSenior], [...this.npcScoreSeniorAfterSummer], [...this.npcScoreFinale]],
