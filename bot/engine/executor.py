@@ -358,7 +358,7 @@ class Executor:
         except Exception:
             pass
         try:
-            soft_process_restart()
+            if task.end_task_reason != EndTaskReason.MANUAL_ABORTED:
+                soft_process_restart()
         except Exception:
             pass
-
