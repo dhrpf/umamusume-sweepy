@@ -15,6 +15,32 @@ from module.umamusume.constants.scoring_constants import (
 import bot.base.log as logger
 
 log = logger.get_logger(__name__)
+
+detected_skills_log = {}
+
+def log_detected_skill(name, source, hint_level=0, cost=0, gold=False):
+    if not name:
+        return
+    existing = detected_skills_log.get(name)
+    if existing:
+        if hint_level > existing.get("hint_level", 0):
+            existing["hint_level"] = hint_level
+        if source not in existing.get("source", ""):
+            existing["source"] = existing["source"] + "+" + source
+        if cost > 0:
+            existing["cost"] = cost
+    else:
+        detected_skills_log[name] = {
+            "name": name,
+            "source": source,
+            "hint_level": hint_level,
+            "cost": cost,
+            "gold": gold
+        }
+
+def clear_detected_skills():
+    detected_skills_log.clear()
+
 class CultivateContextDetail:
     turn_info: TurnInfo | None
     turn_info_history: list[TurnInfo]
@@ -113,6 +139,7 @@ class UmamusumeContext(BotContext):
 def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
     ctx = UmamusumeContext(task, ctrl)
     if task.task_type == UmamusumeTaskType.UMAMUSUME_TASK_TYPE_CULTIVATE:
+        clear_detected_skills()
         detail = CultivateContextDetail()
         detail.scenario = create_scenario(task.detail.scenario)
         if detail.scenario is None:

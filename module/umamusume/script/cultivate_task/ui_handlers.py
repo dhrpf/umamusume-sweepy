@@ -4,7 +4,7 @@ import cv2
 import bot.base.log as logger
 from bot.base.task import TaskStatus, EndTaskReason
 from bot.recog.image_matcher import image_match
-from module.umamusume.context import UmamusumeContext
+from module.umamusume.context import UmamusumeContext, clear_detected_skills
 from module.umamusume.define import ScenarioType
 from module.umamusume.asset.point import (
     TO_CULTIVATE_SCENARIO_CHOOSE, TO_CULTIVATE_PREPARE_NEXT,
@@ -35,6 +35,7 @@ def script_main_menu(ctx: UmamusumeContext):
             ctx.cultivate_detail.cultivate_finish = False
             ctx.cultivate_detail.turn_info = None
             ctx.cultivate_detail.turn_info_history = []
+            clear_detected_skills()
             return
         else:
             ctx.task.end_task(TaskStatus.TASK_STATUS_SUCCESS, EndTaskReason.COMPLETE)

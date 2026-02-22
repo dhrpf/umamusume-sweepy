@@ -6,10 +6,10 @@ import re
 import bot.base.log as logger
 from bot.recog.ocr import ocr_line
 from bot.recog.image_matcher import image_match
-from module.umamusume.context import UmamusumeContext
+from module.umamusume.context import UmamusumeContext, log_detected_skill
 from module.umamusume.asset.template import Template, UMAMUSUME_REF_TEMPLATE_PATH, REF_HINT_LEVELS_TEXT
 from module.umamusume.script.cultivate_task.event.manifest import get_event_choice
-from module.umamusume.script.cultivate_task.parse import parse_cultivate_event
+from module.umamusume.script.cultivate_task.parse import parse_cultivate_event, get_canonical_skill_name
 
 log = logger.get_logger(__name__)
 
@@ -48,7 +48,10 @@ def detect_hint_on_screen(img, event_name):
             text = ocr_line(ocr_region, lang='en') or ''
             skill = parse_hint_skill(text)
             if skill:
-                log.info("Hint: %s", skill)
+                canonical = get_canonical_skill_name(skill)
+                resolved = canonical if canonical else skill
+                log.info("Hint: %s", resolved)
+                log_detected_skill(resolved, "event")
     except Exception:
         pass
 
@@ -80,7 +83,10 @@ def detect_hint_after_event(ctrl, event_name):
                 text = ocr_line(ocr_region, lang='en') or ''
                 skill = parse_hint_skill(text)
                 if skill:
-                    log.info("Hint: %s", skill)
+                    canonical = get_canonical_skill_name(skill)
+                    resolved = canonical if canonical else skill
+                    log.info("Hint: %s", resolved)
+                    log_detected_skill(resolved, "event")
                 return
             time.sleep(0.5)
     except Exception:

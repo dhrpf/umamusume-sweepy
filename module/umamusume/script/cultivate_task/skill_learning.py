@@ -17,6 +17,7 @@ from module.umamusume.asset.point import (
 )
 from module.umamusume.asset.template import REF_BORROW_CARD
 from module.umamusume.script.cultivate_task.const import SKILL_LEARN_PRIORITY_LIST
+from module.umamusume.context import log_detected_skill
 from module.umamusume.script.cultivate_task.parse import get_skill_list, find_skill, find_support_card
 
 log = logger.get_logger(__name__)
@@ -502,6 +503,16 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
         pass
 
     log.debug("Current skill state: " + str(skill_list))
+
+    for s in skill_list:
+        sname = s.get("skill_name_raw") or s.get("skill_name", "")
+        if sname:
+            log_detected_skill(
+                sname, "menu",
+                hint_level=int(s.get("hint_level", 0)),
+                cost=int(s.get("skill_cost", 0)),
+                gold=bool(s.get("gold", False))
+            )
 
     for i in range(len(skill_list)):
         if i != (len(skill_list) - 1) and skill_list[i]["gold"] is True:

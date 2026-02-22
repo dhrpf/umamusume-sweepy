@@ -476,16 +476,21 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 boost_mult = getattr(ctx.cultivate_detail, 'hint_boost_multiplier', 100) / 100.0
                 char_list_hint = getattr(til, 'detected_characters', [])
                 has_any_hint = False
+                hint_total = 0.0
+                hint_count = 0
                 for cname, cscore, c_has_hint in char_list_hint:
                     if c_has_hint:
                         has_any_hint = True
                         if cname in boost_chars:
-                            hint_bonus += w_hint * boost_mult
+                            hint_total += w_hint * boost_mult
                             selected_hint_count += 1
                         else:
-                            hint_bonus += w_hint
+                            hint_total += w_hint
                             regular_hint_count += 1
-                if not has_any_hint and bool(getattr(til, 'has_hint', False)):
+                        hint_count += 1
+                if hint_count > 0:
+                    hint_bonus = hint_total / hint_count
+                elif not has_any_hint and bool(getattr(til, 'has_hint', False)):
                     hint_bonus = w_hint
                     regular_hint_count = 1
             except Exception:
@@ -592,12 +597,14 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 formula_parts.append(f"nrg({energy_change_val:+.1f}):{energy_change_contrib:+.3f}")
             if npc_total_contrib > 0:
                 formula_parts.append(f"npc({npc}):+{npc_total_contrib:.3f}")
-            if selected_hint_count > 0:
-                sel_contrib = w_hint * (getattr(ctx.cultivate_detail, 'hint_boost_multiplier', 100) / 100.0) * selected_hint_count
-                formula_parts.append(f"hint(selected):+{sel_contrib:.3f} ({selected_hint_count})")
-            if regular_hint_count > 0:
-                reg_contrib = w_hint * regular_hint_count
-                formula_parts.append(f"hint:+{reg_contrib:.3f} ({regular_hint_count})")
+            if hint_bonus > 0:
+                total_hints = selected_hint_count + regular_hint_count
+                if total_hints > 1:
+                    formula_parts.append(f"hint(avg {total_hints}):+{hint_bonus:.3f} (sel:{selected_hint_count} reg:{regular_hint_count})")
+                elif selected_hint_count > 0:
+                    formula_parts.append(f"hint(selected):+{hint_bonus:.3f}")
+                else:
+                    formula_parts.append(f"hint:+{hint_bonus:.3f}")
             formula_parts.extend(scenario_formula_parts)
             
             mult_parts = []

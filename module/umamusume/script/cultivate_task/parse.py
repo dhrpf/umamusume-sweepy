@@ -15,7 +15,7 @@ from bot.base.task import TaskStatus, EndTaskReason
 from bot.recog.image_matcher import image_match, compare_color_equal
 from bot.recog.ocr import ocr_line, find_similar_text
 from module.umamusume.asset.race_data import RACE_LIST, UMAMUSUME_RACE_TEMPLATE_PATH
-from module.umamusume.context import UmamusumeContext
+from module.umamusume.context import UmamusumeContext, log_detected_skill
 from module.umamusume.types import SupportCardInfo
 from module.umamusume.asset import *
 from module.umamusume.define import *
@@ -1042,6 +1042,7 @@ def find_skill(ctx: UmamusumeContext, img, skill: list[str], learn_any_skill: bo
                         pass
                     circle_label = {0: "", 1: " ○", 2: " ◎"}[circle_type]
                     log.info(f"detected text='{detected_text}' matched skill='{matched_skill}' Hint: lv {hint_level}{circle_label}")
+                    log_detected_skill(name_for_match, "menu", hint_level=hint_level)
                     target_match = None
                     for target in skill:
                         if (normalize_text_for_match(name_for_match) == normalize_text_for_match(target)

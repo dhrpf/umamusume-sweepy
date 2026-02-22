@@ -53,8 +53,8 @@ ORANGE_STRICT_LO = np.array([5, 150, 150], dtype=np.uint8)
 ORANGE_STRICT_HI = np.array([25, 255, 255], dtype=np.uint8)
 TEAL_LO = np.array([75, 60, 80], dtype=np.uint8)
 TEAL_HI = np.array([110, 255, 255], dtype=np.uint8)
-TEAL_STRICT_LO = np.array([75, 150, 150], dtype=np.uint8)
-TEAL_STRICT_HI = np.array([110, 255, 255], dtype=np.uint8)
+TEAL_STRICT_LO = np.array([80, 170, 170], dtype=np.uint8)
+TEAL_STRICT_HI = np.array([105, 255, 255], dtype=np.uint8)
 MIN_STRICT_COUNT = 80
 ORANGE_RATIO_THRESHOLD = 0.50
 TEAL_RATIO_THRESHOLD = 0.65

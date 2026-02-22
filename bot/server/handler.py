@@ -237,6 +237,12 @@ def get_bot_status():
     return {"status": "idle"}
 
 
+@server.get("/api/detected-skills")
+def get_detected_skills():
+    from module.umamusume.context import detected_skills_log
+    return list(detected_skills_log.values())
+
+
 @server.get("/api/pal-defaults")
 def get_pal_defaults():
     from module.umamusume.user_data import read_pal_defaults

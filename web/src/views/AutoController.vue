@@ -84,6 +84,7 @@
           :running-task="runningTask"
           :history-task-list="historyTaskList"
           :cron-job-list="cronJobList"
+          :detected-skills="detectedSkills"
         />
       </div>
       <div class="col-8">
@@ -117,7 +118,8 @@ export default {
       runtimeState: { repetitive_count: 0, repetitive_other_clicks: 0, repetitive_threshold: 11, watchdog_unchanged: 0, watchdog_threshold: 3 },
       runtimePollTimer: undefined,
       editRepetitive: 11,
-      editWatchdog: 3
+      editWatchdog: 3,
+      detectedSkills: []
     }
   },
   computed: {
@@ -134,6 +136,8 @@ export default {
     this.taskLogTimer = setInterval(function () { vue.getTaskLog() }, 1000)
     this.runtimePollTimer = setInterval(this.pollRuntimeState, 1000)
     this.pollRuntimeState()
+    setInterval(() => { this.pollDetectedSkills() }, 3000)
+    this.pollDetectedSkills()
   },
   methods:{
     scrollToLogs(){
@@ -193,7 +197,13 @@ export default {
         watchdog_threshold: Number(this.editWatchdog)||1
       }
       this.axios.post('/api/runtime-thresholds', payload).then(()=>{
-        // reflected next poll
+      }).catch(()=>{})
+    },
+    pollDetectedSkills(){
+      this.axios.get('/api/detected-skills').then(res=>{
+        if (res && res.data && Array.isArray(res.data)){
+          this.detectedSkills = res.data
+        }
       }).catch(()=>{})
     }
   }

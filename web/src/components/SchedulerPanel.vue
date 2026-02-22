@@ -19,6 +19,9 @@
         </div>
       </div>
     </div>
+    <div v-if="detectedSkills && detectedSkills.length > 0" class="mb-3">
+      <detected-skills-panel :skills="detectedSkills"></detected-skills-panel>
+    </div>
     <div>
       <task-edit-modal ref="taskEditModal"></task-edit-modal>
     </div>
@@ -32,13 +35,14 @@ import AutoStatusPanel from "@/components/AutoStatusPanel.vue";
 import TaskEditModal from "@/components/TaskEditModal.vue";
 import HistoryTaskList from "@/components/HistoryTaskList.vue";
 import CronJobList from "@/components/CronJobList.vue";
+import DetectedSkillsPanel from "@/components/DetectedSkillsPanel.vue";
 
 import imageBgUrl1 from "../../assets/cunny.png";
 import imageBgUrl2 from "../../assets/cunny2.png";
 export default {
   name: "SchedulerPanel",
-  components: { CronJobList, HistoryTaskList, TaskEditModal, WaitingTaskList, AutoStatusPanel, RunningTaskPanel },
-  props: ["runningTask", "waitingTaskList", "historyTaskList", "cronJobList"],
+  components: { CronJobList, HistoryTaskList, TaskEditModal, WaitingTaskList, AutoStatusPanel, RunningTaskPanel, DetectedSkillsPanel },
+  props: ["runningTask", "waitingTaskList", "historyTaskList", "cronJobList", "detectedSkills"],
   data(){ 
     const savedCharacter = localStorage.getItem('activeCharacter') || '0';
     const activeChar = parseInt(savedCharacter);
