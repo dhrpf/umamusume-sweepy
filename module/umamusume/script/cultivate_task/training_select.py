@@ -642,6 +642,16 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         
         ctx.cultivate_detail.turn_info.cached_computed_scores = list(computed_scores)
 
+        history = ctx.cultivate_detail.score_history
+        best_score = max(computed_scores)
+        history.append(best_score)
+        if len(history) >= 2:
+            historical_avg = sum(history[:-1]) / len(history[:-1])
+            deviation_pct = (best_score - historical_avg) / historical_avg * 100 if historical_avg != 0 else 0.0
+            ctx.cultivate_detail.deviation_history.append(deviation_pct)
+            avg_deviation_pct = sum(ctx.cultivate_detail.deviation_history) / len(ctx.cultivate_detail.deviation_history)
+            log.info(f"Median deviation: {deviation_pct:+.1f}%, Average Median deviation: {avg_deviation_pct:+.1f}% | try to keep this close to 0")
+
         for idx in range(5):
             if extra_weight[idx] == -1:
                 computed_scores[idx] = -float('inf')
