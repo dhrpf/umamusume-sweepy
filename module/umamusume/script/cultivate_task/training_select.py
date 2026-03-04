@@ -418,6 +418,8 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             target_type = type_map[idx]
             lv1c = 0
             lv2c = 0
+            lv1_total = 0.0
+            lv2_total = 0.0
             npc = 0
             npc_total_contrib = 0.0
             pal_count = 0
@@ -468,10 +470,14 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 fsg_mult = fsg_lookup.get(char_name, 1.0) if char_name else 1.0
                 if favor == SupportCardFavorLevel.SUPPORT_CARD_FAVOR_LEVEL_1:
                     lv1c += 1
-                    score += w_lv1 * fsg_mult
+                    lv1_add = w_lv1 * fsg_mult
+                    lv1_total += lv1_add
+                    score += lv1_add
                 elif favor == SupportCardFavorLevel.SUPPORT_CARD_FAVOR_LEVEL_2:
                     lv2c += 1
-                    score += w_lv2 * fsg_mult
+                    lv2_add = w_lv2 * fsg_mult
+                    lv2_total += lv2_add
+                    score += lv2_add
             
             stat_results = getattr(til, 'stat_results', {})
             stat_score = 0.0
@@ -606,8 +612,8 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
             computed_scores[idx] = score
             
             base_val = base_scores[idx] if isinstance(base_scores, (list, tuple)) and len(base_scores) > idx else 0.0
-            lv1_contrib = lv1c * w_lv1
-            lv2_contrib = lv2c * w_lv2
+            lv1_contrib = lv1_total
+            lv2_contrib = lv2_total
             
             formula_parts = []
             formula_parts.append(f"base:{base_val:.2f}")
