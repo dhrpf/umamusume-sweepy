@@ -88,8 +88,34 @@
               <div class="row" v-if="selectedScenario === 3">
                 <div class="col-12">
                   <div class="form-group">
-                    <label>Items selection</label>
-                    <div class="section-card p-3">test</div>
+                    <label>Items Selection <small style="color:var(--muted-2);font-weight:400">(I suggest you watch a guide before touching this)</small></label>
+                    <div class="section-card p-3">
+                      <div class="mant-controls mb-2">
+                        <button type="button" class="btn btn-sm btn--outline me-1" @click="mantAddTier">+ Add Tier</button>
+                        <button type="button" class="btn btn-sm btn--outline me-1" @click="mantRemoveTier" :disabled="!mantCanRemoveTier">- Remove Tier</button>
+                      </div>
+                      <div class="mant-tierlist">
+                        <div v-for="t in mantTierCount" :key="'tier-' + t"
+                             class="mant-tier-row"
+                             :class="{ 'mant-tier-dragover': mantDragOverTier === t }"
+                             @dragover.prevent="mantDragOverTier = t"
+                             @dragleave="mantDragOverTier = null"
+                             @drop.prevent="mantDropOnTier(t, $event)">
+                          <div class="mant-tier-label mant-tier-label--prio">Tier {{ t }}</div>
+                          <div class="mant-tier-items">
+                            <div v-for="id in mantGetItemsInTier(t)" :key="id"
+                                 class="mant-item-cell"
+                                 draggable="true"
+                                 @dragstart="mantDragStart(id, $event)"
+                                 @dragend="mantDragEnd"
+                                 :title="mantItemName(id)">
+                              <img :src="getMantItemImg(id)" :alt="id" class="mant-item-img" />
+                            </div>
+                            <div v-if="mantGetItemsInTier(t).length === 0" class="mant-tier-empty">empty</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2032,6 +2058,8 @@ export default {
     if (typeof this.loadEventList === 'function') {
       this.loadEventList();
     }
+        this.mantItemTiers = this.mantGetDefaultTiers();
+        this.mantTierCount = 2;
   },
   data: function () {
     return {
@@ -2073,6 +2101,90 @@ export default {
       showCharacterChangeModal: false,
       fujikisekiShowMode: false,
       fujikisekiShowDifficulty: 1,
+      // MANT item selection
+      mantDragOverTier: null,
+      mantDragItemId: null,
+      mantTierCount: 2,
+      mantItemGroups: [
+        { label: 'Stats — Speed', items: [
+          { id: 'speedsmall', name: 'Speed Memo', effect: 'Speed +3' },
+          { id: 'speedmedium', name: 'Speed Tactics Book', effect: 'Speed +7' },
+          { id: 'speedlarge', name: 'Speed Secret Book', effect: 'Speed +15' },
+        ]},
+        { label: 'Stats — Stamina', items: [
+          { id: 'staminasmall', name: 'Stamina Memo', effect: 'Stamina +3' },
+          { id: 'staminamedium', name: 'Stamina Tactics Book', effect: 'Stamina +7' },
+          { id: 'staminalarge', name: 'Stamina Secret Book', effect: 'Stamina +15' },
+        ]},
+        { label: 'Stats — Power', items: [
+          { id: 'powersmall', name: 'Power Memo', effect: 'Power +3' },
+          { id: 'powermedium', name: 'Power Tactics Book', effect: 'Power +7' },
+          { id: 'powerlarge', name: 'Power Secret Book', effect: 'Power +15' },
+        ]},
+        { label: 'Stats — Guts', items: [
+          { id: 'gutssmall', name: 'Guts Memo', effect: 'Guts +3' },
+          { id: 'gutsmedium', name: 'Guts Tactics Book', effect: 'Guts +7' },
+          { id: 'gutslarge', name: 'Guts Secret Book', effect: 'Guts +15' },
+        ]},
+        { label: 'Stats — Wisdom', items: [
+          { id: 'witsmall', name: 'Wisdom Memo', effect: 'Wisdom +3' },
+          { id: 'witmedium', name: 'Wisdom Tactics Book', effect: 'Wisdom +7' },
+          { id: 'witlarge', name: 'Wisdom Secret Book', effect: 'Wisdom +15' },
+        ]},
+        { label: 'Energy & Motivation', items: [
+          { id: 'energydrinksmall', name: 'Vital 20', effect: 'Energy +20' },
+          { id: 'energydrinkmedium', name: 'Vital 40', effect: 'Energy +40' },
+          { id: 'energydrinklarge', name: 'Vital 65', effect: 'Energy +65' },
+          { id: 'greenjuice', name: 'Royal Bitter Juice', effect: 'Energy +100, Motivation -1' },
+          { id: 'maxsmall', name: 'Energy Drink MAX', effect: 'Max Energy +4, Energy +5' },
+          { id: 'maxlarge', name: 'Long Energy Drink MAX', effect: 'Max Energy +8' },
+          { id: 'moodsmall', name: 'Plain Cupcake', effect: 'Motivation +1' },
+          { id: 'moodlarge', name: 'Sweet Cupcake', effect: 'Motivation +2' },
+        ]},
+        { label: 'Bond', items: [
+          { id: 'catfood', name: 'Cat Food', effect: 'Akikawa bond +5' },
+          { id: 'bbq', name: 'BBQ Set', effect: 'All bonds +5' },
+        ]},
+        { label: 'Good Conditions', items: [
+          { id: 'mirror', name: 'Pretty Mirror', effect: 'Charming ○' },
+          { id: 'binoc', name: 'Reporter Binoculars', effect: 'Rising Star' },
+          { id: 'ppbook', name: 'Practice Guide', effect: 'Good Practice ○' },
+          { id: 'hat', name: 'Scholar Hat', effect: 'Sharp' },
+        ]},
+        { label: 'Heal Bad Conditions', items: [
+          { id: 'pillow', name: 'Sleep Pillow', effect: 'Heal Insomnia' },
+          { id: 'scheduler', name: 'Schedule Book', effect: 'Heal Lazy Habit' },
+          { id: 'handcream', name: 'Hand Cream', effect: 'Heal Rough Skin' },
+          { id: 'scale', name: 'Slim Scanner', effect: 'Heal Overweight' },
+          { id: 'aroma', name: 'Aroma Diffuser', effect: 'Heal Migraine' },
+          { id: 'useless2', name: 'Practice DVD', effect: 'Heal Bad Practice' },
+          { id: 'cureall', name: 'Cure-All', effect: 'Heal all negatives' },
+        ]},
+        { label: 'Training Facilities', items: [
+          { id: 'speedpet', name: 'Speed Facility Book', effect: 'Speed Training Lv +1' },
+          { id: 'staminapet', name: 'Stamina Facility Book', effect: 'Stamina Training Lv +1' },
+          { id: 'powerpet', name: 'Power Facility Book', effect: 'Power Training Lv +1' },
+          { id: 'gutspet', name: 'Guts Facility Book', effect: 'Guts Training Lv +1' },
+          { id: 'witpet', name: 'Wisdom Facility Book', effect: 'Wisdom Training Lv +1' },
+          { id: 'shuffle', name: 'Reset Whistle', effect: 'Shuffle support cards' },
+        ]},
+        { label: 'Training Effects', items: [
+          { id: 'megasmall', name: 'Cheer Megaphone', effect: 'Training +20% for 4 turns' },
+          { id: 'megamedium', name: 'Sparta Megaphone', effect: 'Training +40% for 3 turns' },
+          { id: 'megalarge', name: 'Bootcamp Megaphone', effect: 'Training +60% for 2 turns' },
+          { id: 'speedweights', name: 'Speed Ankle Weight', effect: 'Speed +50%, Energy cost +20% (1 turn)' },
+          { id: 'staminaweights', name: 'Stamina Ankle Weight', effect: 'Stamina +50%, Energy cost +20% (1 turn)' },
+          { id: 'powerweights', name: 'Power Ankle Weight', effect: 'Power +50%, Energy cost +20% (1 turn)' },
+          { id: 'gutsweights', name: 'Guts Ankle Weight', effect: 'Guts +50%, Energy cost +20% (1 turn)' },
+          { id: 'prayer', name: 'Prayer Charm', effect: 'Failure rate 0% (1 turn)' },
+        ]},
+        { label: 'Races', items: [
+          { id: 'rb', name: 'Horseshoe Hammer (Craft)', effect: 'Race bonus +20% (1 turn)' },
+          { id: 'rbex', name: 'Horseshoe Hammer (Extreme)', effect: 'Race bonus +35% (1 turn)' },
+          { id: 'penlight', name: 'Tricolor Penlight', effect: 'Fan gain +50% (1 turn)' },
+        ]},
+      ],
+      mantItemTiers: {},
       levelDataList: [],
       umamusumeTaskTypeList: [
         {
@@ -2328,6 +2440,9 @@ export default {
     window.removeEventListener('drop', this.onGlobalDrop, false);
   },
   computed: {
+    mantCanRemoveTier() {
+      return this.mantTierCount > 1;
+    },
     filteredHintCharacters() {
       if (!this.hintBoostSearch) return this.allTrainingCharacters;
       const q = this.hintBoostSearch.toLowerCase();
@@ -3254,6 +3369,92 @@ export default {
       this.aoharuTeamNameSelection = data.aoharuTeamNameSelection;
       this.showAoharuConfigModal = false;
     },
+    getMantItemImg(id) {
+      return new URL(`../assets/img/mant_items/${id}.png`, import.meta.url).href;
+    },
+    mantItemName(id) {
+      for (const g of this.mantItemGroups) {
+        for (const i of g.items) {
+          if (i.id === id) return i.name + ' — ' + i.effect;
+        }
+      }
+      return id;
+    },
+    mantGetAllItemIds() {
+      const ids = [];
+      this.mantItemGroups.forEach(g => g.items.forEach(i => ids.push(i.id)));
+      return ids;
+    },
+    mantGetDefaultTiers() {
+      const t = {};
+      this.mantGetAllItemIds().forEach(id => { t[id] = 2; });
+      t['shuffle'] = 1;
+      return t;
+    },
+    mantGetItemsInTier(tier) {
+      return this.mantGetAllItemIds().filter(id => this.mantItemTiers[id] === tier);
+    },
+    mantDragStart(id, event) {
+      this.mantDragItemId = id;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', id);
+    },
+    mantDragEnd() {
+      this.mantDragItemId = null;
+      this.mantDragOverTier = null;
+    },
+    mantDropOnTier(tier, event) {
+      const id = this.mantDragItemId || event.dataTransfer.getData('text/plain');
+      if (id && this.mantItemTiers[id] !== undefined) {
+        this.mantItemTiers[id] = tier;
+      }
+      this.mantDragItemId = null;
+      this.mantDragOverTier = null;
+    },
+    mantMigrateLegacyTiers() {
+      // Convert old tier -1 (blacklist) and 0 (unselected) to valid numbered tiers
+      const ids = this.mantGetAllItemIds();
+      let needsMigration = false;
+      for (const id of ids) {
+        if (this.mantItemTiers[id] !== undefined && this.mantItemTiers[id] < 1) {
+          needsMigration = true;
+          break;
+        }
+      }
+      if (needsMigration) {
+        if (this.mantTierCount < 2) this.mantTierCount = 2;
+        for (const id of ids) {
+          if (this.mantItemTiers[id] !== undefined && this.mantItemTiers[id] < 1) {
+            this.mantItemTiers[id] = this.mantTierCount;
+          }
+        }
+      }
+      // Ensure all items have a valid tier
+      for (const id of ids) {
+        if (this.mantItemTiers[id] === undefined || this.mantItemTiers[id] < 1) {
+          this.mantItemTiers[id] = this.mantTierCount;
+        }
+        if (this.mantItemTiers[id] > this.mantTierCount) {
+          this.mantItemTiers[id] = this.mantTierCount;
+        }
+      }
+    },
+    mantAddTier() {
+      this.mantTierCount++;
+    },
+    mantRemoveTier() {
+      if (this.mantTierCount > 1) {
+        // Move items from the removed tier to the new last tier
+        const removedTier = this.mantTierCount;
+        const newLast = this.mantTierCount - 1;
+        this.mantGetAllItemIds().forEach(id => {
+          if (this.mantItemTiers[id] === removedTier) {
+            this.mantItemTiers[id] = newLast;
+          }
+        });
+        this.mantTierCount--;
+      }
+    },
     cancelTask: function () {
       $('#create-task-list-modal').modal('hide');
     },
@@ -3371,7 +3572,10 @@ export default {
             "preliminaryRoundSelections": [...this.preliminaryRoundSelections],
             "aoharuTeamNameSelection": this.aoharuTeamNameSelection
           } : null,
-          "mant_config": this.selectedScenario === 3 ? {} : null
+          "mant_config": this.selectedScenario === 3 ? {
+            "item_tiers": { ...this.mantItemTiers },
+            "tier_count": this.mantTierCount
+          } : null
         }
       }
       if (this.selectedExecuteMode === 2) {
@@ -3784,6 +3988,14 @@ export default {
         this.preliminaryRoundSelections = [2, 1, 1, 1];
         this.aoharuTeamNameSelection = 4;
       }
+      if ('mant_config' in this.presetsUse && this.presetsUse.mant_config.item_tiers) {
+        this.mantItemTiers = this.presetsUse.mant_config.item_tiers;
+        this.mantTierCount = this.presetsUse.mant_config.tier_count || 2;
+        this.mantMigrateLegacyTiers();
+      } else {
+        this.mantItemTiers = this.mantGetDefaultTiers();
+        this.mantTierCount = 2;
+      }
 
     },
     showModal: function () {
@@ -3938,6 +4150,11 @@ export default {
       if (data.aoharu_config) {
         this.preliminaryRoundSelections = [...(data.aoharu_config.preliminaryRoundSelections || [2, 1, 1, 1])];
         this.aoharuTeamNameSelection = data.aoharu_config.aoharuTeamNameSelection || 4;
+      }
+      if (data.mant_config && data.mant_config.item_tiers) {
+        this.mantItemTiers = data.mant_config.item_tiers;
+        this.mantTierCount = data.mant_config.tier_count || 2;
+        this.mantMigrateLegacyTiers();
       }
     },
     getPresets: function () {
@@ -4098,6 +4315,11 @@ export default {
         preset.auharuhai_config = {
           preliminaryRoundSelections: [...this.preliminaryRoundSelections],
           aoharuTeamNameSelection: this.aoharuTeamNameSelection
+        };
+      } else if (this.selectedScenario === 3) {
+        preset.mant_config = {
+          item_tiers: { ...this.mantItemTiers },
+          tier_count: this.mantTierCount
         };
       }
       let payload = {
@@ -5848,6 +6070,83 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mant-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mant-tierlist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mant-tier-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 62px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mant-tier-label {
+  width: 90px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 4px;
+}
+.mant-tier-label--prio {
+  background: rgba(59,130,246,.15);
+  color: #60a5fa;
+  border-right: 2px solid rgba(59,130,246,.3);
+}
+
+.mant-tier-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+  flex: 1;
+  align-items: center;
+  align-content: flex-start;
+}
+.mant-tier-empty {
+  font-size: 11px;
+  color: rgba(255,255,255,.2);
+  font-style: italic;
+}
+.mant-item-cell {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 2px solid rgba(255,255,255,.12);
+  cursor: grab;
+  overflow: hidden;
+  transition: all .15s ease;
+}
+.mant-item-cell:hover {
+  transform: scale(1.08);
+  border-color: var(--accent);
+}
+.mant-item-cell:active {
+  cursor: grabbing;
+}
+.mant-tier-row.mant-tier-dragover {
+  background: rgba(59,130,246,.12);
+  border-color: #3b82f6;
+}
+.mant-item-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 </style>

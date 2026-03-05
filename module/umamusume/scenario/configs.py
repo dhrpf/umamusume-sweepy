@@ -46,9 +46,12 @@ class AoharuConfig:
         return self.preliminary_round_selections[round_index]
     
 class MantConfig:
+    item_tiers: dict
+    tier_count: int
 
     def __init__(self, config: dict):
-        pass
+        self.item_tiers = config.get("item_tiers", {})
+        self.tier_count = config.get("tier_count", 1)
 
 
 class ScenarioConfig:
