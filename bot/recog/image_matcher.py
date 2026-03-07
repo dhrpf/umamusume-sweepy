@@ -124,12 +124,6 @@ def clip_roi(img, area):
 
 def image_match(target, template: Template) -> ImageMatchResult:
     reset_timeout()
-    
-    cache_key = _compute_match_cache_key(target, template)
-    if cache_key:
-        cached = _image_match_cache.get(cache_key)
-        if cached is not None:
-            return cached
     try:
         tgt = to_gray(target)
         area = template.image_match_config.match_area
@@ -143,6 +137,11 @@ def image_match(target, template: Template) -> ImageMatchResult:
                 res.matched_area = ((p1[0] + x1, p1[1] + y1), (p2[0] + x1, p2[1] + y1))
             return res
         else:
+            cache_key = _compute_match_cache_key(target, template)
+            if cache_key:
+                cached = _image_match_cache.get(cache_key)
+                if cached is not None:
+                    return cached
             result = template_match(tgt, template, template.image_match_config.match_accuracy)
             if cache_key:
                 _image_match_cache.set(cache_key, result)
@@ -153,7 +152,6 @@ def image_match(target, template: Template) -> ImageMatchResult:
 
 
 def template_match(target, template, accuracy: float = 0.86) -> ImageMatchResult:
-    reset_timeout()
     if target is None or target.size == 0:
         return ImageMatchResult()
     try:

@@ -213,7 +213,7 @@ class Executor:
                                 except Exception:
                                     pass
                                 continue
-                            prev = preprocess(last_img)
+                            prev = last_img
                             try:
                                 diff = cv2.absdiff(cur, prev)
                                 score = float(diff.mean())

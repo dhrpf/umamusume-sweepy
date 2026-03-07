@@ -48,10 +48,22 @@ class AoharuConfig:
 class MantConfig:
     item_tiers: dict
     tier_count: int
+    whistle_threshold: int
+    whistle_focus_summer: bool
+    mega_small_threshold: int
+    mega_medium_threshold: int
+    mega_large_threshold: int
+    training_weights_threshold: int
 
     def __init__(self, config: dict):
         self.item_tiers = config.get("item_tiers", {})
         self.tier_count = config.get("tier_count", 1)
+        self.whistle_threshold = config.get("whistle_threshold", 20)
+        self.whistle_focus_summer = config.get("whistle_focus_summer", True)
+        self.mega_small_threshold = config.get("mega_small_threshold", 60)
+        self.mega_medium_threshold = config.get("mega_medium_threshold", 70)
+        self.mega_large_threshold = config.get("mega_large_threshold", 80)
+        self.training_weights_threshold = config.get("training_weights_threshold", 60)
 
 
 class ScenarioConfig:

@@ -114,6 +114,70 @@
                           </div>
                         </div>
                       </div>
+                      <div class="mant-thresholds mt-3">
+                        <label>Use when percentile is (whistle above rest below)</label>
+                        <div class="mant-threshold-group">
+                          <div class="mant-threshold-row">
+                            <img :src="getMantItemImg('shuffle')" class="mant-threshold-img" />
+                            <div class="mant-threshold-controls">
+                              <span class="mant-threshold-label">Whistle</span>
+                              <div class="mant-threshold-slider-row">
+                                <input type="range" class="hint-slider" v-model.number="mantWhistleThreshold" min="0" max="100" />
+                                <span class="mant-threshold-val">{{ mantWhistleThreshold }}</span>
+                              </div>
+                            </div>
+                            <div class="token-toggle ms-2" role="group">
+                              <button type="button" class="token" :class="{ active: mantWhistleFocusSummer }" @click="mantWhistleFocusSummer = true">Focus Summer</button>
+                              <button type="button" class="token" :class="{ active: !mantWhistleFocusSummer }" @click="mantWhistleFocusSummer = false">Off</button>
+                            </div>
+                          </div>
+                          <div class="mant-threshold-row">
+                            <img :src="getMantItemImg('megasmall')" class="mant-threshold-img" />
+                            <div class="mant-threshold-controls">
+                              <span class="mant-threshold-label">Mega Small</span>
+                              <div class="mant-threshold-slider-row">
+                                <input type="range" class="hint-slider" v-model.number="mantMegaSmallThreshold" min="0" max="100" />
+                                <span class="mant-threshold-val">{{ mantMegaSmallThreshold }}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="mant-threshold-row">
+                            <img :src="getMantItemImg('megamedium')" class="mant-threshold-img" />
+                            <div class="mant-threshold-controls">
+                              <span class="mant-threshold-label">Mega Medium</span>
+                              <div class="mant-threshold-slider-row">
+                                <input type="range" class="hint-slider" v-model.number="mantMegaMediumThreshold" min="0" max="100" />
+                                <span class="mant-threshold-val">{{ mantMegaMediumThreshold }}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="mant-threshold-row">
+                            <img :src="getMantItemImg('megalarge')" class="mant-threshold-img" />
+                            <div class="mant-threshold-controls">
+                              <span class="mant-threshold-label">Mega Large</span>
+                              <div class="mant-threshold-slider-row">
+                                <input type="range" class="hint-slider" v-model.number="mantMegaLargeThreshold" min="0" max="100" />
+                                <span class="mant-threshold-val">{{ mantMegaLargeThreshold }}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="mant-threshold-row">
+                            <div class="mant-threshold-img-grid">
+                              <img :src="getMantItemImg('speedweights')" />
+                              <img :src="getMantItemImg('staminaweights')" />
+                              <img :src="getMantItemImg('powerweights')" />
+                              <img :src="getMantItemImg('gutsweights')" />
+                            </div>
+                            <div class="mant-threshold-controls">
+                              <span class="mant-threshold-label">Training Weights</span>
+                              <div class="mant-threshold-slider-row">
+                                <input type="range" class="hint-slider" v-model.number="mantTrainingWeightsThreshold" min="0" max="100" />
+                                <span class="mant-threshold-val">{{ mantTrainingWeightsThreshold }}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2121,6 +2185,12 @@ export default {
         'rb','rbex','penlight',
       ],
       mantItemTiers: {},
+      mantWhistleThreshold: 20,
+      mantWhistleFocusSummer: true,
+      mantMegaSmallThreshold: 60,
+      mantMegaMediumThreshold: 70,
+      mantMegaLargeThreshold: 80,
+      mantTrainingWeightsThreshold: 60,
       levelDataList: [],
       umamusumeTaskTypeList: [
         {
@@ -3501,7 +3571,13 @@ export default {
           } : null,
           "mant_config": this.selectedScenario === 3 ? {
             "item_tiers": { ...this.mantItemTiers },
-            "tier_count": this.mantTierCount
+            "tier_count": this.mantTierCount,
+            "whistle_threshold": this.mantWhistleThreshold,
+            "whistle_focus_summer": this.mantWhistleFocusSummer,
+            "mega_small_threshold": this.mantMegaSmallThreshold,
+            "mega_medium_threshold": this.mantMegaMediumThreshold,
+            "mega_large_threshold": this.mantMegaLargeThreshold,
+            "training_weights_threshold": this.mantTrainingWeightsThreshold
           } : null
         }
       }
@@ -3919,9 +3995,21 @@ export default {
         this.mantItemTiers = this.presetsUse.mant_config.item_tiers;
         this.mantTierCount = this.presetsUse.mant_config.tier_count || 2;
         this.mantMigrateLegacyTiers();
+        this.mantWhistleThreshold = this.presetsUse.mant_config.whistle_threshold ?? 20;
+        this.mantWhistleFocusSummer = this.presetsUse.mant_config.whistle_focus_summer ?? true;
+        this.mantMegaSmallThreshold = this.presetsUse.mant_config.mega_small_threshold ?? 60;
+        this.mantMegaMediumThreshold = this.presetsUse.mant_config.mega_medium_threshold ?? 70;
+        this.mantMegaLargeThreshold = this.presetsUse.mant_config.mega_large_threshold ?? 80;
+        this.mantTrainingWeightsThreshold = this.presetsUse.mant_config.training_weights_threshold ?? 60;
       } else {
         this.mantItemTiers = this.mantGetDefaultTiers();
         this.mantTierCount = 2;
+        this.mantWhistleThreshold = 20;
+        this.mantWhistleFocusSummer = true;
+        this.mantMegaSmallThreshold = 60;
+        this.mantMegaMediumThreshold = 70;
+        this.mantMegaLargeThreshold = 80;
+        this.mantTrainingWeightsThreshold = 60;
       }
 
     },
@@ -4082,6 +4170,12 @@ export default {
         this.mantItemTiers = data.mant_config.item_tiers;
         this.mantTierCount = data.mant_config.tier_count || 2;
         this.mantMigrateLegacyTiers();
+        this.mantWhistleThreshold = data.mant_config.whistle_threshold ?? 20;
+        this.mantWhistleFocusSummer = data.mant_config.whistle_focus_summer ?? true;
+        this.mantMegaSmallThreshold = data.mant_config.mega_small_threshold ?? 60;
+        this.mantMegaMediumThreshold = data.mant_config.mega_medium_threshold ?? 70;
+        this.mantMegaLargeThreshold = data.mant_config.mega_large_threshold ?? 80;
+        this.mantTrainingWeightsThreshold = data.mant_config.training_weights_threshold ?? 60;
       }
     },
     getPresets: function () {
@@ -4246,7 +4340,13 @@ export default {
       } else if (this.selectedScenario === 3) {
         preset.mant_config = {
           item_tiers: { ...this.mantItemTiers },
-          tier_count: this.mantTierCount
+          tier_count: this.mantTierCount,
+          whistle_threshold: this.mantWhistleThreshold,
+          whistle_focus_summer: this.mantWhistleFocusSummer,
+          mega_small_threshold: this.mantMegaSmallThreshold,
+          mega_medium_threshold: this.mantMegaMediumThreshold,
+          mega_large_threshold: this.mantMegaLargeThreshold,
+          training_weights_threshold: this.mantTrainingWeightsThreshold
         };
       }
       let payload = {
@@ -6071,6 +6171,72 @@ export default {
   border-color: #3b82f6;
 }
 .mant-item-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mant-thresholds {
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 12px;
+}
+.mant-threshold-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.mant-threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mant-threshold-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.12);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.mant-threshold-controls {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mant-threshold-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.mant-threshold-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mant-threshold-val {
+  min-width: 40px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.mant-threshold-img-grid {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.12);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mant-threshold-img-grid img {
   width: 100%;
   height: 100%;
   object-fit: cover;

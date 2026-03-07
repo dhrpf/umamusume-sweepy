@@ -100,7 +100,7 @@ class CultivateContextDetail:
     hint_boost_multiplier: int
     friendship_score_groups: list
     score_history: list[float]
-    deviation_history: list[float]
+    percentile_history: list[float]
 
     def __init__(self):
         self.expect_attribute = None
@@ -227,7 +227,7 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         detail.hint_boost_multiplier = int(getattr(task.detail, 'hint_boost_multiplier', 100))
         detail.friendship_score_groups = list(getattr(task.detail, 'friendship_score_groups', []))
         detail.score_history = []
-        detail.deviation_history = []
+        detail.percentile_history = []
         try:
             eo = getattr(task.detail, 'event_overrides', {})
             detail.event_overrides = eo if isinstance(eo, dict) else {}

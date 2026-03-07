@@ -236,8 +236,6 @@ def reset_ocr():
 
 def ocr(img, lang="en"):
     reset_timeout()
-    gpu_utils.clear_gpu_cache()
-    
     cache_key = _compute_ocr_cache_key(img, lang)
     if cache_key:
         cached = _ocr_result_cache.get(cache_key)

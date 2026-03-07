@@ -25,11 +25,10 @@ class RecognitionTimeoutTracker:
         self.active = False
         
     def reset(self):
-        with self.lock:
-            self.last_activity_time = time.time()
-            if self.timeout_triggered:
-                self.timeout_triggered = False
-                log.info("Recognition timeout cleared - activity resumed")
+        self.last_activity_time = time.time()
+        if self.timeout_triggered:
+            self.timeout_triggered = False
+            log.info("Recognition timeout cleared - activity resumed")
     
     def check_and_reset_timeout(self):
         with self.lock:

@@ -667,11 +667,18 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         best_score = max(computed_scores)
         history.append(best_score)
         if len(history) >= 2:
-            historical_avg = sum(history[:-1]) / len(history[:-1])
-            deviation_pct = (best_score - historical_avg) / historical_avg * 100 if historical_avg != 0 else 0.0
-            ctx.cultivate_detail.deviation_history.append(deviation_pct)
-            avg_deviation_pct = sum(ctx.cultivate_detail.deviation_history) / len(ctx.cultivate_detail.deviation_history)
-            log.info(f"Median deviation: {deviation_pct:+.1f}%, Average Median deviation: {avg_deviation_pct:+.1f}% | try to keep this close to 0")
+            prev = history[:-1]
+            below_count = sum(1 for s in prev if s < best_score)
+            percentile = below_count / len(prev) * 100
+            ctx.cultivate_detail.percentile_history.append(percentile)
+            pct_hist = ctx.cultivate_detail.percentile_history
+            hist_avg = float(np.mean(pct_hist))
+            if len(pct_hist) >= 5:
+                recent_avg = float(np.mean(pct_hist[-5:]))
+                avg_pct_change = recent_avg - hist_avg
+                log.info(f"Percentile: {percentile:.0f}% | Avg Percentile Change (last 5 vs all): {avg_pct_change:+.1f}%")
+            else:
+                log.info(f"Percentile: {percentile:.0f}% | Historical Avg: {hist_avg:.1f}%")
 
         for idx in range(5):
             if extra_weight[idx] == -1:
