@@ -1,4 +1,5 @@
 import cv2
+import time
 import importlib, sys, threading
 from collections import OrderedDict
 paddleocr = None
@@ -310,8 +311,6 @@ def ocr_line(img, lang="en"):
     if cache_key:
         line_key = f"line:{cache_key}"
         _ocr_result_cache.set(line_key, text)
-    if _USE_GPU:
-        gpu_utils.clear_gpu_cache()
     return text
 
 

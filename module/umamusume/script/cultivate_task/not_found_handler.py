@@ -19,7 +19,9 @@ def script_not_found_ui(ctx: UmamusumeContext):
         
         try:
             from module.umamusume.asset.template import UI_CULTIVATE_RACE_LIST_2
-            img_gray_full = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
+            img_gray_full = getattr(ctx, 'current_screen_gray', None)
+            if img_gray_full is None:
+                img_gray_full = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
             x1, y1, x2, y2 = 238, 525, 300, 588
             h, w = img_gray_full.shape[:2]
             x1c = max(0, min(w, x1)); x2c = max(0, min(w, x2))
@@ -115,7 +117,7 @@ def script_not_found_ui(ctx: UmamusumeContext):
         log.debug(f"Goal detection fallback failed: {str(e)}")
     try:
         from module.umamusume.asset.template import REF_NEXT
-        img = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
+        img = getattr(ctx, 'current_screen_gray', None) or cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
         next_match = image_match(img, REF_NEXT)
         if next_match.find_match:
             center_x = next_match.center_point[0]
@@ -127,7 +129,7 @@ def script_not_found_ui(ctx: UmamusumeContext):
 
     try:
         from module.umamusume.asset.template import REF_EDIT_TEAM
-        img_gray = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
+        img_gray = getattr(ctx, 'current_screen_gray', None) or cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
         edit_team_match = image_match(img_gray, REF_EDIT_TEAM)
         if edit_team_match.find_match:
             x = random.randint(276, 452)
@@ -139,7 +141,7 @@ def script_not_found_ui(ctx: UmamusumeContext):
 
     try:
         from module.umamusume.asset.template import REF_TP
-        img_gray = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
+        img_gray = getattr(ctx, 'current_screen_gray', None) or cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
         tp_match = image_match(img_gray, REF_TP)
         if tp_match.find_match:
             return

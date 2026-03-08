@@ -94,6 +94,7 @@ def detect_hint_after_event(ctrl, event_name):
 
 
 def script_cultivate_event(ctx: UmamusumeContext):
+    t0 = time.perf_counter()
     log.info("Event handler called")
     
     img = ctx.ctrl.get_screen()

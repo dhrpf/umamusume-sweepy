@@ -136,8 +136,8 @@ def get_operation(ctx: UmamusumeContext) -> TurnOperation | None:
         turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_REST
         return turn_operation
 
-    cached_screen = None
-    if ctx.current_screen is not None:
+    cached_screen = getattr(ctx, 'current_screen_gray', None)
+    if cached_screen is None and ctx.current_screen is not None:
         cached_screen = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
 
     turn_info = ctx.cultivate_detail.turn_info

@@ -124,7 +124,7 @@ class U2AndroidController(AndroidController):
                 return None
             chunks = []
             while True:
-                chunk = sock.recv(65536)
+                chunk = sock.recv(1048576)
                 if not chunk:
                     break
                 chunks.append(chunk)

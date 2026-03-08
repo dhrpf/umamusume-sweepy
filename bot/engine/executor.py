@@ -84,8 +84,16 @@ class Executor:
         except Exception:
             pass
 
-    def detect_ui(self, ui_list: list[UI], target) -> UI:
-        target = cv2.cvtColor(target, cv2.COLOR_BGR2GRAY)
+    def detect_ui(self, ui_list: list[UI], target, prev_ui=None) -> UI:
+        if len(target.shape) == 3:
+            target = cv2.cvtColor(target, cv2.COLOR_BGR2GRAY)
+        if prev_ui is not None and prev_ui is not NOT_FOUND_UI:
+            self.detect_ui_results = []
+            self.detect_ui_sub(prev_ui, target)
+            if len(self.detect_ui_results) > 0:
+                self.detect_ui_results = []
+                return prev_ui
+            self.detect_ui_results = []
         if len(ui_list) < 3:
             for ui in ui_list:
                 result = self.detect_ui_sub(ui, target)
@@ -95,8 +103,9 @@ class Executor:
         self.ensure_pool()
         if self.executor is None or getattr(self.executor, "_shutdown", False):
             return NOT_FOUND_UI
+        remaining = [ui for ui in ui_list if ui is not prev_ui] if prev_ui else ui_list
         try:
-            futures = {self.executor.submit(self.detect_ui_sub, ui, target): ui for ui in ui_list}
+            futures = {self.executor.submit(self.detect_ui_sub, ui, target): ui for ui in remaining}
         except RuntimeError as e:
             if "interpreter shutdown" in str(e).lower():
                 return NOT_FOUND_UI
@@ -146,7 +155,6 @@ class Executor:
         after_hook = manifest.after_hook
         controller = get_controller()
         try:
-            # 初始化
             controller.init_env()
             ctx = manifest.build_context(task, controller)
             ctx.ctrl = controller
@@ -155,7 +163,6 @@ class Executor:
             task.start_task()
             task.task_start_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
 
-            # Launch application
             log.debug("Starting: "+manifest.app_package_name)
             ctx.ctrl.start_app(manifest.app_package_name, manifest.app_activity_name)
             ctx.ctrl.click(355, 1200, "task start")
@@ -294,6 +301,7 @@ class Executor:
             watchdog_thread = threading.Thread(target=screen_watchdog, args=(), daemon=True)
             watchdog_thread.start()
 
+            last_frame_hash = None
             while self.active:
                 if task.task_status == TaskStatus.TASK_STATUS_RUNNING:
                     if check_and_reset_timeout():
@@ -302,16 +310,24 @@ class Executor:
                             ctx.current_screen = None
                         except Exception:
                             pass
+                        last_frame_hash = None
                         time.sleep(0.5)
                         continue
-                        
+                    
                     ctx.current_screen = ctx.ctrl.get_screen()
                     if ctx.current_screen is None:
                         log.debug("No image detected")
+                        last_frame_hash = None
                         time.sleep(1)
                         continue
+                    ctx.current_screen_gray = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
+                    frame_sample = ctx.current_screen_gray[::8, ::8]
+                    frame_hash = hash(frame_sample.tobytes())
+                    if frame_hash == last_frame_hash and ctx.current_ui is not None and ctx.current_ui is not NOT_FOUND_UI:
+                        continue
+                    last_frame_hash = frame_hash
                     ctx.prev_ui = ctx.current_ui
-                    ctx.current_ui = self.detect_ui(ui_list, ctx.current_screen)
+                    ctx.current_ui = self.detect_ui(ui_list, ctx.current_screen_gray, prev_ui=ctx.prev_ui)
                     log.debug("current_ui:" + ctx.current_ui.ui_name)
                     if before_hook is not None:
                         before_hook(ctx)
@@ -322,12 +338,13 @@ class Executor:
                         task.end_task(TaskStatus.TASK_STATUS_SUCCESS, EndTaskReason.COMPLETE)
                     try:
                         ctx.current_screen = None
+                        ctx.current_screen_gray = None
                     except Exception:
                         pass
                 else:
                     break
                 try:
-                    sleep_ms = int(os.getenv("UAT_EXECUTOR_LOOP_SLEEP_MS", "200"))
+                    sleep_ms = int(os.getenv("UAT_EXECUTOR_LOOP_SLEEP_MS", "80"))
                     time.sleep(max(0.0, sleep_ms / 1000.0))
                 except Exception:
                     time.sleep(0.38)
@@ -361,4 +378,3 @@ class Executor:
             soft_process_restart()
         except Exception:
             pass
-

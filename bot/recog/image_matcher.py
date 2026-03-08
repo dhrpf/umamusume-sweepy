@@ -12,10 +12,18 @@ log = logger.get_logger(__name__)
 
 TEMPLATE_IMAGE_CACHE = {}
 TEMPLATE_SMALL_CACHE = {}
+TEMPLATE_QUARTER_CACHE = {}
 PARALLEL_WORKERS = 16
 COARSE_REJECT_THRESHOLD = 0.52
+QUARTER_REJECT_THRESHOLD = 0.40
 SMALL_TEMPLATE_MIN_SIZE = 16
+QUARTER_TEMPLATE_MIN_SIZE = 32
 EXECUTOR = None
+
+half_target_cache_id = None
+half_target_cache_img = None
+quarter_target_cache_id = None
+quarter_target_cache_img = None
 
 class LRUCache:
     def __init__(self, maxsize=8000):
@@ -77,6 +85,10 @@ def preload_templates(resource_dir):
                         small = cv2.resize(img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
                         if small.shape[0] >= 4 and small.shape[1] >= 4:
                             TEMPLATE_SMALL_CACHE[path] = small
+                    if img.shape[0] >= QUARTER_TEMPLATE_MIN_SIZE and img.shape[1] >= QUARTER_TEMPLATE_MIN_SIZE:
+                        quarter = cv2.resize(img, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
+                        if quarter.shape[0] >= 4 and quarter.shape[1] >= 4:
+                            TEMPLATE_QUARTER_CACHE[path] = quarter
                     count += 1
     return count
 
@@ -160,11 +172,94 @@ def template_match(target, template, accuracy: float = 0.86) -> ImageMatchResult
             arr = getattr(template, 'template_image', None)
         if arr is not None:
             try:
-                th, tw = arr.shape[::]
+                th, tw = arr.shape[:2]
             except Exception:
                 return ImageMatchResult()
             if target.shape[0] < th or target.shape[1] < tw:
                 return ImageMatchResult()
+            
+            if target.size > 100000:
+                global half_target_cache_id, half_target_cache_img, quarter_target_cache_id, quarter_target_cache_img
+                tpl_path = getattr(template, 'template_path', None)
+                tgt_id = id(target)
+                quarter_loc = None
+                if th >= QUARTER_TEMPLATE_MIN_SIZE and tw >= QUARTER_TEMPLATE_MIN_SIZE:
+                    arr_quarter = TEMPLATE_QUARTER_CACHE.get(tpl_path) if tpl_path else None
+                    if arr_quarter is None:
+                        arr_quarter = cv2.resize(arr, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
+                    if arr_quarter.shape[0] >= 4 and arr_quarter.shape[1] >= 4:
+                        if quarter_target_cache_id == tgt_id:
+                            tgt_quarter = quarter_target_cache_img
+                        else:
+                            tgt_quarter = cv2.resize(target, None, fx=0.25, fy=0.25, interpolation=cv2.INTER_AREA)
+                            quarter_target_cache_id = tgt_id
+                            quarter_target_cache_img = tgt_quarter
+                        if tgt_quarter.shape[0] >= arr_quarter.shape[0] and tgt_quarter.shape[1] >= arr_quarter.shape[1]:
+                            q_result = cv2.matchTemplate(tgt_quarter, arr_quarter, cv2.TM_CCOEFF_NORMED)
+                            _, q_val, _, q_loc = cv2.minMaxLoc(q_result)
+                            if q_val < QUARTER_REJECT_THRESHOLD:
+                                match_result = ImageMatchResult()
+                                match_result.score = float(q_val)
+                                match_result.find_match = False
+                                return match_result
+                            quarter_loc = q_loc
+                if th >= SMALL_TEMPLATE_MIN_SIZE and tw >= SMALL_TEMPLATE_MIN_SIZE:
+                    arr_half = TEMPLATE_SMALL_CACHE.get(tpl_path) if tpl_path else None
+                    if arr_half is None:
+                        arr_half = cv2.resize(arr, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                    hth, htw = arr_half.shape[:2]
+                    if hth >= 4 and htw >= 4:
+                        if half_target_cache_id == tgt_id:
+                            tgt_half = half_target_cache_img
+                        else:
+                            tgt_half = cv2.resize(target, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                            half_target_cache_id = tgt_id
+                            half_target_cache_img = tgt_half
+                        if tgt_half.shape[0] >= hth and tgt_half.shape[1] >= htw:
+                            if quarter_loc is not None:
+                                hmargin = max(hth, htw)
+                                hfx = quarter_loc[0] * 2
+                                hfy = quarter_loc[1] * 2
+                                hry1 = max(0, hfy - hmargin)
+                                hry2 = min(tgt_half.shape[0], hfy + hth + hmargin)
+                                hrx1 = max(0, hfx - hmargin)
+                                hrx2 = min(tgt_half.shape[1], hfx + htw + hmargin)
+                                half_roi = tgt_half[hry1:hry2, hrx1:hrx2]
+                                if half_roi.shape[0] >= hth and half_roi.shape[1] >= htw:
+                                    coarse_result = cv2.matchTemplate(half_roi, arr_half, cv2.TM_CCOEFF_NORMED)
+                                    _, coarse_val, _, coarse_loc_local = cv2.minMaxLoc(coarse_result)
+                                    coarse_loc = (coarse_loc_local[0] + hrx1, coarse_loc_local[1] + hry1)
+                                else:
+                                    coarse_result = cv2.matchTemplate(tgt_half, arr_half, cv2.TM_CCOEFF_NORMED)
+                                    _, coarse_val, _, coarse_loc = cv2.minMaxLoc(coarse_result)
+                            else:
+                                coarse_result = cv2.matchTemplate(tgt_half, arr_half, cv2.TM_CCOEFF_NORMED)
+                                _, coarse_val, _, coarse_loc = cv2.minMaxLoc(coarse_result)
+                            if coarse_val < COARSE_REJECT_THRESHOLD:
+                                match_result = ImageMatchResult()
+                                match_result.score = float(coarse_val)
+                                match_result.find_match = False
+                                return match_result
+                            margin = max(th, tw)
+                            fx = coarse_loc[0] * 2
+                            fy = coarse_loc[1] * 2
+                            ry1 = max(0, fy - margin)
+                            ry2 = min(target.shape[0], fy + th + margin)
+                            rx1 = max(0, fx - margin)
+                            rx2 = min(target.shape[1], fx + tw + margin)
+                            roi = target[ry1:ry2, rx1:rx2]
+                            if roi.shape[0] >= th and roi.shape[1] >= tw:
+                                result = cv2.matchTemplate(roi, arr, cv2.TM_CCOEFF_NORMED)
+                                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                                match_result = ImageMatchResult()
+                                match_result.score = float(max_val)
+                                if max_val > accuracy:
+                                    match_result.find_match = True
+                                    match_result.center_point = (int(max_loc[0] + rx1 + tw / 2), int(max_loc[1] + ry1 + th / 2))
+                                    match_result.matched_area = ((max_loc[0] + rx1, max_loc[1] + ry1), (max_loc[0] + tw + rx1, max_loc[1] + th + ry1))
+                                else:
+                                    match_result.find_match = False
+                                return match_result
             
             result = cv2.matchTemplate(target, arr, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
@@ -213,7 +308,10 @@ def match_single_worker_with_coarse(args):
         th, tw = arr.shape[:2]
         
         if th >= SMALL_TEMPLATE_MIN_SIZE and tw >= SMALL_TEMPLATE_MIN_SIZE:
-            arr_small = cv2.resize(arr, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+            tpl_path = getattr(template, 'template_path', None)
+            arr_small = TEMPLATE_SMALL_CACHE.get(tpl_path) if tpl_path else None
+            if arr_small is None:
+                arr_small = cv2.resize(arr, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
             if arr_small.shape[0] >= 4 and arr_small.shape[1] >= 4:
                 if screen_small.shape[0] >= arr_small.shape[0] and screen_small.shape[1] >= arr_small.shape[1]:
                     coarse_result = cv2.matchTemplate(screen_small, arr_small, cv2.TM_CCOEFF_NORMED)
@@ -285,7 +383,10 @@ def batch_match_with_areas(screen, templates):
             th, tw = arr.shape[:2]
             
             if th >= SMALL_TEMPLATE_MIN_SIZE and tw >= SMALL_TEMPLATE_MIN_SIZE:
-                arr_small = cv2.resize(arr, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+                tpl_path = getattr(template, 'template_path', None)
+                arr_small = TEMPLATE_SMALL_CACHE.get(tpl_path) if tpl_path else None
+                if arr_small is None:
+                    arr_small = cv2.resize(arr, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
                 if arr_small.shape[0] >= 4 and arr_small.shape[1] >= 4:
                     if roi_small.shape[0] >= arr_small.shape[0] and roi_small.shape[1] >= arr_small.shape[1]:
                         coarse_result = cv2.matchTemplate(roi_small, arr_small, cv2.TM_CCOEFF_NORMED)

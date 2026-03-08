@@ -36,6 +36,25 @@ log = logger.get_logger(__name__)
 
 character_detector = CharacterDetector()
 
+FACILITY_NAME_MAP = {
+    TrainingType.TRAINING_TYPE_SPEED: "speed",
+    TrainingType.TRAINING_TYPE_STAMINA: "stamina",
+    TrainingType.TRAINING_TYPE_POWER: "power",
+    TrainingType.TRAINING_TYPE_WILL: "guts",
+    TrainingType.TRAINING_TYPE_INTELLIGENCE: "wits",
+}
+
+TRAINING_NAMES = ["Speed", "Stamina", "Power", "Guts", "Wit"]
+STAT_KEY_LIST = ["speed", "stamina", "power", "guts", "wits", "sp"]
+
+TYPE_MAP = [
+    SupportCardType.SUPPORT_CARD_TYPE_SPEED,
+    SupportCardType.SUPPORT_CARD_TYPE_STAMINA,
+    SupportCardType.SUPPORT_CARD_TYPE_POWER,
+    SupportCardType.SUPPORT_CARD_TYPE_WILL,
+    SupportCardType.SUPPORT_CARD_TYPE_INTELLIGENCE,
+]
+
 
 def script_cultivate_training_select(ctx: UmamusumeContext):
     if ctx.cultivate_detail.turn_info is None:
@@ -111,14 +130,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
 
         def detect_training_once(ctx, img, train_type, energy_change=None):
             result = TrainingDetectionResult()
-            facility_map = {
-                TrainingType.TRAINING_TYPE_SPEED: "speed",
-                TrainingType.TRAINING_TYPE_STAMINA: "stamina",
-                TrainingType.TRAINING_TYPE_POWER: "power",
-                TrainingType.TRAINING_TYPE_WILL: "guts",
-                TrainingType.TRAINING_TYPE_INTELLIGENCE: "wits",
-            }
-            result.facility_name = facility_map.get(train_type)
+            result.facility_name = FACILITY_NAME_MAP.get(train_type)
             result.scenario_name = "ura" if ctx.cultivate_detail.scenario.scenario_type() == ScenarioType.SCENARIO_TYPE_URA else "aoharuhai"
             result.stat_results = {}
             result.energy_change = energy_change if energy_change is not None else 0.0
@@ -283,15 +295,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
    
 
         if extra_weight[viewed - 1] > -1:
-           
-            facility_map = {
-                TrainingType.TRAINING_TYPE_SPEED: "speed",
-                TrainingType.TRAINING_TYPE_STAMINA: "stamina",
-                TrainingType.TRAINING_TYPE_POWER: "power",
-                TrainingType.TRAINING_TYPE_WILL: "guts",
-                TrainingType.TRAINING_TYPE_INTELLIGENCE: "wits",
-            }
-            facility_name = facility_map.get(train_type)
+            facility_name = FACILITY_NAME_MAP.get(train_type)
             immediate_img = ctx.ctrl.get_screen()
             thread = threading.Thread(target=parse_training_with_retry, args=(ctx, immediate_img, train_type, None))
             threads.append(thread)
@@ -301,17 +305,10 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         else:
             clear_training(ctx, train_type)
 
-        facility_map = {
-            TrainingType.TRAINING_TYPE_SPEED: "speed",
-            TrainingType.TRAINING_TYPE_STAMINA: "stamina",
-            TrainingType.TRAINING_TYPE_POWER: "power",
-            TrainingType.TRAINING_TYPE_WILL: "guts",
-            TrainingType.TRAINING_TYPE_INTELLIGENCE: "wits",
-        }
-        
         for i in range(5):
             if i != (viewed - 1):
                 if extra_weight[i] > -1:
+                    slot_start = time.perf_counter()
                     retry = 0
                     ctx.ctrl.click_by_point(TRAINING_POINT_LIST[i])
                     img = ctx.ctrl.get_screen()
@@ -328,7 +325,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                         continue
 
                     train_type_i = TrainingType(i + 1)
-                    facility_name = facility_map.get(train_type_i)
+                    facility_name = FACILITY_NAME_MAP.get(train_type_i)
                     thread = threading.Thread(target=parse_training_with_retry, args=(ctx, img, train_type_i, None))
                     threads.append(thread)
                     thread.start()
@@ -359,15 +356,9 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         period_idx = get_date_period_index(date)
         w_lv1, w_lv2, w_energy_change, w_hint = resolve_weights(sv, period_idx)
 
-        type_map = [
-            SupportCardType.SUPPORT_CARD_TYPE_SPEED,
-            SupportCardType.SUPPORT_CARD_TYPE_STAMINA,
-            SupportCardType.SUPPORT_CARD_TYPE_POWER,
-            SupportCardType.SUPPORT_CARD_TYPE_WILL,
-            SupportCardType.SUPPORT_CARD_TYPE_INTELLIGENCE,
-        ]
-        names = ["Speed", "Stamina", "Power", "Guts", "Wit"]
-        stat_keys = ["speed", "stamina", "power", "guts", "wits", "sp"]
+        type_map = TYPE_MAP
+        names = TRAINING_NAMES
+        stat_keys = STAT_KEY_LIST
         computed_scores = [0.0, 0.0, 0.0, 0.0, 0.0]
         stat_contributions = [[0.0] * 6 for _ in range(5)]
 
