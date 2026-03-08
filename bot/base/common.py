@@ -37,10 +37,3 @@ class CronJobConfig:
     last_time = None
 
 
-class CronConfig:
-    cron = None
-    times = None
-
-    def __init__(self, cron, times):
-        self.cron = cron
-        self.times = times

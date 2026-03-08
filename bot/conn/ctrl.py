@@ -23,8 +23,6 @@ class AndroidController(metaclass=ABCMeta):
     def start_app(self, name):
         pass
 
-    def stop_app(self):
-        pass
 
     def get_screen(self, to_gray=False):
         pass

@@ -76,8 +76,6 @@ def clear_parse_caches():
     _template_match_cache.clear()
 
 
-def normalize_skill_name(skill_name: str) -> str:
-    return skill_name.replace(" ", "").lower()
 
 
 def normalize_text_for_match(text: str) -> str:

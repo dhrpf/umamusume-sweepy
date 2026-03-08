@@ -10,10 +10,27 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bot.base.log import task_log_handler
 from bot.engine import ctrl as bot_ctrl
-from bot.server.protocol.task import *
 from starlette.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
+from bot.base.task import TaskExecuteMode
+
+
+class AddTaskRequest(BaseModel):
+    app_name: str
+    task_execute_mode: TaskExecuteMode
+    task_type: int
+    task_desc: str
+    attachment_data: object
+    cron_job_config: Union[object, None] = None
+
+
+class DeleteTaskRequest(BaseModel):
+    task_id: str
+
+
+class ResetTaskRequest(BaseModel):
+    task_id: str
 
 
 class SafeJSONResponse(JSONResponse):

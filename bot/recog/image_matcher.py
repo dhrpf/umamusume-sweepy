@@ -99,13 +99,6 @@ def init_executor():
         EXECUTOR = ThreadPoolExecutor(max_workers=PARALLEL_WORKERS)
 
 
-def shutdown_executor():
-    global EXECUTOR
-    if EXECUTOR:
-        EXECUTOR.shutdown(wait=False)
-        EXECUTOR = None
-
-
 class ImageMatchResult:
     matched_area = None
     center_point = None
@@ -285,17 +278,6 @@ def compare_color_equal(p: list, target: list, tolerance: int = 10) -> bool:
     return (d0*d0 + d1*d1 + d2*d2) < tol_sq
 
 
-def multi_template_match(templates, threshold=0.82):
-    best_score = 0.0
-    for template, sub_roi in templates:
-        try:
-            result = image_match(sub_roi, template)
-            best_score = max(best_score, result.score)
-        except Exception:
-            pass
-    return best_score >= threshold, best_score
-
-
 def match_single_worker_with_coarse(args):
     screen, screen_small, template, threshold = args
     try:
@@ -341,88 +323,4 @@ def match_single_worker_with_coarse(args):
         return (template, ImageMatchResult())
 
 
-def batch_match_screen(screen, templates, threshold=0.86):
-    reset_timeout()
-    screen_gray = to_gray(screen)
-    screen_small = cv2.resize(screen_gray, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-    args = [(screen_gray, screen_small, tpl, threshold) for tpl in templates]
-    
-    if EXECUTOR:
-        results = list(EXECUTOR.map(match_single_worker_with_coarse, args))
-    else:
-        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-            results = list(executor.map(match_single_worker_with_coarse, args))
-    return results
 
-
-def batch_match_with_areas(screen, templates):
-    reset_timeout()
-    screen_gray = to_gray(screen)
-    screen_small = cv2.resize(screen_gray, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-    
-    def worker(template):
-        try:
-            area = template.image_match_config.match_area
-            threshold = template.image_match_config.match_accuracy
-            
-            if area is not None:
-                roi, x1, y1 = clip_roi(screen_gray, area)
-                roi_small, _, _ = clip_roi(screen_small, 
-                    type('Area', (), {'x1': area.x1//2, 'y1': area.y1//2, 
-                                      'x2': area.x2//2, 'y2': area.y2//2})())
-            else:
-                roi, x1, y1 = screen_gray, 0, 0
-                roi_small = screen_small
-            
-            arr = getattr(template, 'template_img', None)
-            if arr is None:
-                arr = getattr(template, 'template_image', None)
-            if arr is None:
-                return (template, ImageMatchResult())
-            
-            th, tw = arr.shape[:2]
-            
-            if th >= SMALL_TEMPLATE_MIN_SIZE and tw >= SMALL_TEMPLATE_MIN_SIZE:
-                tpl_path = getattr(template, 'template_path', None)
-                arr_small = TEMPLATE_SMALL_CACHE.get(tpl_path) if tpl_path else None
-                if arr_small is None:
-                    arr_small = cv2.resize(arr, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-                if arr_small.shape[0] >= 4 and arr_small.shape[1] >= 4:
-                    if roi_small.shape[0] >= arr_small.shape[0] and roi_small.shape[1] >= arr_small.shape[1]:
-                        coarse_result = cv2.matchTemplate(roi_small, arr_small, cv2.TM_CCOEFF_NORMED)
-                        _, coarse_val, _, _ = cv2.minMaxLoc(coarse_result)
-                        if coarse_val < COARSE_REJECT_THRESHOLD:
-                            match_result = ImageMatchResult()
-                            match_result.score = float(coarse_val)
-                            match_result.find_match = False
-                            return (template, match_result)
-            
-            if roi.shape[0] < th or roi.shape[1] < tw:
-                return (template, ImageMatchResult())
-            
-            result = cv2.matchTemplate(roi, arr, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            
-            match_result = ImageMatchResult()
-            match_result.score = float(max_val)
-            if max_val > threshold:
-                match_result.find_match = True
-                cx = int(max_loc[0] + tw / 2) + x1
-                cy = int(max_loc[1] + th / 2) + y1
-                match_result.center_point = (cx, cy)
-                match_result.matched_area = (
-                    (max_loc[0] + x1, max_loc[1] + y1),
-                    (max_loc[0] + tw + x1, max_loc[1] + th + y1)
-                )
-            else:
-                match_result.find_match = False
-            return (template, match_result)
-        except Exception:
-            return (template, ImageMatchResult())
-    
-    if EXECUTOR:
-        results = list(EXECUTOR.map(worker, templates))
-    else:
-        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-            results = list(executor.map(worker, templates))
-    return results

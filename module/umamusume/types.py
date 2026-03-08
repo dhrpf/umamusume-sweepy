@@ -58,9 +58,6 @@ class TrainingInfo:
         self.support_card_info_list = []
         self.relevant_count = 0
 
-    def log_training_info(self, scenario_type: ScenarioType):
-        #useless for now
-        return
 
 
 class UmaAttribute:
