@@ -82,7 +82,7 @@
               <div class="row" v-if="selectedScenario === 3">
                 <div class="col-12">
                   <div class="form-group">
-                    <label>Items Selection <small style="color:var(--muted-2);font-weight:400">(I suggest you watch a guide before touching this)</small></label>
+                    <label>Items Selection <small style="color:var(--muted-2);font-weight:400">(I suggest you watch a guide before touching this [you have to adjust this])</small></label>
                     <div class="section-card p-3">
                       <div class="mant-controls mb-2">
                         <button type="button" class="btn btn-sm btn--outline me-1" @click="mantAddTier">+ Add Tier</button>
@@ -178,7 +178,7 @@
                           <div class="mant-threshold-row">
                             <img :src="getMantItemImg('bbq')" class="mant-threshold-img" />
                             <div class="mant-threshold-controls">
-                              <span class="mant-threshold-label">Number of unmaxxed cards</span>
+                              <span class="mant-threshold-label">Number of unmaxxed cards (Bumped up a tier for number above and down for every number below during training)</span>
                               <div class="mant-threshold-slider-row">
                                 <input type="range" class="hint-slider" v-model.number="mantBbqUnmaxxedCards" min="1" max="6" />
                                 <span class="mant-threshold-val">{{ mantBbqUnmaxxedCards }}</span>
@@ -2159,7 +2159,7 @@ export default {
       this.loadEventList();
     }
         this.mantItemTiers = this.mantGetDefaultTiers();
-        this.mantTierCount = 2;
+        this.mantTierCount = 6;
   },
   data: function () {
     return {
@@ -3415,9 +3415,26 @@ export default {
       return this.mantItemIds;
     },
     mantGetDefaultTiers() {
+      const defaults = {
+        speedsmall: 5, speedmedium: 2, speedlarge: 2,
+        staminasmall: 5, staminamedium: 2, staminalarge: 2,
+        powersmall: 5, powermedium: 2, powerlarge: 2,
+        gutssmall: 5, gutsmedium: 2, gutslarge: 2,
+        witsmall: 5, witmedium: 2, witlarge: 2,
+        energydrinksmall: 2, energydrinkmedium: 2, energydrinklarge: 2,
+        greenjuice: 2, maxsmall: 5, maxlarge: 6,
+        moodsmall: 2, moodlarge: 3, catfood: 6, bbq: 3,
+        mirror: 6, binoc: 6, ppbook: 6, hat: 5,
+        pillow: 6, scheduler: 6, handcream: 4, scale: 6,
+        aroma: 6, useless2: 6, cureall: 4,
+        speedpet: 6, staminapet: 6, powerpet: 6, gutspet: 6, witpet: 6,
+        shuffle: 1,
+        megasmall: 2, megamedium: 2, megalarge: 2,
+        speedweights: 6, staminaweights: 6, powerweights: 6, gutsweights: 6,
+        prayer: 2, rb: 2, rbex: 2, penlight: 6,
+      };
       const t = {};
-      this.mantGetAllItemIds().forEach(id => { t[id] = 2; });
-      t['shuffle'] = 1;
+      this.mantGetAllItemIds().forEach(id => { t[id] = defaults[id] ?? 2; });
       return t;
     },
     mantGetItemsInTier(tier) {
@@ -4025,7 +4042,7 @@ export default {
       }
       if ('mant_config' in this.presetsUse && this.presetsUse.mant_config.item_tiers) {
         this.mantItemTiers = this.presetsUse.mant_config.item_tiers;
-        this.mantTierCount = this.presetsUse.mant_config.tier_count || 2;
+        this.mantTierCount = this.presetsUse.mant_config.tier_count || 6;
         this.mantMigrateLegacyTiers();
         this.mantWhistleThreshold = this.presetsUse.mant_config.whistle_threshold ?? 20;
         this.mantWhistleFocusSummer = this.presetsUse.mant_config.whistle_focus_summer ?? true;
@@ -4036,7 +4053,7 @@ export default {
         this.mantBbqUnmaxxedCards = this.presetsUse.mant_config.bbq_unmaxxed_cards ?? 3;
       } else {
         this.mantItemTiers = this.mantGetDefaultTiers();
-        this.mantTierCount = 2;
+        this.mantTierCount = 6;
         this.mantWhistleThreshold = 20;
         this.mantWhistleFocusSummer = true;
         this.mantMegaSmallThreshold = 60;
@@ -4207,7 +4224,7 @@ export default {
       }
       if (data.mant_config && data.mant_config.item_tiers) {
         this.mantItemTiers = data.mant_config.item_tiers;
-        this.mantTierCount = data.mant_config.tier_count || 2;
+        this.mantTierCount = data.mant_config.tier_count || 6;
         this.mantMigrateLegacyTiers();
         this.mantWhistleThreshold = data.mant_config.whistle_threshold ?? 20;
         this.mantWhistleFocusSummer = data.mant_config.whistle_focus_summer ?? true;

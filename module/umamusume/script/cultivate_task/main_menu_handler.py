@@ -67,12 +67,27 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
                 ctx.cultivate_detail.turn_info_history = ctx.cultivate_detail.turn_info_history[-100:]
         ctx.cultivate_detail.turn_info = TurnInfo()
         ctx.cultivate_detail.turn_info.date = current_date
-        
+        ctx.cultivate_detail.mant_shop_scanned_this_turn = False
+
+        if is_mant(ctx):
+            from module.umamusume.scenario.mant.shop import is_shop_scan_turn
+            if is_shop_scan_turn(current_date):
+                ctx.cultivate_detail.mant_shop_items = []
+
         if current_date == NEW_RUN_DETECTION_DATE:
             log.info("new run detected resetting manual purchase state")
             ctx.cultivate_detail.manual_purchase_completed = False
             if hasattr(ctx.cultivate_detail, 'manual_purchase_initiated'):
                 delattr(ctx.cultivate_detail, 'manual_purchase_initiated')
+
+    if is_mant(ctx) and not ctx.cultivate_detail.mant_shop_scanned_this_turn:
+        from module.umamusume.scenario.mant.shop import is_shop_scan_turn, scan_mant_shop
+        if is_shop_scan_turn(current_date):
+            items = scan_mant_shop(ctx)
+            ctx.cultivate_detail.mant_shop_items = items
+            ctx.cultivate_detail.mant_shop_scanned_this_turn = True
+            ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
+            return
 
     if is_mant(ctx):
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

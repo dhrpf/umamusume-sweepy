@@ -99,7 +99,8 @@ TITLE = [
     "Session Error", #46
     "Choose Career Mode", #47
     "Borrow Card", #48
-    "Insufficient Goal Race Result Pts" #49
+    "Insufficient Goal Race Result Pts", #49
+    "Shop", #50
 ]
 
 
@@ -652,6 +653,12 @@ def script_info(ctx: UmamusumeContext):
             script_follow_support_card_select(ctx)
             return
         if title_text == TITLE[49]:
-            log.info("Insufficient Goal Race Result Pts - pressing Cancel")
             ctx.ctrl.click_by_point(INSUFFICIENT_RESULT_PTS_CANCEL)
+        if title_text == TITLE[50]:
+            try:
+                if ctx.cultivate_detail.scenario.scenario_type() != ScenarioType.SCENARIO_TYPE_MANT:
+                    return
+            except Exception:
+                pass
+            ctx.ctrl.click(200, 805, "Shop cancel")
         time.sleep(1)

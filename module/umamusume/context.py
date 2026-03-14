@@ -124,6 +124,8 @@ class CultivateContextDetail:
         self.spirit_explosion = [0.16, 0.16, 0.16, 0.06, 0.11]
         self.manual_purchase_completed = False
         self.final_skill_sweep_active = False
+        self.mant_shop_items = []
+        self.mant_shop_scanned_this_turn = False
         self.user_provided_priority = False
         self.event_overrides = {}
         self.use_last_parents = False
