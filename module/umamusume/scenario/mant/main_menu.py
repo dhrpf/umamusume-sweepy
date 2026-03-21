@@ -120,18 +120,16 @@ def handle_mant_shop_scan(ctx, current_date):
         conditional_cures = all_cures - cure_always_ok
         targets = [t for t in targets if t not in conditional_cures or t in needed_cures]
         if targets:
-            bought = buy_shop_items(ctx, targets, items_list, ratio, drag_ratio, first_item_gy)
+            bought, held_items = buy_shop_items(ctx, targets, items_list, ratio, drag_ratio, first_item_gy)
             if bought:
                 from module.umamusume.context import log_detected_items
-                existing = list(ctx.cultivate_detail.mant_owned_items)
-                existing_dict = {n: q for n, q in existing}
                 for t in targets:
-                    existing_dict[t] = existing_dict.get(t, 0) + 1
                     log.info(f"[ITEM BOUGHT] {t}")
-                updated = [(n, q) for n, q in existing_dict.items()]
-                ctx.cultivate_detail.mant_owned_items = updated
-                log_detected_items(updated)
-                log.info(f"[INVENTORY] after purchase: {[(n, q) for n, q in updated]}")
+                if held_items:
+                    updated = [(n, q) for n, q in held_items.items() if q > 0]
+                    ctx.cultivate_detail.mant_owned_items = updated
+                log.info(f"[INVENTORY] after purchase: {[(n, q) for n, q in ctx.cultivate_detail.mant_owned_items]}")
+                log_detected_items(ctx.cultivate_detail.mant_owned_items)
 
     if not bought:
         from module.umamusume.scenario.mant.shop import BACK_BTN_X, BACK_BTN_Y

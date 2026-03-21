@@ -714,8 +714,10 @@ def pick_best_energy_item(ctx):
 
 
 def use_item_and_update_inventory(ctx, item_name):
+    log.info(f'[ITEM USE ATTEMPT] {item_name}')
     ok = use_training_item(ctx, item_name, 1)
     if not ok:
+        log.info(f'[ITEM USE ATTEMPT FAILED] {item_name} not found in inventory')
         return False
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
@@ -801,10 +803,23 @@ def handle_instant_use_items(ctx):
     open_items_panel(ctx)
 
     selected = []
+    not_found = []
     for item_name in items_to_use:
+        log.info(f'[INSTANT ITEM USE ATTEMPT] {item_name}')
         if try_click_item_plus_once(ctx, item_name):
             selected.append(item_name)
             time.sleep(0.15)
+        else:
+            log.info(f'[INSTANT ITEM USE ATTEMPT FAILED] {item_name} not found in inventory')
+            not_found.append(item_name)
+
+    if not_found:
+        owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+        owned_map = {n: q for n, q in owned}
+        for missing in not_found:
+            if owned_map.get(missing, 0) > 0:
+                owned_map.pop(missing, None)
+        ctx.cultivate_detail.mant_owned_items = [(n, q) for n, q in owned_map.items() if q > 0]
 
     if not selected:
         close_items_panel(ctx)

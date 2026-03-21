@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import random
 import cv2
@@ -500,6 +501,17 @@ def scan_mant_shop(ctx):
     return items_list, ratio, drag_ratio, first_item_gy
 
 
+EXCHANGE_OCR_Y1 = 170
+EXCHANGE_OCR_Y2 = 960
+EXCHANGE_OCR_X1 = 60
+EXCHANGE_OCR_X2 = 560
+EXCHANGE_PLUS_X = 648
+EXCHANGE_PLUS_OFFSET_Y = 38
+EXCHANGE_QTY_X1 = 230
+EXCHANGE_QTY_X2 = 400
+EXCHANGE_QTY_Y_OFFSET = 15
+EXCHANGE_QTY_Y_HEIGHT = 35
+
 CHECKBOX_X = 630
 CHECKBOX_FILL_X1 = 615
 CHECKBOX_FILL_X2 = 655
@@ -522,6 +534,7 @@ WEBUI_EXCLUDED_PREFIXES = (
     "Speed Training Application", "Stamina Training Application",
     "Power Training Application", "Guts Training Application", "Wit Training Application",
 )
+
 
 
 def is_unbuyable(frame, item_y):
@@ -547,6 +560,127 @@ def pick_best_match(matches, target_gy, first_item_gy, thumb_pos, ratio):
         return matches[0] if matches else None
     expected_y = estimate_screen_y(target_gy, first_item_gy, thumb_pos, ratio)
     return min(matches, key=lambda m: abs(m[2] - expected_y))
+
+
+def is_item_held_on_exchange(frame, item_y):
+    check_y = int(item_y + EXCHANGE_PLUS_OFFSET_Y)
+    check_x = EXCHANGE_PLUS_X
+    h, w = frame.shape[:2]
+    if check_y < 0 or check_y >= h or check_x < 0 or check_x >= w:
+        return False
+    y1 = max(0, check_y - 8)
+    y2 = min(h, check_y + 8)
+    x1 = max(0, check_x - 8)
+    x2 = min(w, check_x + 8)
+    patch = frame[y1:y2, x1:x2]
+    rgb = cv2.cvtColor(patch, cv2.COLOR_BGR2RGB)
+    g_mean = float(np.mean(rgb[:, :, 1]))
+    r_mean = float(np.mean(rgb[:, :, 0]))
+    b_mean = float(np.mean(rgb[:, :, 2]))
+    return g_mean > 130 and g_mean > r_mean and g_mean > b_mean
+
+
+def read_exchange_qty(frame, item_y):
+    qty_y1 = int(item_y + EXCHANGE_QTY_Y_OFFSET)
+    qty_y2 = int(item_y + EXCHANGE_QTY_Y_OFFSET + EXCHANGE_QTY_Y_HEIGHT)
+    h, w = frame.shape[:2]
+    if qty_y1 < 0 or qty_y2 > h:
+        return 1
+    roi = frame[qty_y1:qty_y2, EXCHANGE_QTY_X1:EXCHANGE_QTY_X2]
+    raw = ocr(roi, lang="en")
+    if not raw or not raw[0]:
+        return 1
+    all_text = ' '.join(entry[1][0] for entry in raw[0] if entry and len(entry) >= 2)
+    digits = re.findall(r'\d+', all_text)
+    if digits:
+        return int(digits[-1])
+    return 1
+
+
+def classify_exchange_items(frame):
+    roi = frame[EXCHANGE_OCR_Y1:EXCHANGE_OCR_Y2, EXCHANGE_OCR_X1:EXCHANGE_OCR_X2]
+    raw = ocr(roi, lang="en")
+    if not raw or not raw[0]:
+        return []
+    items = []
+    seen_y = []
+    for entry in raw[0]:
+        if not entry or len(entry) < 2:
+            continue
+        bbox = entry[0]
+        text = entry[1][0].strip()
+        conf = entry[1][1]
+        y_center = (bbox[0][1] + bbox[2][1]) / 2
+        abs_y = EXCHANGE_OCR_Y1 + y_center
+        if len(text) < 3 or conf < 0.4:
+            continue
+        lower = text.lower()
+        if lower in ('held', 'effect', 'cost', 'new', 'turn(s)', 'choose how many to use.',
+                      'close', 'confirm use', 'training items', 'confirm', 'cancel',
+                      'exchange complete', 'purchased the selected training items.'):
+            continue
+        if text.replace('+', '').replace('-', '').replace(' ', '').replace('.', '').replace('>', '').isdigit():
+            continue
+        if text.startswith('+') or text.startswith('-'):
+            continue
+        if is_effect_text(text):
+            continue
+        if '>' in text or 'held' in lower:
+            continue
+        match = process.extractOne(text, SHOP_ITEM_NAMES, scorer=fuzz.ratio, score_cutoff=55)
+        if not match:
+            continue
+        matched_name = match[0]
+        is_dup = any(abs(abs_y - sy) < 40 for sy in seen_y)
+        if is_dup:
+            continue
+        held = is_item_held_on_exchange(frame, abs_y)
+        qty = read_exchange_qty(frame, abs_y) if held else 0
+        items.append((matched_name, held, qty, abs_y))
+        seen_y.append(abs_y)
+    items.sort(key=lambda r: r[3])
+    return items
+
+
+def scan_exchange_complete(ctx):
+    from module.umamusume.scenario.mant.inventory import (
+        inv_find_thumb, inv_at_bottom, sb_drag, INV_TRACK_TOP, INV_TRACK_BOT
+    )
+    held_items = {}
+
+    frame = ctx.ctrl.get_screen()
+    items = classify_exchange_items(frame)
+    for name, held, qty, y in items:
+        if held and name not in held_items:
+            held_items[name] = max(qty, 1)
+
+    img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    thumb = inv_find_thumb(img_rgb)
+
+    if thumb:
+        for _ in range(15):
+            cursor = (thumb[0] + thumb[1]) // 2
+            target = min(INV_TRACK_BOT, cursor + 60)
+            if target <= cursor:
+                break
+            sb_drag(ctx, cursor, target)
+            time.sleep(0.3)
+
+            frame = ctx.ctrl.get_screen()
+            items = classify_exchange_items(frame)
+            for name, held, qty, y in items:
+                if held and name not in held_items:
+                    held_items[name] = max(qty, 1)
+
+            img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if inv_at_bottom(img_rgb):
+                break
+            thumb = inv_find_thumb(img_rgb)
+            if not thumb:
+                break
+
+    log.info(f"[EXCHANGE SCAN] held items: {held_items}")
+    return held_items
 
 
 def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_gy):
@@ -623,10 +757,19 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
         clicked_positions.clear()
 
     if selected == 0:
-        return False
+        return False, {}
 
     ctx.ctrl.click(CONFIRM_BTN_X, CONFIRM_BTN_Y)
-    time.sleep(0.5)
+
+    from bot.recog.image_matcher import image_match
+    from module.umamusume.asset.template import UI_INFO
+    for _ in range(30):
+        time.sleep(0.2)
+        screen = ctx.ctrl.get_screen(to_gray=True)
+        if image_match(screen, UI_INFO).find_match:
+            break
+
+    held_items = scan_exchange_complete(ctx)
 
     ctx.ctrl.click(EXCHANGE_CLOSE_X, EXCHANGE_CLOSE_Y)
     time.sleep(0.5)
@@ -634,4 +777,4 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
     ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
     time.sleep(0.5)
 
-    return True
+    return True, held_items
