@@ -583,18 +583,34 @@ def is_items_panel_open(frame):
     return image_match(gray, UI_CULTIVATE_TRAINING_ITEMS).find_match
 
 
+def has_use_training_items_button(frame):
+    if frame is None:
+        return False
+    from bot.recog.image_matcher import image_match
+    from module.umamusume.asset.template import UI_CULTIVATE_USE_TRAINING_ITEMS
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return image_match(gray, UI_CULTIVATE_USE_TRAINING_ITEMS).find_match
+
+
 def open_items_panel(ctx):
     frame = ctx.ctrl.get_screen()
     if is_on_training_screen(frame):
         ctx.ctrl.execute_adb_shell("shell input tap 37 347", True)
     else:
         ctx.ctrl.execute_adb_shell("shell input tap 552 771", True)
-    time.sleep(0.9)
+    for _ in range(10):
+        time.sleep(0.3)
+        if is_items_panel_open(ctx.ctrl.get_screen()):
+            return
 
 
 def close_items_panel(ctx):
-    ctx.ctrl.execute_adb_shell("shell input tap 187 1185", True)
-    time.sleep(0.5)
+    for _ in range(10):
+        frame = ctx.ctrl.get_screen()
+        if not is_items_panel_open(frame) and not has_use_training_items_button(frame):
+            return
+        ctx.ctrl.execute_adb_shell("shell input tap 200 1205", True)
+        time.sleep(0.3)
 
 
 def use_training_item(ctx, item_name, quantity=1):
@@ -611,19 +627,18 @@ def use_training_item(ctx, item_name, quantity=1):
             return False
         time.sleep(0.15)
 
-    deadline = time.time() + 3.0
-    while time.time() < deadline:
-        ctx.ctrl.execute_adb_shell("shell input tap 524 1192", True)
-        time.sleep(0.15)
-        if not is_items_panel_open(ctx.ctrl.get_screen()):
-            return True
+    ctx.ctrl.execute_adb_shell("shell input tap 530 1205", True)
+    time.sleep(0.3)
 
-    deadline = time.time() + 3.0
-    while time.time() < deadline:
-        ctx.ctrl.execute_adb_shell("shell input tap 187 1185", True)
-        time.sleep(0.15)
-        if not is_items_panel_open(ctx.ctrl.get_screen()):
+    for _ in range(15):
+        frame = ctx.ctrl.get_screen()
+        if has_use_training_items_button(frame):
+            ctx.ctrl.execute_adb_shell("shell input tap 530 1205", True)
+            time.sleep(0.5)
+            continue
+        if not is_items_panel_open(frame):
             return True
+        time.sleep(0.2)
 
     return True
 
