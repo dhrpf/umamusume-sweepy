@@ -724,7 +724,8 @@ def use_item_and_update_inventory(ctx, item_name):
     ctx.cultivate_detail.mant_owned_items = updated
     from module.umamusume.context import log_detected_items
     log_detected_items(updated)
-    log.info(f'{item_name} used')
+    log.info(f'[ITEM USED] {item_name}')
+    log.info(f'[INVENTORY] after use: {[(n, q) for n, q in updated]}')
     return True
 
 
@@ -840,7 +841,8 @@ def handle_instant_use_items(ctx):
     log_detected_items(updated)
 
     for item_name in selected:
-        log.info(f'{item_name} used')
+        log.info(f'[ITEM USED] {item_name}')
+    log.info(f'[INVENTORY] after instant use: {[(n, q) for n, q in updated]}')
 
     return True
 

@@ -47,6 +47,7 @@ def handle_mant_inventory_scan(ctx, current_date):
     ctx.cultivate_detail.mant_owned_items = owned
     ctx.cultivate_detail.mant_inventory_scanned = True
     log_detected_items(owned)
+    log.info(f"[INVENTORY] initial scan: {[(n, q) for n, q in owned]}")
 
     close_items_panel(ctx)
     ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
@@ -126,9 +127,11 @@ def handle_mant_shop_scan(ctx, current_date):
                 existing_dict = {n: q for n, q in existing}
                 for t in targets:
                     existing_dict[t] = existing_dict.get(t, 0) + 1
+                    log.info(f"[ITEM BOUGHT] {t}")
                 updated = [(n, q) for n, q in existing_dict.items()]
                 ctx.cultivate_detail.mant_owned_items = updated
                 log_detected_items(updated)
+                log.info(f"[INVENTORY] after purchase: {[(n, q) for n, q in updated]}")
 
     if not bought:
         from module.umamusume.scenario.mant.shop import BACK_BTN_X, BACK_BTN_Y
