@@ -94,10 +94,6 @@ def inv_find_content_shift(before, after):
     return best_shift, best_conf
 
 
-def trigger_scrollbar(ctx):
-    y = INV_CONTENT_TOP + random.randint(0, 10)
-    ctx.ctrl.execute_adb_shell("shell input swipe 30 " + str(y) + " 30 " + str(y) + " 100", True)
-    time.sleep(0.15)
 
 
 def sb_drag(ctx, from_y, to_y):
@@ -111,7 +107,6 @@ def sb_drag(ctx, from_y, to_y):
 
 def scroll_to_top(ctx):
     for _ in range(15):
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if inv_at_top(img_rgb):
@@ -332,9 +327,7 @@ def dedup_names(all_detections, captured_frames):
 
 
 def scan_inventory(ctx, stop_when_found=None):
-    trigger_scrollbar(ctx)
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
 
     img = ctx.ctrl.get_screen()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -349,7 +342,6 @@ def scan_inventory(ctx, stop_when_found=None):
     thumb_center = (thumb[0] + thumb[1]) // 2
     if thumb[0] > INV_TRACK_TOP + 5:
         sb_drag(ctx, thumb_center, INV_TRACK_TOP)
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         thumb = inv_find_thumb(img_rgb)
@@ -364,7 +356,6 @@ def scan_inventory(ctx, stop_when_found=None):
     ratio = shift_cal / 5 if (shift_cal > 0 and conf_cal > 0.85) else 14.0
 
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
     img = ctx.ctrl.get_screen()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = inv_find_thumb(img_rgb)
@@ -387,7 +378,6 @@ def scan_inventory(ctx, stop_when_found=None):
     if stop_when_found and any(n == stop_when_found for n, _, _ in first_results):
         items_names = [(stop_when_found, 1.0, 0.0)]
         scroll_to_top(ctx)
-        trigger_scrollbar(ctx)
         time.sleep(0.3)
         item_qtys = {}
         for _ in range(6):
@@ -455,13 +445,10 @@ def scan_inventory(ctx, stop_when_found=None):
     items_names = dedup_names(all_detections, captured_frames)
 
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
     time.sleep(0.3)
 
     item_qtys = {}
     for step in range(30):
-        time.sleep(0.2)
-        trigger_scrollbar(ctx)
         time.sleep(0.2)
         frame = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -538,7 +525,6 @@ def try_click_item_plus_once(ctx, item_name: str) -> bool:
             time.sleep(0.25)
             return True
 
-        trigger_scrollbar(ctx)
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if inv_at_bottom(img_rgb):
             return False
@@ -638,8 +624,9 @@ def use_training_item(ctx, item_name, quantity=1):
             clicked_use = True
             time.sleep(0.5)
             continue
-        if clicked_use and not is_items_panel_open(frame):
-            return True
+        if clicked_use:
+            if is_items_panel_open(frame) or not has_use_training_items_button(frame):
+                return True
         if not clicked_use and is_items_panel_open(frame):
             ctx.ctrl.execute_adb_shell("shell input tap 530 1205", True)
 
@@ -797,22 +784,65 @@ def handle_instant_use_items(ctx):
     from module.umamusume.persistence import mark_buff_used, is_buff_used
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
-    used_any = False
+
+    items_to_use = []
     for item_name in INSTANT_USE_ITEMS:
         qty = owned_map.get(item_name, 0)
         if qty <= 0:
             continue
         if item_name in ONE_TIME_BUFF_ITEMS and is_buff_used(item_name):
             continue
-        for _ in range(qty):
-            ok = use_item_and_update_inventory(ctx, item_name)
-            if not ok:
-                break
-            used_any = True
-            if item_name in ONE_TIME_BUFF_ITEMS:
-                mark_buff_used(item_name)
-                break
-    return used_any
+        items_to_use.append(item_name)
+
+    if not items_to_use:
+        return False
+
+    open_items_panel(ctx)
+
+    selected = []
+    for item_name in items_to_use:
+        if try_click_item_plus_once(ctx, item_name):
+            selected.append(item_name)
+            time.sleep(0.15)
+
+    if not selected:
+        close_items_panel(ctx)
+        return False
+
+    ctx.ctrl.execute_adb_shell("shell input tap 530 1205", True)
+
+    for _ in range(20):
+        time.sleep(0.17)
+        frame = ctx.ctrl.get_screen()
+        if has_use_training_items_button(frame):
+            ctx.ctrl.execute_adb_shell("shell input tap 530 1205", True)
+            time.sleep(0.5)
+            break
+        if is_items_panel_open(frame):
+            ctx.ctrl.execute_adb_shell("shell input tap 530 1205", True)
+
+    for _ in range(15):
+        time.sleep(0.17)
+        frame = ctx.ctrl.get_screen()
+        if is_items_panel_open(frame):
+            break
+
+    close_items_panel(ctx)
+
+    for item_name in selected:
+        owned_map[item_name] = max(0, owned_map.get(item_name, 0) - 1)
+        if item_name in ONE_TIME_BUFF_ITEMS:
+            mark_buff_used(item_name)
+
+    updated = [(n, q) for n, q in owned_map.items() if q > 0]
+    ctx.cultivate_detail.mant_owned_items = updated
+    from module.umamusume.context import log_detected_items
+    log_detected_items(updated)
+
+    for item_name in selected:
+        log.info(f'{item_name} used')
+
+    return True
 
 
 def handle_charm(ctx):
@@ -898,9 +928,16 @@ def whistle_loop(ctx, start_date):
 
 
 def has_instant_use_items(ctx):
+    from module.umamusume.persistence import is_buff_used
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
-    return any(owned_map.get(item, 0) > 0 for item in INSTANT_USE_ITEMS)
+    for item in INSTANT_USE_ITEMS:
+        if owned_map.get(item, 0) <= 0:
+            continue
+        if item in ONE_TIME_BUFF_ITEMS and is_buff_used(item):
+            continue
+        return True
+    return False
 
 
 def item_loop(ctx):
@@ -909,8 +946,6 @@ def item_loop(ctx):
     if current_energy is None:
         current_energy = 0
     current_energy = int(current_energy)
-
-    handle_instant_use_items(ctx)
 
     got_recovery = has_energy_recovery(ctx)
     got_charm = has_charm(ctx)

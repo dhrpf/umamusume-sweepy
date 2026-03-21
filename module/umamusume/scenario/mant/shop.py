@@ -177,10 +177,6 @@ def content_same(before, after):
     return cv2.mean(diff)[0] < 3
 
 
-def trigger_scrollbar(ctx):
-    y = CONTENT_TOP + random.randint(0, 10)
-    ctx.ctrl.execute_adb_shell("shell input swipe 30 " + str(y) + " 30 " + str(y) + " 100", True)
-    time.sleep(0.15)
 
 
 def sb_drag(ctx, from_y, to_y):
@@ -194,7 +190,6 @@ def sb_drag(ctx, from_y, to_y):
 
 def scroll_to_top(ctx):
     for _ in range(15):
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if at_top(img_rgb):
@@ -394,7 +389,6 @@ def scan_mant_shop(ctx):
     time.sleep(1.5)
 
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
     img = ctx.ctrl.get_screen()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = find_thumb(img_rgb)
@@ -409,7 +403,6 @@ def scan_mant_shop(ctx):
     thumb_center = (thumb[0] + thumb[1]) // 2
     if thumb[0] > TRACK_TOP:
         sb_drag(ctx, thumb_center, TRACK_TOP)
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         thumb = find_thumb(img_rgb)
@@ -421,7 +414,6 @@ def scan_mant_shop(ctx):
     shift_cal, conf_cal = find_content_shift(before_cal, after_cal)
     ratio = shift_cal / 5 if (shift_cal > 0 and conf_cal > 0.85) else 14.0
 
-    trigger_scrollbar(ctx)
     img_dr = ctx.ctrl.get_screen()
     img_dr_rgb = cv2.cvtColor(img_dr, cv2.COLOR_BGR2RGB)
     thumb_cal = find_thumb(img_dr_rgb)
@@ -430,7 +422,6 @@ def scan_mant_shop(ctx):
         cal_from = (thumb_cal[0] + thumb_cal[1]) // 2
         cal_dist = 30
         sb_drag(ctx, cal_from, cal_from + cal_dist)
-        trigger_scrollbar(ctx)
         img_dr2 = ctx.ctrl.get_screen()
         img_dr2_rgb = cv2.cvtColor(img_dr2, cv2.COLOR_BGR2RGB)
         thumb_cal2 = find_thumb(img_dr2_rgb)
@@ -441,7 +432,6 @@ def scan_mant_shop(ctx):
                 drag_ratio = cal_dist / actual_move
 
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
     img = ctx.ctrl.get_screen()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = find_thumb(img_rgb)
@@ -570,7 +560,6 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
     clicked_positions = set()
 
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
 
     img = ctx.ctrl.get_screen()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -600,7 +589,6 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
             clicked_positions.add(pos_key)
             log.debug(f"Checked '{item_name}' at y={abs_y:.0f}, remaining={remaining[item_name]}")
 
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if at_bottom(img_rgb):

@@ -87,6 +87,11 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
         )
         if handle_mant_inventory_scan(ctx, current_date):
             return
+        from module.umamusume.scenario.mant.inventory import has_instant_use_items, handle_instant_use_items
+        if has_instant_use_items(ctx):
+            handle_instant_use_items(ctx)
+            ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
+            return
         if not getattr(ctx.cultivate_detail.turn_info, 'mant_coins_read', False):
             is_summer = is_summer_camp_period(current_date)
             is_climax = current_date > 72

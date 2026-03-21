@@ -121,15 +121,8 @@ def sb_drag(ctx, from_y, to_y):
     time.sleep(0.15)
 
 
-def trigger_scrollbar(ctx):
-    y = 475 + random.randint(0, 10)
-    ctx.ctrl.execute_adb_shell("shell input swipe 30 " + str(y) + " 30 " + str(y) + " 100", True)
-    time.sleep(0.15)
-
-
 def scroll_to_top(ctx):
     for _ in range(15):
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if at_top(img_rgb):
@@ -142,7 +135,6 @@ def scroll_to_top(ctx):
 
 def scroll_to_bottom(ctx):
     for _ in range(15):
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if at_bottom(img_rgb):
@@ -370,7 +362,6 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
     drag_ratio = 1.1
 
     scroll_to_top(ctx)
-    trigger_scrollbar(ctx)
     img = ctx.ctrl.get_screen()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = find_thumb(img_rgb)
@@ -381,7 +372,6 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
         thumb_center = (thumb[0] + thumb[1]) // 2
         if thumb[0] > TRACK_TOP:
             sb_drag(ctx, thumb_center, TRACK_TOP)
-            trigger_scrollbar(ctx)
             img = ctx.ctrl.get_screen()
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             thumb = find_thumb(img_rgb)
@@ -393,7 +383,6 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
         shift_cal, conf_cal = find_content_shift(before_cal, after_cal)
         ratio = shift_cal / 5 if (shift_cal > 0 and conf_cal > 0.85) else 14.0
 
-        trigger_scrollbar(ctx)
         img_dr = ctx.ctrl.get_screen()
         img_dr_rgb = cv2.cvtColor(img_dr, cv2.COLOR_BGR2RGB)
         thumb_cal = find_thumb(img_dr_rgb)
@@ -401,7 +390,6 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
             cal_from = (thumb_cal[0] + thumb_cal[1]) // 2
             cal_dist = 30
             sb_drag(ctx, cal_from, cal_from + cal_dist)
-            trigger_scrollbar(ctx)
             img_dr2 = ctx.ctrl.get_screen()
             img_dr2_rgb = cv2.cvtColor(img_dr2, cv2.COLOR_BGR2RGB)
             thumb_cal2 = find_thumb(img_dr2_rgb)
@@ -412,7 +400,6 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
                     drag_ratio = cal_dist / actual_move
 
         scroll_to_top(ctx)
-        trigger_scrollbar(ctx)
         img = ctx.ctrl.get_screen()
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         thumb = find_thumb(img_rgb)
@@ -625,7 +612,6 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
                 pass_bought += prev_count - len(remaining)
                 continue
 
-            trigger_scrollbar(ctx)
             img = ctx.ctrl.get_screen()
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             if at_bottom(img_rgb):
