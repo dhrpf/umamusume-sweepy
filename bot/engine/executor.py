@@ -259,9 +259,17 @@ class Executor:
                             try:
                                 import bot.conn.u2_ctrl as u2c
                                 u2c.INPUT_BLOCKED = True
-                                controller.execute_adb_shell("shell am force-stop com.cygames.umamusume", True)
+                                for attempt in range(3):
+                                    try:
+                                        controller.execute_adb_shell("shell am force-stop com.cygames.umamusume", True)
+                                        break
+                                    except Exception:
+                                        time.sleep(1.0)
                                 time.sleep(1.0)
-                                controller.start_app(manifest.app_package_name, manifest.app_activity_name)
+                                try:
+                                    controller.recover_home_and_reopen()
+                                except Exception:
+                                    controller.start_app(manifest.app_package_name, manifest.app_activity_name)
                                 time.sleep(2.0)
                                 try:
                                     controller.trigger_decision_reset = True

@@ -7,11 +7,36 @@ import bot.base.log as logger
 from bot.recog.ocr import ocr_line
 from bot.recog.image_matcher import image_match
 from module.umamusume.context import UmamusumeContext, log_detected_skill
-from module.umamusume.asset.template import Template, UMAMUSUME_REF_TEMPLATE_PATH, REF_HINT_LEVELS_TEXT
+from module.umamusume.asset.template import (
+    Template, UMAMUSUME_REF_TEMPLATE_PATH, REF_HINT_LEVELS_TEXT,
+    UI_CULTIVATE_EVENT_UMAMUSUME,
+    UI_CULTIVATE_EVENT_SUPPORT_CARD,
+    UI_CULTIVATE_EVENT_SCENARIO,
+)
 from module.umamusume.script.cultivate_task.event.manifest import get_event_choice
 from module.umamusume.script.cultivate_task.parse import parse_cultivate_event, get_canonical_skill_name
 
 log = logger.get_logger(__name__)
+
+EVENT_TEMPLATES = [
+    UI_CULTIVATE_EVENT_UMAMUSUME,
+    UI_CULTIVATE_EVENT_SUPPORT_CARD,
+    UI_CULTIVATE_EVENT_SCENARIO,
+]
+
+
+def is_still_on_event(ctrl):
+    img = ctrl.get_screen()
+    if img is None:
+        return False
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    for tpl in EVENT_TEMPLATES:
+        if image_match(gray, tpl).find_match:
+            return True
+    return False
+
+
+
 
 
 def parse_hint_skill(text):
@@ -278,4 +303,13 @@ def script_cultivate_event(ctx: UmamusumeContext):
         except:
             pass
     if not clicked:
+        if is_still_on_event(ctx.ctrl):
+            log.info(f"no selectors found for '{event_name}', retrying parse")
+            time.sleep(0.5)
+            img_retry = ctx.ctrl.get_screen()
+            if img_retry is not None:
+                _, retry_selectors = parse_cultivate_event(ctx, img_retry)
+                if isinstance(retry_selectors, list) and len(retry_selectors) > 0:
+                    ctx.ctrl.click(int(retry_selectors[0][0]), int(retry_selectors[0][1]), "Event fallback")
+            ctx.cultivate_detail.event_cooldown_until = time.time() + 3.0
         return

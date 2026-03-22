@@ -178,6 +178,11 @@ def serialize_umamusume_task(t):
             attachment['aoharu_config'] = to_jsonable(aoharu) if aoharu is not None else None
         except Exception:
             attachment['aoharu_config'] = None
+        try:
+            mant = getattr(sc, 'mant_config', None) if sc else None
+            attachment['mant_config'] = to_jsonable(mant) if mant is not None else None
+        except Exception:
+            attachment['mant_config'] = None
 
         return attachment
     except Exception:
