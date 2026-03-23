@@ -301,6 +301,14 @@ AILMENT_CURE_MAP = {
 AILMENT_CURE_ALL = "Miracle Cure"
 
 
+def get_incoming_mood(current_turn, lookahead=3):
+    total = 0
+    for data in MANT_FIXED_EVENTS.values():
+        if current_turn <= data["turn"] < current_turn + lookahead:
+            total += data["effect"].get("mood", 0)
+    return total
+
+
 MANT_SHOP_REFRESH_TURNS = [1, 7, 13, 19, 25, 31, 37, 43, 49, 55]
 
 

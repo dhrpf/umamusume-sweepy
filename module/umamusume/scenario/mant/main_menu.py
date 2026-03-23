@@ -159,6 +159,44 @@ def handle_mant_shop_scan(ctx, current_date):
     return True
 
 
+def handle_mant_main_menu(ctx, img, current_date):
+    from module.umamusume.constants.game_constants import is_summer_camp_period
+
+    if handle_mant_inventory_scan(ctx, current_date):
+        return True
+
+    from module.umamusume.scenario.mant.inventory import (
+        has_instant_use_items, handle_instant_use_items, handle_cupcake_use
+    )
+    if has_instant_use_items(ctx):
+        handle_instant_use_items(ctx)
+        ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
+        return True
+
+    if not getattr(ctx.cultivate_detail.turn_info, 'mant_cupcake_checked', False):
+        ctx.cultivate_detail.turn_info.mant_cupcake_checked = True
+        if handle_cupcake_use(ctx):
+            return True
+
+    if not getattr(ctx.cultivate_detail.turn_info, 'mant_coins_read', False):
+        is_summer = is_summer_camp_period(current_date)
+        is_climax = current_date > 72
+        coins = read_shop_coins(img, is_summer, is_climax)
+        ctx.cultivate_detail.turn_info.mant_coins_read = True
+        ctx.cultivate_detail.mant_coins = coins
+        log.info("shop coins: %d", coins)
+
+    if handle_mant_shop_scan(ctx, current_date):
+        return True
+
+    handle_mant_on_sale(img)
+
+    if handle_mant_afflictions(ctx, img):
+        return True
+
+    return False
+
+
 def handle_mant_on_sale(img):
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     sale_result = image_match(img_gray, REF_MANT_ON_SALE)

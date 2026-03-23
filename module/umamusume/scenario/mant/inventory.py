@@ -1016,6 +1016,27 @@ def whistle_loop(ctx, start_date):
         rescan_training(ctx)
 
 
+def handle_cupcake_use(ctx):
+    from bot.conn.fetch import read_mood
+    from module.umamusume.scenario.mant.constants import get_incoming_mood
+
+    mood = read_mood(ctx.current_screen)
+    if mood is None or mood >= 5:
+        return False
+
+    date = getattr(ctx.cultivate_detail.turn_info, 'date', 0)
+    incoming = get_incoming_mood(date, 3)
+    owned = {n: q for n, q in getattr(ctx.cultivate_detail, 'mant_owned_items', [])}
+
+    for name, boost in [('Berry Sweet Cupcake', 2), ('Plain Cupcake', 1)]:
+        if owned.get(name, 0) <= 0 or mood + boost + incoming > 5:
+            continue
+        if use_item_and_update_inventory(ctx, name):
+            ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
+            return True
+    return False
+
+
 def has_instant_use_items(ctx):
     from module.umamusume.persistence import is_buff_used
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])

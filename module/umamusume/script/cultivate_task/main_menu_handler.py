@@ -80,29 +80,8 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
                 delattr(ctx.cultivate_detail, 'manual_purchase_initiated')
 
     if is_mant(ctx):
-        from module.umamusume.scenario.mant.main_menu import (
-            handle_mant_shop_scan, handle_mant_on_sale,
-            handle_mant_afflictions, handle_mant_rival_race,
-            read_shop_coins, handle_mant_inventory_scan
-        )
-        if handle_mant_inventory_scan(ctx, current_date):
-            return
-        from module.umamusume.scenario.mant.inventory import has_instant_use_items, handle_instant_use_items
-        if has_instant_use_items(ctx):
-            handle_instant_use_items(ctx)
-            ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
-            return
-        if not getattr(ctx.cultivate_detail.turn_info, 'mant_coins_read', False):
-            is_summer = is_summer_camp_period(current_date)
-            is_climax = current_date > 72
-            coins = read_shop_coins(img, is_summer, is_climax)
-            ctx.cultivate_detail.turn_info.mant_coins_read = True
-            ctx.cultivate_detail.mant_coins = coins
-            log.info("shop coins: %d", coins)
-        if handle_mant_shop_scan(ctx, current_date):
-            return
-        handle_mant_on_sale(img)
-        if handle_mant_afflictions(ctx, img):
+        from module.umamusume.scenario.mant.main_menu import handle_mant_main_menu
+        if handle_mant_main_menu(ctx, img, current_date):
             return
 
     if not ctx.cultivate_detail.turn_info.parse_main_menu_finish:
@@ -226,6 +205,7 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
         return
 
     if is_mant(ctx):
+        from module.umamusume.scenario.mant.main_menu import handle_mant_rival_race
         handle_mant_rival_race(ctx, img)
 
     if not ctx.cultivate_detail.turn_info.parse_train_info_finish:
