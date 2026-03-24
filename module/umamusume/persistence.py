@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 
 import bot.base.log as logger
 
@@ -14,6 +15,7 @@ PERSIST_FILE = os.path.normpath(PERSIST_FILE)
 MAX_DATAPOINTS = 888
 
 career_cleared_flag = False
+career_data_lock = threading.Lock()
 
 
 def rebuild_percentile_history(score_history):
@@ -30,21 +32,24 @@ def rebuild_percentile_history(score_history):
 def save_career_data(ctx):
     global career_cleared_flag
     try:
-        if career_cleared_flag:
-            career_cleared_flag = False
-            ctx.cultivate_detail.score_history = []
-            ctx.cultivate_detail.percentile_history = []
-            log.info("Career data cleared from memory")
-            return
-        score_history = getattr(ctx.cultivate_detail, 'score_history', [])
-        if not score_history:
-            return
-        scores = list(score_history[-MAX_DATAPOINTS:])
-        data = {
-            'score_history': scores,
-        }
-        with open(PERSISTENCE_FILE, 'w') as f:
-            json.dump(data, f)
+        with career_data_lock:
+            if career_cleared_flag:
+                career_cleared_flag = False
+                ctx.cultivate_detail.score_history = []
+                ctx.cultivate_detail.percentile_history = []
+                log.info("Career data cleared from memory")
+                return
+            score_history = getattr(ctx.cultivate_detail, 'score_history', [])
+            if not score_history:
+                return
+            scores = list(score_history[-MAX_DATAPOINTS:])
+            data = {
+                'score_history': scores,
+            }
+            with open(PERSISTENCE_FILE, 'w') as f:
+                json.dump(data, f)
+                f.flush()
+                os.fsync(f.fileno())
     except Exception as e:
         log.info(f"Failed to save career data: {e}")
 
@@ -71,9 +76,12 @@ def load_career_data(ctx):
 def clear_career_data():
     global career_cleared_flag
     try:
-        if os.path.exists(PERSISTENCE_FILE):
-            os.remove(PERSISTENCE_FILE)
-        career_cleared_flag = True
+        with career_data_lock:
+            with open(PERSISTENCE_FILE, 'w') as f:
+                json.dump({'score_history': []}, f)
+                f.flush()
+                os.fsync(f.fileno())
+            career_cleared_flag = True
         log.info("Career data cleared")
         return True
     except Exception as e:
