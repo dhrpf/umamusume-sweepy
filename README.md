@@ -1,3 +1,8 @@
+
+ok... my Icarus account got banned (the headless bot that hit top 18 club ranking solo)
+
+my main which runs this is still fine tho
+
 # Sweepy — /vg/'s Uma Musume Bot (UAT REHASHED)
 
 ### A umamusume bot that handles all aspects of gameplay including training, races, events, skill purchasing, and starting runs. 
