@@ -679,6 +679,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         ctx.cultivate_detail.turn_info.parse_train_info_finish = True
         
         ctx.cultivate_detail.turn_info.cached_computed_scores = list(computed_scores)
+        ctx.cultivate_detail.turn_info.cached_original_scores = list(original_scores)
 
         history = ctx.cultivate_detail.score_history
         best_score = max(original_scores)

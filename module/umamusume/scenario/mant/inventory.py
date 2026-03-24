@@ -637,6 +637,7 @@ def use_training_item(ctx, item_name, quantity=1):
 INSTANT_USE_ITEMS = [
     'Grilled Carrots',
     'Yummy Cat Food',
+    'Energy Drink MAX EX',
     'Pretty Mirror',
     "Scholar's Hat",
     "Reporter's Binoculars",
@@ -756,10 +757,8 @@ def plan_low_energy_recovery(current_energy, owned_map):
 
 
 def use_item_and_update_inventory(ctx, item_name):
-    log.info(f'[ITEM USE ATTEMPT] {item_name}')
     ok = use_training_item(ctx, item_name, 1)
     if not ok:
-        log.info(f'[ITEM USE ATTEMPT FAILED] {item_name} not found in inventory')
         return False
     close_items_panel(ctx)
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
@@ -769,8 +768,7 @@ def use_item_and_update_inventory(ctx, item_name):
     ctx.cultivate_detail.mant_owned_items = updated
     from module.umamusume.context import log_detected_items
     log_detected_items(updated)
-    log.info(f'[ITEM USED] {item_name}')
-    log.info(f'[INVENTORY] after use: {[(n, q) for n, q in updated]}')
+    log.info(f"used {item_name}")
     return True
 
 
@@ -787,7 +785,7 @@ def handle_training_whistle(ctx):
     if len(score_history) < 16:
         return False
 
-    scores = getattr(ctx.cultivate_detail.turn_info, 'cached_computed_scores', None)
+    scores = getattr(ctx.cultivate_detail.turn_info, 'cached_original_scores', None)
     if not scores or len(scores) != 5:
         return False
 
@@ -895,12 +893,10 @@ def handle_instant_use_items(ctx):
     selected = []
     not_found = []
     for item_name in items_to_use:
-        log.info(f'[INSTANT ITEM USE ATTEMPT] {item_name}')
         if try_click_item_plus_once(ctx, item_name):
             selected.append(item_name)
             time.sleep(0.15)
         else:
-            log.info(f'[INSTANT ITEM USE ATTEMPT FAILED] {item_name} not found in inventory')
             not_found.append(item_name)
 
     if not_found:
@@ -945,8 +941,7 @@ def handle_instant_use_items(ctx):
     from module.umamusume.context import log_detected_items
     log_detected_items(updated)
 
-    for item_name in selected:
-        log.info(f'[ITEM USED] {item_name}')
+    log.info(f"used instant items: {selected}")
 
     return True
 
@@ -965,7 +960,7 @@ def handle_charm(ctx):
     if len(score_history) < 16:
         return False
 
-    scores = getattr(ctx.cultivate_detail.turn_info, 'cached_computed_scores', None)
+    scores = getattr(ctx.cultivate_detail.turn_info, 'cached_original_scores', None)
     if not scores or len(scores) != 5:
         return False
 
@@ -1074,25 +1069,178 @@ def has_instant_use_items(ctx):
     return False
 
 
+MEGAPHONE_TIERS = {
+    'Coaching Megaphone': (1, 4),
+    'Motivating Megaphone': (2, 3),
+    'Empowering Megaphone': (3, 2),
+}
+
+MEGAPHONE_CONFIG_KEYS = {
+    1: 'mega_small_threshold',
+    2: 'mega_medium_threshold',
+    3: 'mega_large_threshold',
+}
+
+TRAINING_TYPE_ANKLET = {
+    1: 'Speed Ankle Weights',
+    2: 'Stamina Ankle Weights',
+    3: 'Power Ankle Weights',
+    4: 'Guts Ankle Weights',
+}
+
+
+def get_best_percentile(ctx):
+    scores = getattr(ctx.cultivate_detail.turn_info, 'cached_original_scores', None)
+    if not scores or len(scores) != 5:
+        return None
+    score_history = getattr(ctx.cultivate_detail, 'score_history', [])
+    if len(score_history) < 16:
+        return None
+    best_score = max(scores)
+    prev = score_history[:-1]
+    below_count = sum(1 for s in prev if s < best_score)
+    return below_count / len(prev) * 100
+
+
+MEGA_STAT_MULT = {1: 1.20, 2: 1.40, 3: 1.60}
+
+
+def count_races_in_window(ctx, duration):
+    current_date = getattr(ctx.cultivate_detail.turn_info, 'date', 0)
+    extra_races = getattr(ctx.cultivate_detail, 'extra_race_list', [])
+    if not extra_races:
+        return 0
+    from module.umamusume.asset.race_data import get_races_for_period
+    count = 0
+    for offset in range(1, duration):
+        future_date = current_date + offset
+        available = get_races_for_period(future_date)
+        if any(r in available for r in extra_races):
+            count += 1
+    return count
+
+
+def handle_megaphone(ctx):
+    mant_cfg = getattr(ctx.task.detail.scenario_config, 'mant_config', None)
+    if mant_cfg is None:
+        return False
+
+    percentile = get_best_percentile(ctx)
+    if percentile is None:
+        return False
+
+    owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+    owned_map = {n: q for n, q in owned}
+
+    active_tier = getattr(ctx.cultivate_detail, 'mant_megaphone_tier', 0)
+    active_turns = getattr(ctx.cultivate_detail, 'mant_megaphone_turns', 0)
+
+    date = getattr(ctx.cultivate_detail.turn_info, 'date', 0)
+    from module.umamusume.constants.game_constants import is_summer_camp_period
+    is_summer = is_summer_camp_period(date)
+    summer_bonus = getattr(mant_cfg, 'mega_summer_bonus', 10)
+    race_penalty = getattr(mant_cfg, 'mega_race_penalty', 5)
+
+    best_mega = None
+    best_tier = 0
+    for name, (tier, duration) in sorted(MEGAPHONE_TIERS.items(), key=lambda x: -x[1][0]):
+        if owned_map.get(name, 0) <= 0:
+            continue
+        cfg_key = MEGAPHONE_CONFIG_KEYS[tier]
+        base_threshold = getattr(mant_cfg, cfg_key, 50)
+
+        threshold = base_threshold
+
+        if active_turns > 0 and active_tier > 0:
+            tier_diff = tier - active_tier
+            if tier_diff <= 0:
+                continue
+            upgrade_bonus = 7 if tier_diff == 1 else 15
+            threshold += upgrade_bonus
+
+        races_in_window = count_races_in_window(ctx, duration)
+        threshold += races_in_window * race_penalty
+
+        if is_summer:
+            threshold -= summer_bonus
+
+        if percentile >= threshold:
+            best_mega = name
+            best_tier = tier
+            break
+
+    if best_mega is None:
+        return False
+
+    _, duration = MEGAPHONE_TIERS[best_mega]
+    ok = use_item_and_update_inventory(ctx, best_mega)
+    if ok:
+        ctx.cultivate_detail.mant_megaphone_tier = best_tier
+        ctx.cultivate_detail.mant_megaphone_turns = duration
+        log.info(f"megaphone active: tier {best_tier} for {duration} turns")
+    return ok
+
+
+def handle_anklet(ctx):
+    mant_cfg = getattr(ctx.task.detail.scenario_config, 'mant_config', None)
+    if mant_cfg is None:
+        return False
+
+    percentile = get_best_percentile(ctx)
+    if percentile is None:
+        return False
+
+    threshold = getattr(mant_cfg, 'training_weights_threshold', 60)
+    if percentile < threshold:
+        return False
+
+    op = getattr(ctx.cultivate_detail.turn_info, 'turn_operation', None)
+    if op is None:
+        return False
+    training_type = getattr(op, 'training_type', None)
+    if training_type is None:
+        return False
+    training_val = training_type.value if hasattr(training_type, 'value') else int(training_type)
+
+    anklet_name = TRAINING_TYPE_ANKLET.get(training_val)
+    if anklet_name is None:
+        return False
+
+    owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+    owned_map = {n: q for n, q in owned}
+    if owned_map.get(anklet_name, 0) <= 0:
+        return False
+
+    return use_item_and_update_inventory(ctx, anklet_name)
+
+
+def tick_megaphone(ctx):
+    active_turns = getattr(ctx.cultivate_detail, 'mant_megaphone_turns', 0)
+    if active_turns > 0:
+        active_turns -= 1
+        ctx.cultivate_detail.mant_megaphone_turns = active_turns
+        if active_turns <= 0:
+            ctx.cultivate_detail.mant_megaphone_tier = 0
+
+
 def item_loop(ctx):
     start_date = getattr(ctx.cultivate_detail.turn_info, 'date', None)
 
     got_charm = has_charm(ctx)
     got_whistle = has_whistle(ctx)
-
-    if not got_charm and not got_whistle:
-        return
+    got_energy = has_energy_recovery(ctx)
 
     if got_charm and got_whistle:
         whistle_loop(ctx, start_date)
         handle_charm(ctx)
-        return
-
-    if got_charm:
+    elif got_charm:
         handle_charm(ctx)
-        return
+    elif got_whistle and got_energy:
+        whistle_loop(ctx, start_date)
 
-    whistle_loop(ctx, start_date)
+    handle_megaphone(ctx)
+    handle_anklet(ctx)
+    tick_megaphone(ctx)
 
 
 def should_skip_fast_path(ctx):
@@ -1107,6 +1255,27 @@ def should_skip_fast_path(ctx):
     return False
 
 
+def handle_energy_drink_max_before_race(ctx):
+    owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+    owned_map = {n: q for n, q in owned}
+    if owned_map.get('Energy Drink MAX', 0) <= 0:
+        return False
+    current_energy = getattr(ctx.cultivate_detail.turn_info, 'cached_energy', None)
+    if current_energy is None:
+        return False
+    if int(current_energy) > 1:
+        return False
+    return use_item_and_update_inventory(ctx, 'Energy Drink MAX')
+
+
+def handle_glow_sticks_before_race(ctx):
+    owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+    owned_map = {n: q for n, q in owned}
+    if owned_map.get('Glow Sticks', 0) <= 0:
+        return False
+    return use_item_and_update_inventory(ctx, 'Glow Sticks')
+
+
 def handle_cleat_before_race(ctx, race_id):
     from module.umamusume.asset.race_data import is_g1_race
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
@@ -1114,21 +1283,14 @@ def handle_cleat_before_race(ctx, race_id):
 
     if is_g1_race(race_id):
         if owned_map.get('Master Cleat Hammer', 0) > 0:
-            log.info(f"[CLEAT] G1 race {race_id} — using Master Cleat Hammer")
             return use_item_and_update_inventory(ctx, 'Master Cleat Hammer')
         elif owned_map.get('Artisan Cleat Hammer', 0) > 0:
-            log.info(f"[CLEAT] G1 race {race_id} — no Master, using Artisan Cleat Hammer")
             return use_item_and_update_inventory(ctx, 'Artisan Cleat Hammer')
-        else:
-            log.info(f"[CLEAT] G1 race {race_id} — no cleat hammers available")
-            return False
+        return False
     else:
         if owned_map.get('Artisan Cleat Hammer', 0) > 0:
-            log.info(f"[CLEAT] race {race_id} — using Artisan Cleat Hammer")
             return use_item_and_update_inventory(ctx, 'Artisan Cleat Hammer')
-        else:
-            log.info(f"[CLEAT] race {race_id} — no Artisan Cleat Hammer available")
-            return False
+        return False
 
 
 def should_skip_race(ctx):
@@ -1142,7 +1304,17 @@ def should_skip_race(ctx):
     if len(pct_hist) < 16 or not pct_hist:
         return False
     last_pct = pct_hist[-1]
-    if last_pct > skip_pct:
-        log.info(f"Skipping optional race: percentile {last_pct:.0f}% > threshold {skip_pct}%")
+
+    active_tier = getattr(ctx.cultivate_detail, 'mant_megaphone_tier', 0)
+    active_turns = getattr(ctx.cultivate_detail, 'mant_megaphone_turns', 0)
+    effective_skip_pct = skip_pct
+    if active_turns > 0 and active_tier > 0:
+        mega_mult = MEGA_STAT_MULT.get(active_tier, 1.0)
+        bonus_pct = (mega_mult - 1.0) * 100
+        effective_skip_pct = max(0, skip_pct - bonus_pct)
+
+    if last_pct > effective_skip_pct:
+        log.info(f"skipping optional race: percentile {last_pct:.0f}% > threshold {effective_skip_pct:.0f}%"
+                 + (f" (megaphone t{active_tier} active)" if active_tier > 0 else ""))
         return True
     return False

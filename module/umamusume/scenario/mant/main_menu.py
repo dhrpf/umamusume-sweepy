@@ -120,16 +120,31 @@ def handle_mant_shop_scan(ctx, current_date):
             log.info(f"[SHOP BUY] buff filter removed: {set(pre_buff_targets) - set(targets)}")
 
         active_ailments = getattr(ctx.cultivate_detail, 'mant_afflictions', [])
-        cure_always_ok = {"Rich Hand Cream", AILMENT_CURE_ALL}
+        owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+        owned_map = {n: q for n, q in owned}
+        has_miracle_cure = owned_map.get(AILMENT_CURE_ALL, 0) > 0
+
+        all_cures = set(AILMENT_CURE_MAP.values())
         needed_cures = set()
         for ailment, cure in AILMENT_CURE_MAP.items():
             for active in active_ailments:
                 if ailment.lower() in active.lower():
                     needed_cures.add(cure)
-        all_cures = set(AILMENT_CURE_MAP.values())
-        conditional_cures = all_cures - cure_always_ok
+
         pre_cure_targets = targets.copy()
-        targets = [t for t in targets if t not in conditional_cures or t in needed_cures]
+        filtered = []
+        for t in targets:
+            if t in all_cures:
+                if has_miracle_cure:
+                    continue
+                if owned_map.get(t, 0) > 0:
+                    continue
+                if t not in needed_cures and t != "Rich Hand Cream":
+                    continue
+            if t == AILMENT_CURE_ALL and has_miracle_cure:
+                continue
+            filtered.append(t)
+        targets = filtered
         if len(pre_cure_targets) != len(targets):
             log.info(f"[SHOP BUY] cure filter removed: {set(pre_cure_targets) - set(targets)}")
         log.info(f"[SHOP BUY] final targets: {targets}")
@@ -200,6 +215,40 @@ def handle_mant_on_sale(img):
         log.info("shop on sale")
 
 
+def try_use_cure_items(ctx):
+    from module.umamusume.scenario.mant.constants import AILMENT_CURE_MAP, AILMENT_CURE_ALL
+    from module.umamusume.scenario.mant.inventory import use_item_and_update_inventory
+
+    afflictions = getattr(ctx.cultivate_detail, 'mant_afflictions', [])
+    if not afflictions:
+        return False
+
+    owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+    owned_map = {n: q for n, q in owned}
+
+    if owned_map.get(AILMENT_CURE_ALL, 0) > 0:
+        log.info(f"using {AILMENT_CURE_ALL} for {afflictions}")
+        if use_item_and_update_inventory(ctx, AILMENT_CURE_ALL):
+            ctx.cultivate_detail.mant_afflictions = []
+            return True
+
+    used_any = False
+    for ailment in list(afflictions):
+        for ailment_name, cure_name in AILMENT_CURE_MAP.items():
+            if ailment_name.lower() not in ailment.lower():
+                continue
+            if owned_map.get(cure_name, 0) > 0:
+                log.info(f"using {cure_name} for {ailment}")
+                if use_item_and_update_inventory(ctx, cure_name):
+                    owned_map[cure_name] = max(0, owned_map.get(cure_name, 0) - 1)
+                    afflictions.remove(ailment)
+                    used_any = True
+            break
+
+    ctx.cultivate_detail.mant_afflictions = afflictions
+    return used_any
+
+
 def handle_mant_afflictions(ctx, img):
     from module.umamusume.constants.game_constants import is_summer_camp_period
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -218,6 +267,10 @@ def handle_mant_afflictions(ctx, img):
         ctx.cultivate_detail.mant_afflictions = afflictions
         ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
         return True
+    if ctx.cultivate_detail.mant_afflictions:
+        if try_use_cure_items(ctx):
+            ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
+            return True
     return False
 
 
