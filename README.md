@@ -362,3 +362,5 @@ Install or reinstall Visual C++ Redistributable:
 <img width="190" height="140" alt="image" src="https://github.com/user-attachments/assets/3bdd80ec-cb77-4637-9f61-e3f8fab8d85d" />
 <img width="235" height="226" alt="image" src="https://github.com/user-attachments/assets/ffb9960a-347d-4d7f-8c0d-57ff96f72b6a" />
 <img width="317" height="317" alt="image" src="https://github.com/user-attachments/assets/61c4c0dd-85bc-4517-84c1-021fcf5d47fa" />
+<img width="428" height="605" alt="image" src="https://github.com/user-attachments/assets/07ca8a7f-3f89-4667-a5c6-d50ab5b10fe3" />
+
