@@ -137,17 +137,13 @@ def handle_mant_shop_scan(ctx, current_date):
             bought, held_items = buy_shop_items(ctx, targets, items_list, ratio, drag_ratio, first_item_gy)
             if bought:
                 from module.umamusume.context import log_detected_items
-                for t in targets:
-                    if t in held_items:
-                        log.info(f"[ITEM BOUGHT] {t}")
-                if held_items:
-                    existing = dict(getattr(ctx.cultivate_detail, 'mant_owned_items', []))
-                    for name, qty in held_items.items():
-                        existing[name] = qty
-                    updated = [(n, q) for n, q in existing.items() if q > 0]
-                    ctx.cultivate_detail.mant_owned_items = updated
-                log.info(f"[INVENTORY] after purchase: {[(n, q) for n, q in ctx.cultivate_detail.mant_owned_items]}")
-                log_detected_items(ctx.cultivate_detail.mant_owned_items)
+                existing = dict(getattr(ctx.cultivate_detail, 'mant_owned_items', []))
+                for name, qty in held_items.items():
+                    existing[name] = qty
+                updated = [(n, q) for n, q in existing.items() if q > 0]
+                ctx.cultivate_detail.mant_owned_items = updated
+                log.info(f"inventory post purchase: {updated}")
+                log_detected_items(updated)
 
     if not bought:
         from module.umamusume.scenario.mant.shop import BACK_BTN_X, BACK_BTN_Y
@@ -241,4 +237,6 @@ def handle_mant_rival_race(ctx, img):
     px = img_rgb[1089, rival_x]
     if color_match(px, RIVAL_COLOR_1, RIVAL_TOLERANCE) or color_match(px, RIVAL_COLOR_2, RIVAL_TOLERANCE):
         log.info("rival race detected")
+        ctx.cultivate_detail.turn_info.turn_operation = None
+        ctx.cultivate_detail.turn_info.parse_train_info_finish = False
     ctx.cultivate_detail.turn_info.mant_rival_checked = True

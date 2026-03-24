@@ -104,6 +104,7 @@ TITLE = [
      "Exchange Complete", #51
     "Career Complete", #52
     "Training Items", #53
+    "Active Item Effects", #54
 ]
 
 
@@ -195,6 +196,9 @@ def script_info(ctx: UmamusumeContext):
             ctx.ctrl.click(383, 840, "new day")
         if title_text == TITLE[0]: #race details
             ctx.ctrl.click_by_point(CULTIVATE_GOAL_RACE_INTER_3)
+            time.sleep(0.5)
+        if title_text == TITLE[54]:
+            ctx.ctrl.click_by_point(ESCAPE)
             time.sleep(0.5)
         if title_text == TITLE[1]:  # "Rest & Outing Confirmation"
             log.info("Handling Rest & Outing Confirmation")

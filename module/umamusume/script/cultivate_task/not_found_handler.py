@@ -1,5 +1,6 @@
 import cv2
 import random
+import time
 
 import bot.base.log as logger
 from bot.recog.ocr import ocr_line
@@ -13,10 +14,27 @@ from module.umamusume.asset.point import (
 log = logger.get_logger(__name__)
 
 
+def has_home_coin(ctx):
+    try:
+        img = ctx.current_screen
+        if img is None:
+            return False
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        from module.umamusume.asset.template import REF_HOME_COIN
+        coin_match = image_match(img_gray, REF_HOME_COIN)
+        return coin_match.find_match
+    except Exception:
+        return False
+
+
 def script_not_found_ui(ctx: UmamusumeContext):
     if ctx.current_screen is not None:
         log.debug(f"NOT_FOUND_UI - Screen shape: {ctx.current_screen.shape}")
-        
+
+        if has_home_coin(ctx):
+            return
+
         try:
             from module.umamusume.asset.template import UI_CULTIVATE_RACE_LIST_2
             img_gray_full = getattr(ctx, 'current_screen_gray', None)

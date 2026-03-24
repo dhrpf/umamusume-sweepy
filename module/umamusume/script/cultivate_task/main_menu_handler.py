@@ -54,12 +54,11 @@ def get_medic(ctx, summer=False):
 def script_cultivate_main_menu(ctx: UmamusumeContext):
     img = ctx.current_screen
     current_date = parse_date(img, ctx)
-    if current_date == -1:
-        log.warning("Failed to parse date")
-        return
     import bot.conn.u2_ctrl as u2c
     u2c.IN_CAREER_RUN = True
-    
+    if current_date == -1:
+        current_date = -(len(ctx.cultivate_detail.turn_info_history) + 1)
+
     if ctx.cultivate_detail.turn_info is None or current_date != ctx.cultivate_detail.turn_info.date:
         if ctx.cultivate_detail.turn_info is not None:
             ctx.cultivate_detail.turn_info_history.append(ctx.cultivate_detail.turn_info)
@@ -221,16 +220,12 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
             if energy == 0:
                 time.sleep(0.15)
                 energy = read_energy()
-        mant_skip = False
-        if is_mant(ctx):
-            from module.umamusume.scenario.mant.inventory import should_skip_fast_path
-            mant_skip = should_skip_fast_path(ctx)
-        if energy <= limit and not mant_skip and is_mant(ctx) and energy < 5:
+        if is_mant(ctx) and energy <= limit:
             ctx.cultivate_detail.turn_info.cached_energy = energy
-            from module.umamusume.scenario.mant.inventory import handle_low_energy_recovery
-            if handle_low_energy_recovery(ctx):
-                return
-        if energy <= limit and not mant_skip:
+            from module.umamusume.scenario.mant.inventory import handle_energy_recovery
+            if handle_energy_recovery(ctx):
+                energy = read_energy()
+        if energy <= limit:
             if should_use_pal_outing_simple(ctx):
                 ctx.ctrl.click_by_point(get_trip(ctx))
             else:

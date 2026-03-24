@@ -234,6 +234,10 @@ def parse_date(img, ctx: UmamusumeContext) -> int:
                 year_text = text
 
         if year_text == "":
+            VALID_YEAR_KEYWORDS = ('junior', 'classic', 'senior', 'finals', 'finale')
+            date_lower = date_text.lower()
+            if not any(kw in date_lower for kw in VALID_YEAR_KEYWORDS):
+                return -1
             year_text = find_similar_text(date_text, DATE_YEAR)
             log.info(f"Similar text found: '{year_text}'")
 
@@ -316,6 +320,10 @@ def parse_date(img, ctx: UmamusumeContext) -> int:
                 year_text = text
 
         if year_text == "":
+            VALID_YEAR_KEYWORDS = ('junior', 'classic', 'senior', 'finals', 'finale')
+            date_lower = date_text.lower()
+            if not any(kw in date_lower for kw in VALID_YEAR_KEYWORDS):
+                return -1
             year_text = find_similar_text(date_text, DATE_YEAR)
             log.info(f"URA Similar text found: '{year_text}'")
 
@@ -677,7 +685,7 @@ def parse_cultivate_event(ctx: UmamusumeContext, img) -> tuple[str, list[int]]:
             break
     
     if len(event_selector_list) == 0:
-        log.warning(f"REF_SELECTOR template failed for event '{event_name}', trying individual dialogue templates")
+        log.debug(f"REF_SELECTOR template missed for '{event_name}', using dialogue templates")
         
         from module.umamusume.asset.template import Template, UMAMUSUME_REF_TEMPLATE_PATH
         dialogue_templates = []

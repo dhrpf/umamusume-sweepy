@@ -25,6 +25,18 @@ from module.umamusume.script.cultivate_task.parse import parse_factor
 log = logger.get_logger(__name__)
 
 
+def is_home_screen(ctx):
+    try:
+        img = ctx.current_screen
+        if img is None:
+            return False
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        from module.umamusume.asset.template import REF_HOME_COIN
+        return image_match(img_gray, REF_HOME_COIN).find_match
+    except Exception:
+        return False
+
+
 def script_main_menu(ctx: UmamusumeContext):
     if ctx.cultivate_detail.cultivate_finish:
         import bot.conn.u2_ctrl as u2c
@@ -40,6 +52,26 @@ def script_main_menu(ctx: UmamusumeContext):
         else:
             ctx.task.end_task(TaskStatus.TASK_STATUS_SUCCESS, EndTaskReason.COMPLETE)
             return
+
+    if is_home_screen(ctx):
+        current_date = getattr(ctx.cultivate_detail.turn_info, 'date', 0) if ctx.cultivate_detail.turn_info else 0
+        if current_date > 0:
+            log.info(f"home screen post career date={current_date}")
+            import bot.conn.u2_ctrl as u2c
+            u2c.IN_CAREER_RUN = False
+            ctx.cultivate_detail.cultivate_finish = True
+            mode_name = getattr(ctx.task.task_execute_mode, "name", None)
+            if mode_name == "TASK_EXECUTE_MODE_FULL_AUTO":
+                log.info("full auto reset")
+                ctx.cultivate_detail.cultivate_finish = False
+                ctx.cultivate_detail.turn_info = None
+                ctx.cultivate_detail.turn_info_history = []
+                clear_detected_skills()
+                return
+            else:
+                ctx.task.end_task(TaskStatus.TASK_STATUS_SUCCESS, EndTaskReason.COMPLETE)
+                return
+
     ctx.ctrl.click_by_point(TO_CULTIVATE_SCENARIO_CHOOSE)
 
 

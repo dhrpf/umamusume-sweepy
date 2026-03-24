@@ -371,10 +371,11 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
             thumb_center = (thumb[0] + thumb[1]) // 2 if thumb else TRACK_TOP + thumb_h // 2
 
         before_cal = img
-        sb_drag(ctx, thumb_center, thumb_center + 5)
+        cal_px = 30
+        sb_drag(ctx, thumb_center, thumb_center + cal_px)
         after_cal = ctx.ctrl.get_screen()
         shift_cal, conf_cal = find_content_shift(before_cal, after_cal)
-        ratio = shift_cal / 5 if (shift_cal > 0 and conf_cal > 0.85) else 14.0
+        ratio = shift_cal / cal_px if (shift_cal > 0 and conf_cal > 0.85) else 14.0
 
         img_dr = ctx.ctrl.get_screen()
         img_dr_rgb = cv2.cvtColor(img_dr, cv2.COLOR_BGR2RGB)

@@ -410,10 +410,11 @@ def scan_mant_shop(ctx):
         thumb_center = (thumb[0] + thumb[1]) // 2 if thumb else TRACK_TOP + thumb_h // 2
 
     before_cal = img
-    sb_drag(ctx, thumb_center, thumb_center + 5)
+    cal_px = 30
+    sb_drag(ctx, thumb_center, thumb_center + cal_px)
     after_cal = ctx.ctrl.get_screen()
     shift_cal, conf_cal = find_content_shift(before_cal, after_cal)
-    ratio = shift_cal / 5 if (shift_cal > 0 and conf_cal > 0.85) else 14.0
+    ratio = shift_cal / cal_px if (shift_cal > 0 and conf_cal > 0.85) else 14.0
 
     img_dr = ctx.ctrl.get_screen()
     img_dr_rgb = cv2.cvtColor(img_dr, cv2.COLOR_BGR2RGB)
@@ -499,8 +500,41 @@ def scan_mant_shop(ctx):
             for key, conf, abs_y in hits:
                 all_detections.append((key, conf, fi, abs_y))
 
+    time.sleep(0.2)
+    for extra_pass in range(20):
+        extra_img = ctx.ctrl.get_screen()
+        if extra_img is None:
+            break
+        extra_rgb = cv2.cvtColor(extra_img, cv2.COLOR_BGR2RGB)
+        if at_bottom(extra_rgb):
+            if not content_same(prev_frame, extra_img):
+                captured_frames[frame_idx] = extra_img.copy()
+                hits, _ = classify_items_in_frame(extra_img)
+                for key, conf, abs_y in hits:
+                    all_detections.append((key, conf, frame_idx, abs_y))
+                frame_idx += 1
+            break
+        extra_thumb = find_thumb(extra_rgb)
+        if extra_thumb is None:
+            break
+        cursor = (extra_thumb[0] + extra_thumb[1]) // 2
+        step = max((extra_thumb[1] - extra_thumb[0]) // 2, 15)
+        next_y = min(TRACK_BOT, cursor + step)
+        if next_y <= cursor:
+            break
+        sb_drag(ctx, cursor, next_y)
+        time.sleep(0.15)
+        after_extra = ctx.ctrl.get_screen()
+        if after_extra is not None and not content_same(prev_frame, after_extra):
+            captured_frames[frame_idx] = after_extra.copy()
+            hits, _ = classify_items_in_frame(after_extra)
+            for key, conf, abs_y in hits:
+                all_detections.append((key, conf, frame_idx, abs_y))
+            prev_frame = after_extra
+            frame_idx += 1
+
     items_list = dedup_detections(all_detections, captured_frames)
-    log.info("shop items: %s", [(n, round(gy)) for n, _, gy in items_list])
+    log.info("shop items %d: %s", len(items_list), [(n, round(gy)) for n, _, gy in items_list])
 
     try:
         last_frame_idx = max(captured_frames.keys())
@@ -667,13 +701,13 @@ def scan_exchange_complete(ctx):
     from module.umamusume.scenario.mant.inventory import (
         inv_find_thumb, inv_at_bottom, sb_drag, INV_TRACK_TOP, INV_TRACK_BOT
     )
-    held_items = {}
+    detected_items = {}
 
     frame = ctx.ctrl.get_screen()
     items = classify_exchange_items(frame)
     for name, held, qty, y in items:
-        if held and name not in held_items:
-            held_items[name] = max(qty, 1)
+        if name not in detected_items:
+            detected_items[name] = max(qty, 1)
 
     img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     thumb = inv_find_thumb(img_rgb)
@@ -690,8 +724,8 @@ def scan_exchange_complete(ctx):
             frame = ctx.ctrl.get_screen()
             items = classify_exchange_items(frame)
             for name, held, qty, y in items:
-                if held and name not in held_items:
-                    held_items[name] = max(qty, 1)
+                if name not in detected_items:
+                    detected_items[name] = max(qty, 1)
 
             img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if inv_at_bottom(img_rgb):
@@ -700,8 +734,8 @@ def scan_exchange_complete(ctx):
             if not thumb:
                 break
 
-    log.info(f"[EXCHANGE SCAN] held items: {held_items}")
-    return held_items
+    log.info(f"exchange scan: {detected_items}")
+    return detected_items
 
 
 def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_gy):

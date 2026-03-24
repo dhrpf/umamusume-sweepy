@@ -350,10 +350,11 @@ def scan_inventory(ctx, stop_when_found=None):
     start_y = thumb_center if thumb else INV_TRACK_TOP + thumb_h // 2 + 5
 
     before_cal = img
-    sb_drag(ctx, thumb_center, thumb_center + 5)
+    cal_px = 30
+    sb_drag(ctx, thumb_center, thumb_center + cal_px)
     after_cal = ctx.ctrl.get_screen()
     shift_cal, conf_cal = inv_find_content_shift(before_cal, after_cal)
-    ratio = shift_cal / 5 if (shift_cal > 0 and conf_cal > 0.85) else 14.0
+    ratio = shift_cal / cal_px if (shift_cal > 0 and conf_cal > 0.85) else 14.0
 
     scroll_to_top(ctx)
     img = ctx.ctrl.get_screen()
@@ -825,29 +826,47 @@ def handle_energy_item(ctx):
     return use_item_and_update_inventory(ctx, item_name)
 
 
-def handle_low_energy_recovery(ctx):
+def handle_energy_recovery(ctx):
     current_energy = getattr(ctx.cultivate_detail.turn_info, 'cached_energy', None)
     if current_energy is None:
         return False
     current_energy = int(current_energy)
-    if current_energy >= LOW_ENERGY_THRESHOLD:
-        return False
+
+    limit = getattr(ctx.cultivate_detail, 'rest_threshold',
+                    getattr(ctx.cultivate_detail, 'rest_treshold', 48))
 
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
-    plan = plan_low_energy_recovery(current_energy, owned_map)
-    if not plan:
+
+    available = []
+    for item_name, raw_energy in sorted(ENERGY_ITEMS.items(), key=lambda x: x[1], reverse=True):
+        qty = owned_map.get(item_name, 0)
+        if qty > 0:
+            available.append((item_name, raw_energy, qty))
+
+    if not available:
         return False
 
-    log.info(f"[LOW ENERGY RECOVERY] energy={current_energy}%, plan={plan}")
+    energy = current_energy
     used_any = False
-    for item_name, quantity in plan:
-        for _ in range(quantity):
-            ok = use_item_and_update_inventory(ctx, item_name)
-            if ok:
-                used_any = True
-            else:
+    for item_name, raw_energy, qty in available:
+        while qty > 0 and energy <= limit:
+            if energy + raw_energy > MAX_ENERGY:
                 break
+            ok = use_item_and_update_inventory(ctx, item_name)
+            if not ok:
+                break
+            energy += raw_energy
+            qty -= 1
+            used_any = True
+        if energy > limit:
+            break
+
+    if not used_any:
+        smallest = available[-1]
+        ok = use_item_and_update_inventory(ctx, smallest[0])
+        if ok:
+            used_any = True
 
     if used_any:
         ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
@@ -928,7 +947,6 @@ def handle_instant_use_items(ctx):
 
     for item_name in selected:
         log.info(f'[ITEM USED] {item_name}')
-    log.info(f'[INVENTORY] after instant use: {[(n, q) for n, q in updated]}')
 
     return True
 
@@ -958,12 +976,15 @@ def handle_charm(ctx):
     below_count = sum(1 for s in prev if s < best_score)
     percentile = below_count / len(prev) * 100
 
-    if percentile <= mant_cfg.charm_threshold:
+    charm_threshold = getattr(mant_cfg, 'charm_threshold', 80)
+
+    if percentile <= charm_threshold:
         return False
 
     til = ctx.cultivate_detail.turn_info.training_info_list[best_idx]
     fr = int(getattr(til, 'failure_rate', 0))
-    if fr < mant_cfg.charm_failure_rate:
+    charm_failure_rate = getattr(mant_cfg, 'charm_failure_rate', 10)
+    if fr < charm_failure_rate:
         return False
 
     return use_item_and_update_inventory(ctx, 'Good-Luck Charm')
@@ -1028,8 +1049,11 @@ def handle_cupcake_use(ctx):
     incoming = get_incoming_mood(date, 3)
     owned = {n: q for n, q in getattr(ctx.cultivate_detail, 'mant_owned_items', [])}
 
+
     for name, boost in [('Berry Sweet Cupcake', 2), ('Plain Cupcake', 1)]:
-        if owned.get(name, 0) <= 0 or mood + boost + incoming > 5:
+        if owned.get(name, 0) <= 0:
+            continue
+        if mood + boost + incoming > 5:
             continue
         if use_item_and_update_inventory(ctx, name):
             ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
@@ -1052,36 +1076,11 @@ def has_instant_use_items(ctx):
 
 def item_loop(ctx):
     start_date = getattr(ctx.cultivate_detail.turn_info, 'date', None)
-    current_energy = getattr(ctx.cultivate_detail.turn_info, 'cached_energy', 0)
-    if current_energy is None:
-        current_energy = 0
-    current_energy = int(current_energy)
 
-    got_recovery = has_energy_recovery(ctx)
     got_charm = has_charm(ctx)
     got_whistle = has_whistle(ctx)
 
-    limit = getattr(ctx.cultivate_detail, 'rest_threshold',
-                    getattr(ctx.cultivate_detail, 'rest_treshold', 48))
-    energy_low = current_energy <= limit
-
-    if not got_recovery and not got_charm and energy_low:
-        log.info(f"Skipping items: low energy ({current_energy}), no recovery, no charm")
-        return
-
-    if got_recovery and got_charm:
-        charm_used = handle_charm(ctx)
-        if charm_used:
-            handle_energy_item(ctx)
-            return
-        handle_energy_item(ctx)
-        whistle_loop(ctx, start_date)
-        handle_charm(ctx)
-        return
-
-    if got_recovery:
-        handle_energy_item(ctx)
-        whistle_loop(ctx, start_date)
+    if not got_charm and not got_whistle:
         return
 
     if got_charm and got_whistle:
@@ -1099,9 +1098,10 @@ def item_loop(ctx):
 def should_skip_fast_path(ctx):
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
-    if owned_map.get(CHARM_ITEM, 0) > 0:
-        return True
+    has_charm_item = owned_map.get(CHARM_ITEM, 0) > 0
     energy_count = sum(owned_map.get(item, 0) for item in ENERGY_RECOVERY_ITEMS)
+    if has_charm_item:
+        return True
     if energy_count >= ENERGY_ITEM_SKIP_FAST_PATH_THRESHOLD:
         return True
     return False
