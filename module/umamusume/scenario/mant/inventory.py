@@ -28,7 +28,7 @@ INV_CONTENT_X2 = 640
 SCREEN_WIDTH = 720
 OCR_X1 = 60
 OCR_X2 = 560
-OCR_Y1 = 90
+OCR_Y1 = 50
 OCR_Y2 = 1080
 
 
@@ -328,15 +328,105 @@ def dedup_names(all_detections, captured_frames):
 
 def scan_inventory(ctx, stop_when_found=None):
     scroll_to_top(ctx)
-
+    time.sleep(0.3)
     img = ctx.ctrl.get_screen()
+    if img is None:
+        return []
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = inv_find_thumb(img_rgb)
 
     if thumb is None:
         results = classify_with_qty(img)
-        owned = [(name, qty) for name, score, y, qty in results]
+        owned = [(name, qty) for name, score, y, qty in results if 130 < y < 1030]
         return owned
+
+    thumb_h = thumb[1] - thumb[0]
+    thumb_center = (thumb[0] + thumb[1]) // 2
+    if thumb[0] > INV_TRACK_TOP + 5:
+        sb_drag(ctx, thumb_center, INV_TRACK_TOP)
+        time.sleep(0.25)
+        img = ctx.ctrl.get_screen()
+        if img is not None:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            thumb = inv_find_thumb(img_rgb)
+            thumb_center = (thumb[0] + thumb[1]) // 2 if thumb else INV_TRACK_TOP + thumb_h // 2
+
+    before_cal = img
+    cal_px = 30
+    sb_drag(ctx, thumb_center, thumb_center + cal_px)
+    time.sleep(0.25)
+    after_cal = ctx.ctrl.get_screen()
+    shift_cal, conf_cal = (0, 0)
+    if after_cal is not None:
+        shift_cal, conf_cal = inv_find_content_shift(before_cal, after_cal)
+    ratio = shift_cal / cal_px if (shift_cal > 0 and conf_cal > 0.85) else 14.0
+
+    scroll_to_top(ctx)
+    time.sleep(0.3)
+    img = ctx.ctrl.get_screen()
+    if img is None:
+        return []
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    thumb = inv_find_thumb(img_rgb)
+    start_y = (thumb[0] + thumb[1]) // 2 if thumb else INV_TRACK_TOP + thumb_h // 2 + 5
+
+    content_h = INV_CONTENT_BOT - INV_CONTENT_TOP
+    track_len = INV_TRACK_BOT - INV_TRACK_TOP
+    total_content = track_len * ratio + content_h
+    desired_overlap = 160
+    desired_shift = content_h - desired_overlap
+    est_frames = max(2, int(total_content / desired_shift))
+    swipe_dur = max(5000, min(25000, int(est_frames * 600)))
+
+    scan_x_end = _gauss_scan_x()
+    swipe_cmd = f"shell input swipe {SB_X} {start_y} {scan_x_end} {INV_TRACK_BOT} {swipe_dur}"
+    proc = ctx.ctrl.execute_adb_shell(swipe_cmd, False)
+    time.sleep(0.3)
+
+    item_qtys = {}
+    prev_frame = img
+    results_start = classify_with_qty(img)
+    for name, score, y, qty in results_start:
+        if 130 < y < 1030:
+            if name not in item_qtys or qty > item_qtys[name]:
+                item_qtys[name] = qty
+
+    scan_deadline = time.time() + 30
+
+    while ctx.task.running() and time.time() < scan_deadline:
+        time.sleep(0.06)
+        curr = ctx.ctrl.get_screen()
+        if curr is None:
+            continue
+        prev_frame = curr
+        results = classify_with_qty(curr)
+        for name, score, y, qty in results:
+            if 130 < y < 1030:
+                if name not in item_qtys or qty > item_qtys[name]:
+                    item_qtys[name] = qty
+        if stop_when_found and any(n == stop_when_found for n, _, _, _ in results):
+            break
+        if proc.poll() is not None:
+            break
+
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+
+    time.sleep(0.15)
+    final = ctx.ctrl.get_screen()
+    if final is not None and not inv_content_same(prev_frame, final):
+        results = classify_with_qty(final)
+        for name, score, y, qty in results:
+            if 130 < y < 1030:
+                if name not in item_qtys or qty > item_qtys[name]:
+                    item_qtys[name] = qty
+
+    owned = [(name, qty) for name, qty in item_qtys.items()]
+    owned.sort(key=lambda x: x[0])
+    scroll_to_top(ctx)
+    return owned
 
     thumb_h = thumb[1] - thumb[0]
     thumb_center = (thumb[0] + thumb[1]) // 2
