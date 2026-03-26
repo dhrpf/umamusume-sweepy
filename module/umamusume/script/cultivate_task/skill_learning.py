@@ -305,6 +305,7 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
         ctx.cultivate_detail.manual_purchase_completed):
         log.info("Manual purchase completed - returning to cultivate finish UI")
         ctx.cultivate_detail.learn_skill_done = True
+        ctx.cultivate_detail.turn_info.turn_learn_skill_done = True
         ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_FINISH)
         return
         
@@ -312,12 +313,13 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
         log.info("Manual purchase mode enabled - returning to cultivate finish UI")
         ctx.cultivate_detail.manual_purchase_completed = True
         ctx.cultivate_detail.learn_skill_done = True
+        ctx.cultivate_detail.turn_info.turn_learn_skill_done = True
         ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_FINISH)
         return
         
     if ctx.cultivate_detail.learn_skill_done:
         log.info("Skills already learned and confirmed - exiting skill learning")
-        log.debug(f"learn_skill_done flag was set to True - checking where this happened")
+        ctx.cultivate_detail.turn_info.turn_learn_skill_done = True
         ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_FINISH)
         return
     learn_skill_list: list[list[str]]
@@ -474,6 +476,7 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
 
         if early_exit:
             ctx.cultivate_detail.learn_skill_done = True
+            ctx.cultivate_detail.turn_info.turn_learn_skill_done = True
             ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_FINISH)
             return
     else:
@@ -573,6 +576,7 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
 
     if _manual_purchase_confirmed():
         ctx.cultivate_detail.learn_skill_done = True
+        ctx.cultivate_detail.turn_info.turn_learn_skill_done = True
         ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_FINISH)
         return
 
@@ -630,6 +634,7 @@ def script_cultivate_learn_skill(ctx: UmamusumeContext):
 
     if _manual_purchase_confirmed():
         ctx.cultivate_detail.learn_skill_done = True
+        ctx.cultivate_detail.turn_info.turn_learn_skill_done = True
         ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_FINISH)
         return
 
