@@ -84,7 +84,7 @@ def clear_career_data():
     try:
         with career_data_lock:
             with open(PERSISTENCE_FILE, 'w') as f:
-                json.dump({'score_history': []}, f)
+                json.dump({'score_history': [], 'stat_only_history': []}, f)
                 f.flush()
                 os.fsync(f.fileno())
             career_cleared_flag = True
