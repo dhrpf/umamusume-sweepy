@@ -43,8 +43,11 @@ def save_career_data(ctx):
             if not score_history:
                 return
             scores = list(score_history[-MAX_DATAPOINTS:])
+            stat_only_history = getattr(ctx.cultivate_detail, 'stat_only_history', [])
+            stat_only = list(stat_only_history[-MAX_DATAPOINTS:])
             data = {
                 'score_history': scores,
+                'stat_only_history': stat_only,
             }
             with open(PERSISTENCE_FILE, 'w') as f:
                 json.dump(data, f)
@@ -61,10 +64,13 @@ def load_career_data(ctx):
         with open(PERSISTENCE_FILE, 'r') as f:
             data = json.load(f)
         score_history = data.get('score_history', [])
+        stat_only_history = data.get('stat_only_history', [])
         if not score_history:
             return False
         scores = list(score_history[-MAX_DATAPOINTS:])
+        stat_only = list(stat_only_history[-MAX_DATAPOINTS:])
         ctx.cultivate_detail.score_history = scores
+        ctx.cultivate_detail.stat_only_history = stat_only
         ctx.cultivate_detail.percentile_history = rebuild_percentile_history(scores)
         log.info(f"Restored career data: {len(scores)} datapoints")
         return True

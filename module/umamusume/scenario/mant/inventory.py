@@ -1092,6 +1092,21 @@ def get_best_percentile(ctx):
     return below_count / len(prev) * 100
 
 
+def get_stat_only_percentile(ctx):
+    scores = getattr(ctx.cultivate_detail.turn_info, 'cached_original_scores', None)
+    if not scores or len(scores) != 5:
+        return None
+    stat_only_history = getattr(ctx.cultivate_detail, 'stat_only_history', [])
+    if len(stat_only_history) < 16:
+        return None
+    best_score = getattr(ctx.cultivate_detail.turn_info, 'cached_stat_only_score', None)
+    if best_score is None:
+        return None
+    prev = stat_only_history[:-1]
+    below_count = sum(1 for s in prev if s < best_score)
+    return below_count / len(prev) * 100
+
+
 MEGA_STAT_MULT = {1: 1.20, 2: 1.40, 3: 1.60}
 
 
@@ -1170,7 +1185,7 @@ def handle_megaphone(ctx):
     if handle_megaphone_endgame(ctx):
         return True
 
-    percentile = get_best_percentile(ctx)
+    percentile = get_stat_only_percentile(ctx)
     if percentile is None:
         return False
 
@@ -1244,7 +1259,7 @@ def handle_anklet(ctx):
     if mant_cfg is None:
         return False
 
-    percentile = get_best_percentile(ctx)
+    percentile = get_stat_only_percentile(ctx)
     if percentile is None:
         return False
 

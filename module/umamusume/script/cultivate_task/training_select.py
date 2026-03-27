@@ -31,6 +31,7 @@ from module.umamusume.script.cultivate_task.helpers import should_use_pal_outing
 from bot.recog.training_stat_scanner import scan_facility_stats
 from bot.recog.energy_scanner import scan_training_energy_change
 from bot.recog.character_detector import CharacterDetector
+from module.umamusume.persistence import MAX_DATAPOINTS
 
 log = logger.get_logger(__name__)
 
@@ -382,6 +383,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         stat_keys = STAT_KEY_LIST
         computed_scores = [0.0, 0.0, 0.0, 0.0, 0.0]
         original_scores = [0.0, 0.0, 0.0, 0.0, 0.0]
+        stat_scores = [0.0, 0.0, 0.0, 0.0, 0.0]
         stat_contributions = [[0.0] * 6 for _ in range(5)]
 
         pre_highest_stat_idx = None
@@ -507,6 +509,7 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                         stat_parts.append(f"{sk}:{sv_val}")
             
             score += stat_score
+            stat_scores[idx] = stat_score
             try:
                 fr = int(getattr(til, 'failure_rate', -1))
             except Exception:
@@ -687,6 +690,14 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         
         ctx.cultivate_detail.turn_info.cached_computed_scores = list(computed_scores)
         ctx.cultivate_detail.turn_info.cached_original_scores = list(original_scores)
+
+        best_stat_score = max(stat_scores) if stat_scores else 0.0
+        if not hasattr(ctx.cultivate_detail, 'stat_only_history'):
+            ctx.cultivate_detail.stat_only_history = []
+        ctx.cultivate_detail.stat_only_history.append(best_stat_score)
+        if len(ctx.cultivate_detail.stat_only_history) > MAX_DATAPOINTS:
+            ctx.cultivate_detail.stat_only_history = ctx.cultivate_detail.stat_only_history[-MAX_DATAPOINTS:]
+        ctx.cultivate_detail.turn_info.cached_stat_only_score = best_stat_score
 
         history = ctx.cultivate_detail.score_history
         best_score = max(original_scores)
