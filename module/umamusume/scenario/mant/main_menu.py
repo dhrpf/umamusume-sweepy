@@ -122,11 +122,13 @@ def handle_mant_shop_scan(ctx, current_date):
         shop_names = [name for name, _, _ in items_list]
         shop_slugs = [display_to_slug(n) for n in shop_names]
         log.info(f"[SHOP BUY] budget={budget}, shop_slugs={shop_slugs}")
+        any_sale = any(ratio < 1.0 for _, _, ratio in items_list)
+        sale_modifier = 0.9 if any_sale else 1.0
         targets = []
         for tier in range(1, mant_cfg.tier_count + 1):
             if tier > 1:
                 threshold = mant_cfg.tier_thresholds.get(tier, 0)
-                if budget < threshold:
+                if budget < threshold * sale_modifier:
                     log.info(f"[SHOP BUY] skipping tier {tier}: budget {budget} < threshold {threshold}")
                     continue
             tier_slugs = [slug for slug, t in mant_cfg.item_tiers.items() if t == tier]
@@ -178,6 +180,13 @@ def handle_mant_shop_scan(ctx, current_date):
         targets = filtered
         if len(pre_cure_targets) != len(targets):
             log.info(f"[SHOP BUY] cure filter removed: {set(pre_cure_targets) - set(targets)}")
+
+        from module.umamusume.persistence import get_ignore_cat_food, get_ignore_grilled_carrots
+        if get_ignore_cat_food():
+            targets = [t for t in targets if t != "Yummy Cat Food"]
+        if get_ignore_grilled_carrots():
+            targets = [t for t in targets if t != "Grilled Carrots"]
+
         log.info(f"[SHOP BUY] final targets: {targets}")
         if targets:
             bought, held_items = buy_shop_items(ctx, targets, items_list, ratio, drag_ratio, first_item_gy)

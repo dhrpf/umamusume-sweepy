@@ -129,3 +129,39 @@ def clear_used_buffs():
     data = load_persist()
     data['used_buffs'] = []
     save_persist(data)
+
+
+def get_ignore_cat_food():
+    data = load_persist()
+    return data.get('ignore_cat_food', False)
+
+
+def set_ignore_cat_food(flag=True):
+    data = load_persist()
+    data['ignore_cat_food'] = flag
+    save_persist(data)
+
+
+def clear_ignore_cat_food():
+    data = load_persist()
+    if 'ignore_cat_food' in data:
+        del data['ignore_cat_food']
+    save_persist(data)
+
+
+def get_ignore_grilled_carrots():
+    data = load_persist()
+    return data.get('ignore_grilled_carrots', False)
+
+
+def set_ignore_grilled_carrots(flag=True):
+    data = load_persist()
+    data['ignore_grilled_carrots'] = flag
+    save_persist(data)
+
+
+def clear_ignore_grilled_carrots():
+    data = load_persist()
+    if 'ignore_grilled_carrots' in data:
+        del data['ignore_grilled_carrots']
+    save_persist(data)

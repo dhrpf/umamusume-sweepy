@@ -184,6 +184,9 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         clear_detected_skills()
         clear_detected_portraits()
         clear_detected_items()
+        from module.umamusume.persistence import clear_ignore_cat_food, clear_ignore_grilled_carrots
+        clear_ignore_cat_food()
+        clear_ignore_grilled_carrots()
         detail = CultivateContextDetail()
         detail.scenario = create_scenario(task.detail.scenario)
         if detail.scenario is None:

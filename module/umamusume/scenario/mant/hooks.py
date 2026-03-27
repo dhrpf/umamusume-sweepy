@@ -1,7 +1,23 @@
 import bot.base.log as logger
+from module.umamusume.context import detected_portraits_log
+from module.umamusume.persistence import set_ignore_cat_food, set_ignore_grilled_carrots
 
 log = logger.get_logger(__name__)
 
 
 def mant_after_hook(ctx, img):
+    favor = detected_portraits_log.get("President Akikawa", {}).get("favor", 0)
+    if favor >= 3:
+        set_ignore_cat_food(True)
+
+    all_rainbow = True
+    for info in detected_portraits_log.values():
+        if not info.get('is_npc', False):
+            if info.get('favor', 0) < 4:
+                all_rainbow = False
+                break
+    if all_rainbow and detected_portraits_log:
+        set_ignore_grilled_carrots(True)
+
     return False
+

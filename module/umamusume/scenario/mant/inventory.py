@@ -444,6 +444,13 @@ def scan_inventory(ctx, stop_when_found=None):
         sb_drag(ctx, cursor, target)
 
     owned = [(name, qty) for name, qty in item_qtys.items()]
+
+    from module.umamusume.persistence import get_ignore_cat_food, get_ignore_grilled_carrots
+    if get_ignore_cat_food():
+        owned = [(name, qty) for name, qty in owned if name != "Yummy Cat Food"]
+    if get_ignore_grilled_carrots():
+        owned = [(name, qty) for name, qty in owned if name != "Grilled Carrots"]
+
     owned.sort(key=lambda x: x[0])
     scroll_to_top(ctx)
     return owned
