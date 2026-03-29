@@ -214,7 +214,7 @@ def detect_race_reward_items(img):
     return result_names
 
 
-def check_and_detect_race_reward_items(img, img_gray):
+def check_and_detect_race_reward_items(img, img_gray, ctx=None):
     try:
         from bot.recog.image_matcher import image_match
         from module.umamusume.asset.template import REF_MANT_REWARD_ITEMS
@@ -228,5 +228,11 @@ def check_and_detect_race_reward_items(img, img_gray):
         if items:
             from module.umamusume.context import add_detected_shop_items
             add_detected_shop_items(items, turns=3)
+
+            if ctx is not None:
+                existing_names = {name for name, _, _, _, _ in ctx.cultivate_detail.mant_shop_items}
+                for name in items:
+                    if name not in existing_names:
+                        ctx.cultivate_detail.mant_shop_items.append((name, 0, 0, 3, False))
     except Exception:
         pass

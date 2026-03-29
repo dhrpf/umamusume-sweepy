@@ -24,7 +24,7 @@ def mant_after_hook(ctx, img):
         from module.umamusume.scenario.mant.race_reward_items import check_and_detect_race_reward_items
         screen = getattr(ctx, 'current_screen', None)
         if screen is not None:
-            check_and_detect_race_reward_items(screen, img)
+            check_and_detect_race_reward_items(screen, img, ctx)
     except Exception:
         pass
 

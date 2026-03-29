@@ -80,9 +80,26 @@ def handle_mant_inventory_rescan_if_pending(ctx, current_date):
 
 
 def handle_mant_turn_start(ctx, current_date):
-    from module.umamusume.scenario.mant.shop import is_shop_scan_turn
-    if is_shop_scan_turn(current_date):
+    from module.umamusume.scenario.mant.shop import is_shop_scan_turn, current_shop_chunk
+    if not is_shop_scan_turn(current_date):
+        return
+
+    chunk = current_shop_chunk(current_date)
+    last_chunk = getattr(ctx.cultivate_detail, 'mant_shop_last_chunk', -1)
+
+    if chunk != last_chunk:
         ctx.cultivate_detail.mant_shop_items = []
+    else:
+        updated = []
+        for name, conf, gy, turns, bought in ctx.cultivate_detail.mant_shop_items:
+            if turns == 99:
+                updated.append((name, conf, gy, turns, bought))
+            elif turns > 1:
+                updated.append((name, conf, gy, turns - 1, bought))
+        ctx.cultivate_detail.mant_shop_items = updated
+
+        from module.umamusume.context import log_detected_shop_items
+        log_detected_shop_items([(name, turns, bought) for name, _, _, turns, bought in updated])
 
 
 def handle_mant_shop_scan(ctx, current_date):
