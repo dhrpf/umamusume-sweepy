@@ -566,18 +566,21 @@ def find_training_items_button(frame):
 
 
 def open_items_panel(ctx):
-    frame = ctx.ctrl.get_screen()
-    btn = find_training_items_button(frame)
-    if btn:
-        ctx.ctrl.click(int(btn[0]), int(btn[1]), "Training Items button")
-    elif is_on_training_screen(frame):
-        ctx.ctrl.click(37, 347, "Training Items fallback (training)")
-    else:
-        ctx.ctrl.click(552, 771, "Training Items fallback (menu)")
-    for _ in range(10):
-        time.sleep(0.3)
-        if is_items_panel_open(ctx.ctrl.get_screen()):
+    for attempt in range(3):
+        frame = ctx.ctrl.get_screen()
+        if is_items_panel_open(frame):
             return True
+        btn = find_training_items_button(frame)
+        if btn:
+            ctx.ctrl.click(int(btn[0]), int(btn[1]), "Training Items button")
+        elif is_on_training_screen(frame):
+            ctx.ctrl.click(37, 347, "Training Items fallback (training)")
+        else:
+            ctx.ctrl.click(552, 771, "Training Items fallback (menu)")
+        for _ in range(10):
+            time.sleep(0.3)
+            if is_items_panel_open(ctx.ctrl.get_screen()):
+                return True
     return False
 
 
@@ -591,7 +594,8 @@ def close_items_panel(ctx):
 
 
 def use_training_item(ctx, item_name, quantity=1):
-    open_items_panel(ctx)
+    if not open_items_panel(ctx):
+        return False
 
     for _ in range(quantity):
         if not try_click_item_plus_once(ctx, item_name):
@@ -1366,13 +1370,23 @@ def remaining_climax_races(date):
 
 def handle_cleat_before_race(ctx, race_id, is_climax_override=False):
     from module.umamusume.asset.race_data import is_g1_race
+    from module.umamusume.constants.game_constants import CLASSIC_YEAR_END, SENIOR_YEAR_END
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
     date = getattr(ctx.cultivate_detail.turn_info, 'date', 0)
 
     master_qty = owned_map.get('Master Cleat Hammer', 0)
     artisan_qty = owned_map.get('Artisan Cleat Hammer', 0)
+    total_cleats = master_qty + artisan_qty
+
+    if total_cleats <= 0:
+        return False
+
     is_climax_race = is_climax_override or date in MANT_CLIMAX_RACE_TURNS
+    is_senior_year = CLASSIC_YEAR_END < date <= SENIOR_YEAR_END
+
+    if is_senior_year and not is_climax_race and total_cleats <= 3:
+        return False
 
     if is_climax_race:
         if master_qty > 0:
