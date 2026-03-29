@@ -75,6 +75,8 @@ def clear_detected_items():
     detected_items_log.clear()
 
 def log_detected_shop_items(items):
+    preserved_rewards = {name: entry for name, entry in detected_shop_items_log.items()
+                         if entry.get('race_reward')}
     detected_shop_items_log.clear()
     for name, turns, purchased in items:
         if purchased:
@@ -84,15 +86,19 @@ def log_detected_shop_items(items):
             "turns": turns,
             "purchased": purchased,
         }
+    for name, entry in preserved_rewards.items():
+        if name not in detected_shop_items_log:
+            detected_shop_items_log[name] = entry
 
 def add_detected_shop_items(names, turns):
     for name in names:
-        if name not in detected_shop_items_log:
-            detected_shop_items_log[name] = {
-                "name": name,
-                "turns": turns,
-                "purchased": False,
-            }
+        existing = detected_shop_items_log.get(name)
+        detected_shop_items_log[name] = {
+            "name": name,
+            "turns": turns,
+            "purchased": False,
+            "race_reward": True,
+        }
 
 def clear_detected_shop_items():
     detected_shop_items_log.clear()
@@ -244,7 +250,7 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         except Exception:
             detail.spirit_explosion = list(DEFAULT_SPIRIT_EXPLOSION)
         
-        # Support both spellings for backward compatibility (rest_threshold is correct)
+     
         detail.rest_threshold = getattr(task.detail, 'rest_threshold', getattr(task.detail, 'rest_treshold', getattr(task.detail, 'fast_path_energy_limit', 48)))
         detail.motivation_threshold_year1 = int(getattr(task.detail, 'motivation_threshold_year1', 3))
         detail.motivation_threshold_year2 = int(getattr(task.detail, 'motivation_threshold_year2', 4))

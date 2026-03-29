@@ -69,11 +69,10 @@ def script_cultivate_goal_race(ctx: UmamusumeContext):
             log.info(f"This is a regular race (ID: {race_id}) - entering detail interface")
             if mant_cfg is not None and race_id == 0:
                 from module.umamusume.scenario.mant.inventory import (
-                    handle_cleat_before_race, handle_energy_drink_max_before_race, handle_glow_sticks_before_race
+                    handle_energy_drink_max_before_race, handle_glow_sticks_before_race
                 )
                 handle_energy_drink_max_before_race(ctx)
                 handle_glow_sticks_before_race(ctx)
-                handle_cleat_before_race(ctx, race_id, True)
                 ctx.cultivate_detail.mant_climax_pending_train = True
             ctx.ctrl.click_by_point(CULTIVATE_GOAL_RACE_INTER_1)
     else:
@@ -213,6 +212,16 @@ def script_cultivate_race_list(ctx: UmamusumeContext):
 
 
 def script_cultivate_before_race(ctx: UmamusumeContext):
+
+    mant_cfg = getattr(getattr(ctx.task.detail, 'scenario_config', None), 'mant_config', None)
+    if mant_cfg is not None:
+        turn_op = ctx.cultivate_detail.turn_info.turn_operation
+        if turn_op:
+            race_id = turn_op.race_id
+            from module.umamusume.scenario.mant.inventory import handle_cleat_before_race
+            is_climax = (race_id == 0)
+            handle_cleat_before_race(ctx, race_id, is_climax)
+
     img = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2RGB)
     p_check_skip = img[1175, 330]
 
