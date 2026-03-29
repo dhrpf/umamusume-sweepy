@@ -212,6 +212,25 @@ def handle_mant_shop_scan(ctx, current_date):
         if get_ignore_grilled_carrots():
             targets = [t for t in targets if t != "Grilled Carrots"]
 
+        cupcake_names = {'Plain Cupcake', 'Berry Sweet Cupcake'}
+        total_cupcakes = sum(owned_map.get(n, 0) for n in cupcake_names)
+        if total_cupcakes >= 2:
+            targets = [t for t in targets if t not in cupcake_names]
+        else:
+            from module.umamusume.scenario.mant.constants import get_incoming_mood
+            cached_mood = getattr(ctx.cultivate_detail.turn_info, 'cached_mood', None)
+            if cached_mood is not None:
+                current_mood = cached_mood
+            else:
+                from bot.conn.fetch import read_mood
+                current_mood = read_mood(ctx.current_screen)
+            if current_mood is None or current_mood >= 5:
+                targets = [t for t in targets if t not in cupcake_names]
+            else:
+                incoming = get_incoming_mood(current_date, 3)
+                if current_mood + 1 + incoming >= 5:
+                    targets = [t for t in targets if t not in cupcake_names]
+
         log.info(f"[SHOP BUY] final targets: {targets}")
         if targets:
             bought, held_items = buy_shop_items(ctx, targets, items_list, ratio, drag_ratio, first_item_gy)

@@ -78,6 +78,9 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
             if hasattr(ctx.cultivate_detail, 'manual_purchase_initiated'):
                 delattr(ctx.cultivate_detail, 'manual_purchase_initiated')
 
+    from bot.conn.fetch import read_mood
+    ctx.cultivate_detail.turn_info.cached_mood = read_mood(img)
+
     if is_mant(ctx):
         from module.umamusume.scenario.mant.main_menu import handle_mant_main_menu
         if handle_mant_main_menu(ctx, img, current_date):

@@ -1022,10 +1022,14 @@ def whistle_loop(ctx, start_date):
 
 
 def handle_cupcake_use(ctx):
-    from bot.conn.fetch import read_mood
     from module.umamusume.scenario.mant.constants import get_incoming_mood
 
-    mood = read_mood(ctx.current_screen)
+    cached_mood = getattr(ctx.cultivate_detail.turn_info, 'cached_mood', None)
+    if cached_mood is not None:
+        mood = cached_mood
+    else:
+        from bot.conn.fetch import read_mood
+        mood = read_mood(ctx.current_screen)
     if mood is None or mood >= 5:
         return False
 
