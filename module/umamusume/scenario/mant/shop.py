@@ -759,7 +759,7 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
     if not remaining:
         ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
         time.sleep(1)
-        return False
+        return False, {}
 
     selected = 0
     clicked_positions = set()
@@ -767,6 +767,8 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
     scroll_to_top(ctx)
 
     img = ctx.ctrl.get_screen()
+    if img is None or img.size == 0:
+        return False, {}
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = find_thumb(img_rgb)
 
@@ -775,6 +777,8 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
             break
 
         frame = ctx.ctrl.get_screen()
+        if frame is None or frame.size == 0:
+            continue
         results, _ = classify_items_in_frame(frame)
 
 
@@ -801,11 +805,15 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                 clicked_positions.add(pos_key)
 
         img = ctx.ctrl.get_screen()
+        if img is None or img.size == 0:
+            break
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if at_bottom(img_rgb):
             if any(v > 0 for v in remaining.values()):
                 clicked_positions.clear()
                 frame = ctx.ctrl.get_screen()
+                if frame is None or frame.size == 0:
+                    break
                 results, _ = classify_items_in_frame(frame)
                 name_candidates = defaultdict(list)
                 for item_name, conf, abs_y, turns in results:
@@ -852,6 +860,8 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
     for _ in range(40):
         time.sleep(0.3)
         screen = ctx.ctrl.get_screen(to_gray=True)
+        if screen is None or screen.size == 0:
+            continue
         result = image_match(screen, UI_INFO)
         if result.find_match:
             pos = result.matched_area

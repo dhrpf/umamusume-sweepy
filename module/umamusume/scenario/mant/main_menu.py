@@ -125,7 +125,8 @@ def handle_mant_shop_scan(ctx, current_date):
         shop_names = [name for name, _, _, _ in items_list]
         shop_slugs = [display_to_slug(n) for n in shop_names]
         log.info(f"[SHOP BUY] budget={budget}, shop_slugs={shop_slugs}")
-        any_sale = False 
+        img = ctx.ctrl.get_screen()
+        any_sale = handle_mant_on_sale(img) if img is not None else False
         sale_modifier = 0.9 if any_sale else 1.0
         targets = []
         for tier in range(1, mant_cfg.tier_count + 1):
@@ -254,6 +255,8 @@ def handle_mant_on_sale(img):
     sale_result = image_match(img_gray, REF_MANT_ON_SALE)
     if sale_result.find_match:
         log.info("shop on sale")
+        return True
+    return False
 
 
 def try_use_cure_items(ctx):
