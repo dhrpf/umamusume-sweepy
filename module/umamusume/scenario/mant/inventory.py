@@ -1028,14 +1028,15 @@ def has_whistle(ctx):
 
 def whistle_loop(ctx, start_date):
     if not ctx.task.running():
-        return
+        return False
     if getattr(ctx.cultivate_detail.turn_info, 'date', None) != start_date:
-        return
+        return False
     used = handle_training_whistle(ctx)
     if not used:
-        return
+        return False
     time.sleep(0.5)
     rescan_training(ctx)
+    return True
 
 
 def handle_cupcake_use(ctx):
@@ -1383,13 +1384,18 @@ def item_loop(ctx):
     got_whistle = has_whistle(ctx)
     got_energy = has_energy_recovery(ctx)
 
+    whistle_used = False
     if got_charm and got_whistle:
-        whistle_loop(ctx, start_date)
-        handle_charm(ctx)
+        whistle_used = whistle_loop(ctx, start_date)
+        if not whistle_used:
+            handle_charm(ctx)
     elif got_charm:
         handle_charm(ctx)
     elif got_whistle and got_energy:
-        whistle_loop(ctx, start_date)
+        whistle_used = whistle_loop(ctx, start_date)
+
+    if whistle_used:
+        return
 
     handle_megaphone(ctx)
     handle_anklet(ctx)
