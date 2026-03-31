@@ -818,6 +818,7 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                 if is_unbuyable(frame, abs_y):
                     continue
                 click_y = int(abs_y) + 20
+                log.info(f"tried to buy {item_name}")
                 ctx.ctrl.click(CHECKBOX_X, click_y)
                 time.sleep(0.3)
                 selected += 1
@@ -848,6 +849,7 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                         if is_unbuyable(frame, abs_y):
                             continue
                         click_y = int(abs_y) + 20
+                        log.info(f"tried to buy {item_name}")
                         ctx.ctrl.click(CHECKBOX_X, click_y)
                         time.sleep(0.3)
                         selected += 1
