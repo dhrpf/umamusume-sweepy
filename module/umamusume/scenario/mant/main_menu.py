@@ -222,7 +222,7 @@ def handle_mant_shop_scan(ctx, current_date):
         post_senior_summer = current_date > SUMMER_CAMP_2_END
 
 
-        from module.umamusume.constants.game_constants import CLASSIC_YEAR_END
+        from module.umamusume.constants.game_constants import CLASSIC_YEAR_END, SENIOR_YEAR_END
         cleat_reserve = 0
         if CLASSIC_YEAR_END < current_date <= SENIOR_YEAR_END:
             owned_total = owned_map.get('Master Cleat Hammer', 0) + owned_map.get('Artisan Cleat Hammer', 0)
