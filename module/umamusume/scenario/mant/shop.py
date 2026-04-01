@@ -7,7 +7,7 @@ from collections import defaultdict, Counter
 from concurrent.futures import ThreadPoolExecutor
 
 import bot.base.log as logger
-from bot.recog.ocr import ocr
+from bot.recog.ocr import ocr, ocr_line
 from rapidfuzz import process, fuzz
 
 log = logger.get_logger(__name__)
@@ -23,6 +23,8 @@ PURCHASED_CHECK_X2 = 600
 PURCHASED_BRIGHTNESS_THRESHOLD = 180
 MANT_SHOP_SCAN_START = 13
 MANT_SHOP_SCAN_INTERVAL = 6
+
+MANT_SHOP_COIN_ROI = (394, 437, 525, 685)
 
 SHOP_OPEN_X = 412
 SHOP_OPEN_X_SUMMER = 359
@@ -401,6 +403,17 @@ def dedup_detections(all_detections, captured_frames):
     return items_list
 
 
+def detect_mant_shop_coins(img):
+    from bot.recog.ocr import ocr_line
+    y1, y2, x1, x2 = MANT_SHOP_COIN_ROI
+    roi = img[y1:y2, x1:x2]
+    text = ocr_line(roi, lang="en")
+    digits = re.sub(r'[^0-9]', '', text)
+    if digits:
+        return int(digits)
+    return -1
+
+
 def scan_mant_shop(ctx):
     from module.umamusume.constants.game_constants import is_summer_camp_period
 
@@ -422,6 +435,13 @@ def scan_mant_shop(ctx):
 
     scroll_to_top(ctx)
     img = ctx.ctrl.get_screen()
+
+    coin_executor = None
+    coin_future = None
+    if not getattr(ctx.cultivate_detail.turn_info, 'mant_coins_read', False):
+        coin_executor = ThreadPoolExecutor(max_workers=1)
+        coin_future = coin_executor.submit(detect_mant_shop_coins, img)
+
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     thumb = find_thumb(img_rgb)
     thumb_h = thumb[1] - thumb[0] if thumb is not None else 30
@@ -567,8 +587,19 @@ def scan_mant_shop(ctx):
             prev_frame = after_extra
             frame_idx += 1
 
+    if coin_executor is not None:
+        try:
+            coins = coin_future.result()
+            if coins == -1:
+                coins = 0
+            ctx.cultivate_detail.mant_coins = coins
+            setattr(ctx.cultivate_detail.turn_info, 'mant_coins_read', True)
+        except Exception:
+            pass
+        finally:
+            coin_executor.shutdown(wait=False)
+
     items_list = dedup_detections(all_detections, captured_frames)
-    log.info("shop items %d: %s", len(items_list), [(n, round(gy), t) for n, _, gy, t, b in items_list])
 
     first_item_gy = items_list[0][2] if items_list else 0
 
@@ -770,7 +801,6 @@ def scan_exchange_complete(ctx):
             if not thumb:
                 break
 
-    log.info(f"exchange scan: {detected_items}")
     return detected_items
 
 
@@ -818,7 +848,6 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                 if is_unbuyable(frame, abs_y):
                     continue
                 click_y = int(abs_y) + 20
-                log.info(f"tried to buy {item_name}")
                 ctx.ctrl.click(CHECKBOX_X, click_y)
                 time.sleep(0.3)
                 selected += 1
@@ -849,7 +878,6 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                         if is_unbuyable(frame, abs_y):
                             continue
                         click_y = int(abs_y) + 20
-                        log.info(f"tried to buy {item_name}")
                         ctx.ctrl.click(CHECKBOX_X, click_y)
                         time.sleep(0.3)
                         selected += 1

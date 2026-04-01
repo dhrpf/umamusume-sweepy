@@ -584,15 +584,14 @@ def handle_mant_main_menu(ctx, img, current_date):
         if handle_cupcake_use(ctx):
             return True
 
-    if not getattr(ctx.cultivate_detail.turn_info, 'mant_coins_read', False):
+    if not getattr(ctx.cultivate_detail.turn_info, 'mant_main_menu_coins_read', False):
         is_summer = is_summer_camp_period(current_date)
         is_climax = current_date > 72 or current_date < -72
         coins = read_shop_coins(img, is_summer, is_climax)
         if coins == -1:
             coins = 0
-        ctx.cultivate_detail.turn_info.mant_coins_read = True
+        ctx.cultivate_detail.turn_info.mant_main_menu_coins_read = True
         ctx.cultivate_detail.mant_coins = coins
-        log.info("shop coins: %d", coins)
 
     if handle_mant_shop_scan(ctx, current_date):
         return True
