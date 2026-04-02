@@ -141,6 +141,10 @@ def handle_mant_shop_scan(ctx, current_date):
         budget = ctx.cultivate_detail.mant_coins
         shop_available = {name for name, _, _, _, purchased in items_list if not purchased}
         shop_slugs = {display_to_slug(n) for n in shop_available}
+        shop_copy_counts = {}
+        for name, _, _, _, purchased in items_list:
+            if not purchased:
+                shop_copy_counts[name] = shop_copy_counts.get(name, 0) + 1
 
         img = ctx.ctrl.get_screen()
         any_sale = handle_mant_on_sale(img) if img is not None else False
@@ -244,14 +248,8 @@ def handle_mant_shop_scan(ctx, current_date):
 
         tier_targets = []
         for tier in range(1, mant_cfg.tier_count + 1):
-            threshold = 0
-            if tier > 1 and not post_senior_summer:
-                raw_threshold = mant_cfg.tier_thresholds.get(tier, (tier - 1) * 50)
-                threshold = raw_threshold * sale_modifier
-
-            tier_slugs = [slug for slug, t in mant_cfg.item_tiers.items() if t == tier]
-            for slug in tier_slugs:
-                if slug not in shop_slugs:
+            for slug, t in mant_cfg.item_tiers.items():
+                if t != tier or slug not in shop_slugs:
                     continue
                 display = SLUG_TO_DISPLAY.get(slug)
                 if not display:
@@ -260,16 +258,24 @@ def handle_mant_shop_scan(ctx, current_date):
                     continue
                 if skip_cupcakes and display in cupcake_names:
                     continue
-
+                
                 cost = SHOP_ITEM_COSTS.get(display, 9999)
-                remaining_after = budget - cost - cleat_reserve
-                if remaining_after < 0:
+                copies = shop_copy_counts.get(display, 0)
+                if copies <= 0:
                     continue
-                if tier > 1 and remaining_after < threshold:
-                    continue
-
-                tier_targets.append(display)
-                budget -= cost
+                
+                for _ in range(copies):
+                    remaining_after = budget - cost
+                    if remaining_after < 0:
+                        break
+                    threshold = 0
+                    if tier > 1 and not post_senior_summer:
+                        raw_threshold = mant_cfg.tier_thresholds.get(tier, (tier - 1) * 50)
+                        threshold = raw_threshold * sale_modifier
+                    if threshold > 0 and remaining_after < threshold:
+                        break
+                    tier_targets.append(display)
+                    budget -= cost
 
         targets = priority_targets + tier_targets
         if targets:
@@ -326,25 +332,37 @@ def handle_mant_emergency_shop_buys(ctx, current_date):
         if expiring:
             shop_slugs = {display_to_slug(n) for n, _, _, _, purchased in shop_items
                           if not purchased}
+            expiring_counts = {}
+            for name, _, _, turns, purchased in shop_items:
+                if name in expiring and not purchased:
+                    expiring_counts[name] = expiring_counts.get(name, 0) + 1
             from module.umamusume.constants.game_constants import SUMMER_CAMP_2_END
             post_senior_summer = current_date > SUMMER_CAMP_2_END
 
             tmp_budget = budget
             for tier in range(1, mant_cfg.tier_count + 1):
-                threshold = 0
-                if tier > 1 and not post_senior_summer:
-                    threshold = mant_cfg.tier_thresholds.get(tier, (tier - 1) * 50)
                 for slug, t in mant_cfg.item_tiers.items():
                     if t != tier or slug not in shop_slugs:
                         continue
                     display = SLUG_TO_DISPLAY.get(slug)
-                    if display and display in expiring:
-                        cost = SHOP_ITEM_COSTS.get(display, 9999)
+                    if not display or display not in expiring:
+                        continue
+
+                    cost = SHOP_ITEM_COSTS.get(display, 9999)
+                    copies = expiring_counts.get(display, 0)
+                    if copies <= 0:
+                        continue
+
+                    threshold = 0
+                    if tier > 1 and not post_senior_summer:
+                        threshold = mant_cfg.tier_thresholds.get(tier, (tier - 1) * 50)
+
+                    for _ in range(copies):
                         remaining_after = tmp_budget - cost
                         if remaining_after < 0:
-                            continue
-                        if tier > 1 and remaining_after < threshold:
-                            continue
+                            break
+                        if threshold > 0 and remaining_after < threshold:
+                            break
                         emergency_targets.append(display)
                         tmp_budget -= cost
                         budget = tmp_budget
