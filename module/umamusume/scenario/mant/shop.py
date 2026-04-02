@@ -812,76 +812,47 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
         return False, {}
 
     selected = 0
-    clicked_positions = set()
 
     scroll_to_top(ctx)
 
     img = ctx.ctrl.get_screen()
     if img is None or img.size == 0:
         return False, {}
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    thumb = find_thumb(img_rgb)
 
-    for _ in range(80):
+    for _ in range(60):
         if not any(v > 0 for v in remaining.values()):
             break
 
         frame = ctx.ctrl.get_screen()
         if frame is None or frame.size == 0:
             continue
+
         results, _ = classify_items_in_frame(frame)
 
         name_candidates = defaultdict(list)
         for item_name, conf, abs_y, turns, bought in results:
-            if not bought:
+            if not bought and not is_unbuyable(frame, abs_y) and remaining.get(item_name, 0) > 0:
                 name_candidates[item_name].append((turns, abs_y))
         for lst in name_candidates.values():
             lst.sort()
 
+        clicked_any = False
         for item_name, candidates in name_candidates.items():
             for turns, abs_y in candidates:
                 if remaining.get(item_name, 0) <= 0:
                     break
-                pos_key = int(abs_y) // 30
-                if pos_key in clicked_positions:
-                    continue
-                if is_unbuyable(frame, abs_y):
-                    continue
                 click_y = int(abs_y) + 20
                 ctx.ctrl.click(CHECKBOX_X, click_y)
                 time.sleep(0.3)
                 selected += 1
                 remaining[item_name] -= 1
-                clicked_positions.add(pos_key)
+                clicked_any = True
 
-        img = ctx.ctrl.get_screen()
-        if img is None or img.size == 0:
-            break
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if clicked_any:
+            continue
+
+        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if at_bottom(img_rgb):
-            if any(v > 0 for v in remaining.values()):
-                clicked_positions.clear()
-                frame = ctx.ctrl.get_screen()
-                if frame is None or frame.size == 0:
-                    break
-                results, _ = classify_items_in_frame(frame)
-                name_candidates = defaultdict(list)
-                for item_name, conf, abs_y, turns, bought in results:
-                    if not bought:
-                        name_candidates[item_name].append((turns, abs_y))
-                for lst in name_candidates.values():
-                    lst.sort()
-                for item_name, candidates in name_candidates.items():
-                    for turns, abs_y in candidates:
-                        if remaining.get(item_name, 0) <= 0:
-                            break
-                        if is_unbuyable(frame, abs_y):
-                            continue
-                        click_y = int(abs_y) + 20
-                        ctx.ctrl.click(CHECKBOX_X, click_y)
-                        time.sleep(0.3)
-                        selected += 1
-                        remaining[item_name] -= 1
             break
 
         thumb = find_thumb(img_rgb)
@@ -889,15 +860,14 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
             break
         cursor = (thumb[0] + thumb[1]) // 2
         th = thumb[1] - thumb[0]
-        step = max(th, 30)
-        next_y = min(TRACK_BOT, cursor + step)
-        if next_y <= cursor + 3:
+        next_y = min(TRACK_BOT, cursor + max(th // 2, 10))
+        if next_y <= cursor:
             break
         sb_drag(ctx, cursor, next_y)
-        time.sleep(0.2)
-        clicked_positions.clear()
 
     if selected == 0:
+        ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
+        time.sleep(1)
         return False, {}
 
     ctx.ctrl.click(CONFIRM_BTN_X, CONFIRM_BTN_Y)
@@ -923,14 +893,10 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                 exchange_ready = True
                 break
 
-    held_items = {}
-    if exchange_ready:
-        held_items = {}
-
     ctx.ctrl.click(EXCHANGE_CLOSE_X, EXCHANGE_CLOSE_Y)
     time.sleep(0.5)
 
     ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
     time.sleep(0.5)
 
-    return True, held_items
+    return True, {}
