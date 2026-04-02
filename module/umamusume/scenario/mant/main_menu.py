@@ -168,7 +168,11 @@ def handle_mant_shop_scan(ctx, current_date):
                 if info.get('favor', 0) < 4:
                     non_rainbow_count += 1
         bbq_threshold = mant_cfg.bbq_unmaxxed_cards
-        skip_bbq = non_rainbow_count <= bbq_threshold if detected_portraits_log else False
+        bbq_base_tier = mant_cfg.item_tiers.get("grilled_carrots")
+        bbq_shift = non_rainbow_count - bbq_threshold if detected_portraits_log else 0
+        bbq_effective_tier = None
+        if bbq_base_tier is not None:
+            bbq_effective_tier = bbq_base_tier - bbq_shift
 
         priority_targets = []
         if active_ailments and not has_miracle_cure:
@@ -200,10 +204,10 @@ def handle_mant_shop_scan(ctx, current_date):
                 return True
             if ignore_cat and display_name == "Yummy Cat Food":
                 return True
-            if ignore_carrots and display_name == "Grilled Carrots":
-                return True
-            if skip_bbq and display_name == "Grilled Carrots":
-                return True
+            if ignore_carrots:
+                bbq_slug = display_to_slug(display_name)
+                if bbq_slug == "grilled_carrots":
+                    return True
             if display_name in all_cures:
                 if has_miracle_cure:
                     return True
@@ -247,9 +251,28 @@ def handle_mant_shop_scan(ctx, current_date):
                 cleat_reserve = 40
 
         tier_targets = []
+
+        if bbq_effective_tier is not None and bbq_effective_tier <= 0:
+            bbq_display = "Grilled Carrots"
+            bbq_slug = "grilled_carrots"
+            if bbq_slug in shop_slugs and not should_skip(bbq_display):
+                cost = SHOP_ITEM_COSTS.get(bbq_display, 9999)
+                copies = shop_copy_counts.get(bbq_display, 0)
+                for _ in range(copies):
+                    if budget - cost < 0:
+                        break
+                    tier_targets.append(bbq_display)
+                    budget -= cost
+
         for tier in range(1, mant_cfg.tier_count + 1):
             for slug, t in mant_cfg.item_tiers.items():
-                if t != tier or slug not in shop_slugs:
+                if slug == "grilled_carrots" and bbq_effective_tier is not None:
+                    if bbq_effective_tier <= 0 or bbq_effective_tier > mant_cfg.tier_count:
+                        continue
+                    effective_tier = bbq_effective_tier
+                else:
+                    effective_tier = t
+                if effective_tier != tier or slug not in shop_slugs:
                     continue
                 display = SLUG_TO_DISPLAY.get(slug)
                 if not display:
@@ -258,12 +281,12 @@ def handle_mant_shop_scan(ctx, current_date):
                     continue
                 if skip_cupcakes and display in cupcake_names:
                     continue
-                
+
                 cost = SHOP_ITEM_COSTS.get(display, 9999)
                 copies = shop_copy_counts.get(display, 0)
                 if copies <= 0:
                     continue
-                
+
                 for _ in range(copies):
                     remaining_after = budget - cost
                     if remaining_after < 0:
@@ -340,9 +363,44 @@ def handle_mant_emergency_shop_buys(ctx, current_date):
             post_senior_summer = current_date > SUMMER_CAMP_2_END
 
             tmp_budget = budget
+            from module.umamusume.persistence import get_ignore_grilled_carrots as _get_ig_grilled
+            ignore_grilled_carrots_em = _get_ig_grilled()
+            bbq_base_tier_em = mant_cfg.item_tiers.get("grilled_carrots")
+            from module.umamusume.context import detected_portraits_log
+            non_rainbow_count_em = 0
+            for info_em in detected_portraits_log.values():
+                if not info_em.get('is_npc', False):
+                    if info_em.get('favor', 0) < 4:
+                        non_rainbow_count_em += 1
+            bbq_threshold_em = mant_cfg.bbq_unmaxxed_cards
+            bbq_shift_em = non_rainbow_count_em - bbq_threshold_em if detected_portraits_log else 0
+            bbq_eff_em = None
+            if bbq_base_tier_em is not None:
+                bbq_eff_em = bbq_base_tier_em - bbq_shift_em
+
+            if bbq_eff_em is not None and bbq_eff_em <= 0 and not ignore_grilled_carrots_em:
+                bbq_display_em = SLUG_TO_DISPLAY.get("grilled_carrots")
+                if bbq_display_em and bbq_display_em in expiring and bbq_display_em in shop_slugs:
+                    cost_em = SHOP_ITEM_COSTS.get(bbq_display_em, 9999)
+                    copies_em = expiring_counts.get(bbq_display_em, 0)
+                    for _ in range(copies_em):
+                        if tmp_budget - cost_em < 0:
+                            break
+                        emergency_targets.append(bbq_display_em)
+                        tmp_budget -= cost_em
+                        budget = tmp_budget
+
             for tier in range(1, mant_cfg.tier_count + 1):
                 for slug, t in mant_cfg.item_tiers.items():
-                    if t != tier or slug not in shop_slugs:
+                    if slug == "grilled_carrots" and bbq_eff_em is not None and ignore_grilled_carrots_em:
+                        continue
+                    if slug == "grilled_carrots" and bbq_eff_em is not None:
+                        if bbq_eff_em <= 0 or bbq_eff_em > mant_cfg.tier_count:
+                            continue
+                        effective_tier_em = bbq_eff_em
+                    else:
+                        effective_tier_em = t
+                    if effective_tier_em != tier or slug not in shop_slugs:
                         continue
                     display = SLUG_TO_DISPLAY.get(slug)
                     if not display or display not in expiring:
