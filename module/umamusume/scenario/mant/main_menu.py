@@ -174,6 +174,7 @@ def handle_mant_shop_scan(ctx, current_date):
         if bbq_base_tier is not None:
             bbq_effective_tier = bbq_base_tier - bbq_shift
 
+        bought_cures = set()
         priority_targets = []
         if active_ailments and not has_miracle_cure:
             needed_cures = set()
@@ -181,22 +182,24 @@ def handle_mant_shop_scan(ctx, current_date):
                 for active in active_ailments:
                     if ailment.lower() in active.lower():
                         needed_cures.add(cure)
-            bought_cures_set = set()
             for cure in needed_cures:
-                if cure in bought_cures_set:
+                if cure in bought_cures:
                     continue
                 if owned_map.get(cure, 0) <= 0 and cure in shop_available:
                     cost = SHOP_ITEM_COSTS.get(cure, 9999)
                     if cost <= budget:
                         priority_targets.append(cure)
-                        bought_cures_set.add(cure)
+                        bought_cures.add(cure)
                         budget -= cost
-            if not bought_cures_set and AILMENT_CURE_ALL in shop_available and owned_map.get(AILMENT_CURE_ALL, 0) <= 0:
+            if not bought_cures.intersection(needed_cures) and AILMENT_CURE_ALL in shop_available and owned_map.get(AILMENT_CURE_ALL, 0) <= 0:
                 cost = SHOP_ITEM_COSTS.get(AILMENT_CURE_ALL, 9999)
                 if cost <= budget:
                     priority_targets.append(AILMENT_CURE_ALL)
-                    bought_cures_set.add(AILMENT_CURE_ALL)
+                    bought_cures.add(AILMENT_CURE_ALL)
                     budget -= cost
+        if bought_cures:
+            ctx.cultivate_detail._mant_bought_cures_this_cycle = bought_cures
+
         priority_set = set(priority_targets)
 
         all_cures = set(AILMENT_CURE_MAP.values())
@@ -431,6 +434,43 @@ def handle_mant_emergency_shop_buys(ctx, current_date):
                         emergency_targets.append(display)
                         tmp_budget -= cost
                         budget = tmp_budget
+
+    active_ailments = getattr(ctx.cultivate_detail, 'mant_afflictions', [])
+    if active_ailments:
+        owned_map = {n: q for n, q in getattr(ctx.cultivate_detail, 'mant_owned_items', [])}
+        shop_available = {name for name, _, _, _, p in shop_items if not p}
+        bought_this_cycle = getattr(ctx.cultivate_detail, '_mant_bought_cures_this_cycle', set())
+
+        if not owned_map.get(AILMENT_CURE_ALL, 0):
+            any_uncovered = False
+            for ailment in active_ailments:
+                covered = False
+                for ailment_name, cure_name in AILMENT_CURE_MAP.items():
+                    if ailment_name.lower() not in ailment.lower():
+                        continue
+                    if owned_map.get(cure_name, 0) > 0 or cure_name in emergency_targets or cure_name in bought_this_cycle:
+                        covered = True
+                        break
+                    if cure_name in shop_available:
+                        cost = SHOP_ITEM_COSTS.get(cure_name, 9999)
+                        if cost <= budget:
+                            emergency_targets.append(cure_name)
+                            bought_this_cycle.add(cure_name)
+                            budget -= cost
+                            covered = True
+                    break
+                if not covered:
+                    any_uncovered = True
+
+            if (any_uncovered
+                    and AILMENT_CURE_ALL in shop_available
+                    and AILMENT_CURE_ALL not in emergency_targets
+                    and AILMENT_CURE_ALL not in bought_this_cycle
+                    and owned_map.get(AILMENT_CURE_ALL, 0) <= 0):
+                cost = SHOP_ITEM_COSTS.get(AILMENT_CURE_ALL, 9999)
+                if cost <= budget:
+                    emergency_targets.append(AILMENT_CURE_ALL)
+                    budget -= cost
 
     if not emergency_targets:
         return False
