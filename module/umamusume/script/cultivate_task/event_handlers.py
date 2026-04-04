@@ -275,8 +275,8 @@ def script_cultivate_event(ctx: UmamusumeContext):
         log.info(f"Clicking option {idx}/{len(selectors)} (source={choice_source})")
         ctx.ctrl.click(int(target_pt[0]), int(target_pt[1]), f"Event option-{choice_index}")
         threading.Thread(target=detect_hint_after_event, args=(ctx.ctrl, event_name), daemon=True).start()
-        ctx.cultivate_detail.event_cooldown_until = time.time() + 1.6
-        return
+    ctx.cultivate_detail.event_cooldown_until = time.time() + 1.6
+    return
     try:
         tpl = Template(f"dialogue{choice_index}", UMAMUSUME_REF_TEMPLATE_PATH)
     except:
@@ -318,4 +318,4 @@ def script_cultivate_event(ctx: UmamusumeContext):
                         fallback_idx = 0
                     ctx.ctrl.click(int(retry_selectors[fallback_idx][0]), int(retry_selectors[fallback_idx][1]), f"Event fallback option-{fallback_idx + 1}")
     ctx.cultivate_detail.event_cooldown_until = time.time() + 1.6
-        return
+    return
