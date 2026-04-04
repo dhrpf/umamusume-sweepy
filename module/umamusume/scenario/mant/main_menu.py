@@ -693,7 +693,6 @@ def handle_mant_main_menu(ctx, img, current_date):
     if has_instant_use_items(ctx):
         handle_instant_use_items(ctx)
         ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
-        return True
 
     if not getattr(ctx.cultivate_detail.turn_info, 'mant_cupcake_checked', False):
         ctx.cultivate_detail.turn_info.mant_cupcake_checked = True
