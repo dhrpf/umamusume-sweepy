@@ -312,6 +312,14 @@ async def get_training_icon(name: str):
 
 
 
+@server.get("/race-icon/{race_id}")
+async def get_race_icon(race_id: str):
+    file_path = os.path.join("resource", "umamusume", "race", race_id + ".png")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path, media_type="image/png")
+    return JSONResponse(status_code=404, content={"error": "not found"})
+
+
 @server.get("/")
 async def get_index():
     return FileResponse('public/index.html', headers={
