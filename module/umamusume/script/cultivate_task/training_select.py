@@ -338,7 +338,12 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
         img = ctx.current_screen
         train_type = parse_train_type(ctx, img)
         if train_type == TrainingType.TRAINING_TYPE_UNKNOWN:
-            return
+            time.sleep(0.5)
+            img = ctx.ctrl.get_screen()
+            train_type = parse_train_type(ctx, img)
+            if train_type == TrainingType.TRAINING_TYPE_UNKNOWN:
+                ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_MAIN_MENU)
+                return
         viewed = train_type.value
 
    
