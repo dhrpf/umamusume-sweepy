@@ -215,7 +215,7 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
         from module.umamusume.scenario.mant.main_menu import handle_mant_rival_race
         handle_mant_rival_race(ctx, img)
 
-    if not ctx.cultivate_detail.turn_info.parse_train_info_finish:
+    if not ctx.cultivate_detail.turn_info.parse_train_info_finish and turn_operation is None:
         limit = int(getattr(ctx.cultivate_detail, 'rest_threshold', getattr(ctx.cultivate_detail, 'rest_treshold', getattr(ctx.cultivate_detail, 'fast_path_energy_limit', 48))))
         if has_extra_race and not _is_mant:
             ctx.cultivate_detail.turn_info.parse_train_info_finish = True
@@ -266,8 +266,9 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
                 execute_team_sirius_recreation(ctx, trip_click_point=get_trip(ctx))
                 return
             if getattr(ctx.cultivate_detail, 'team_sirius_enabled', False):
-                execute_regular_recreation(ctx, trip_click_point=get_trip(ctx))
-                return
+                if ctx.cultivate_detail.team_sirius_available_dates:
+                    execute_regular_recreation(ctx, trip_click_point=get_trip(ctx))
+                    return
             if should_use_pal_outing_simple(ctx):
                 ctx.ctrl.click_by_point(get_trip(ctx))
                 return
