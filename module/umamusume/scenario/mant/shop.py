@@ -402,7 +402,37 @@ def dedup_detections(all_detections, captured_frames):
         items_list.append((winner, name_best_conf[winner], avg_gy, winner_turns, winner_bought))
 
     items_list.sort(key=lambda x: x[2])
-    return items_list
+
+    # Secondary deduplication: merge same-name items within proximity
+    # This handles cases where scroll offset calculation was imperfect
+    NAME_DEDUP_THRESHOLD = 200  # pixels
+    final_items = []
+    used_indices = set()
+
+    for i, (name, conf, gy, turns, bought) in enumerate(items_list):
+        if i in used_indices:
+            continue
+
+        # Find all items with same name within proximity
+        nearby_indices = [i]
+        for j in range(i + 1, len(items_list)):
+            if j in used_indices:
+                continue
+            other_name, other_conf, other_gy, other_turns, other_bought = items_list[j]
+            if other_name == name and abs(other_gy - gy) < NAME_DEDUP_THRESHOLD:
+                nearby_indices.append(j)
+
+        # If multiple detections, pick the one with highest confidence
+        if len(nearby_indices) > 1:
+            best_idx = max(nearby_indices, key=lambda idx: items_list[idx][1])
+            final_items.append(items_list[best_idx])
+            for idx in nearby_indices:
+                used_indices.add(idx)
+        else:
+            final_items.append(items_list[i])
+            used_indices.add(i)
+
+    return final_items
 
 
 def detect_mant_shop_coins(img):
@@ -820,7 +850,12 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
         return False, {}
 
     selected = 0
-    
+
+    # Track clicked items to prevent re-clicking due to scroll movement
+    # Stores (item_name, click_y) tuples
+    clicked_items = []
+    CLICKED_DEDUP_THRESHOLD = 150  # pixels
+
     # Scroll to top first
     scroll_to_top(ctx)
     time.sleep(0.5)
@@ -844,15 +879,15 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
         # Detect items on current screen
         results, _ = classify_items_in_frame(frame)
         current_items = {item_name for item_name, conf, abs_y, turns, bought in results}
-        
+
         # Track if we're seeing new items or stuck
         if current_items == prev_items:
             no_new_items_count += 1
         else:
             no_new_items_count = 0
-        
+
         prev_items = current_items.copy()
-        
+
         # Find wanted items on current screen
         clicked_any = False
         for item_name, conf, abs_y, turns, bought in results:
@@ -861,7 +896,7 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
             if bought:
                 log.debug(f"  skip {item_name} at y={abs_y:.0f}: already purchased")
                 continue
-            
+
             # Check if item is buyable
             if is_unbuyable(frame, abs_y):
                 cb_y = int(abs_y) + 10
@@ -869,14 +904,26 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
                 brightness = float(cv2.mean(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY))[0]) if roi.size > 0 else -1
                 log.debug(f"  skip {item_name} at y={abs_y:.0f}: unbuyable (brightness={brightness:.0f})")
                 continue
-            
-            # Click the checkbox
+
+            # Check if we already clicked this item (same name within proximity)
             click_y = int(abs_y) + 20
+            already_clicked = False
+            for clicked_name, clicked_y in clicked_items:
+                if clicked_name == item_name and abs(click_y - clicked_y) < CLICKED_DEDUP_THRESHOLD:
+                    log.debug(f"  skip {item_name} at y={click_y}: already clicked at y={clicked_y}")
+                    already_clicked = True
+                    break
+
+            if already_clicked:
+                continue
+
+            # Click the checkbox
             log.info(f"  purchasing {item_name} at y={click_y}")
             ctx.ctrl.click(CHECKBOX_X, click_y)
             time.sleep(0.35)
             selected += 1
             remaining[item_name] -= 1
+            clicked_items.append((item_name, click_y))
             clicked_any = True
 
         # If we clicked items, check if we're at bottom
