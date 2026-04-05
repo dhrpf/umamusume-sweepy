@@ -83,7 +83,7 @@ def acquire_instance_lock():
         if os.path.exists(p):
             try:
                 with open(p, 'r') as f:
-                    old = int((f.read() or '0').strip() or '0')
+                    old = int(f.read().strip() or '0')
             except Exception:
                 old = None
         if old:
@@ -100,7 +100,7 @@ def acquire_instance_lock():
             try:
                 cur = None
                 with open(p, 'r') as f:
-                    cur = int((f.read() or '0').strip() or '0')
+                    cur = int(f.read().strip() or '0')
             except Exception:
                 cur = None
             try:
@@ -350,24 +350,10 @@ def purge_all(reason: str = ""):
         sc = getattr(fetch, 'shared_controller', None)
         if sc is not None:
             try:
-                sc.destroy()
-            except Exception:
-                pass
-            try:
                 fetch.shared_controller = None
             except Exception:
                 pass
             log.info("purge: shared controller released")
-    except Exception:
-        pass
-
-    try:
-        pass
-    except Exception:
-        pass
-
-    try:
-        pass
     except Exception:
         pass
 
@@ -381,7 +367,6 @@ def purge_all(reason: str = ""):
         pass
 
     try:
-        gc.collect()
         gc.collect()
     except Exception:
         pass

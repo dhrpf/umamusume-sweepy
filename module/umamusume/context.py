@@ -234,7 +234,7 @@ def build_context(task: UmamusumeTask, ctrl) -> UmamusumeContext:
         detail.learn_skill_list = [list(x) for x in (task.detail.learn_skill_list or [])]
         try:
             src = task.detail.learn_skill_list or []
-            detail.user_provided_priority = any((isinstance(x, list) and len(x) > 0) for x in src)
+            detail.user_provided_priority = any((isinstance(x, list) and x) for x in src)
         except Exception:
             detail.user_provided_priority = False
         detail.learn_skill_blacklist = list(task.detail.learn_skill_blacklist or [])

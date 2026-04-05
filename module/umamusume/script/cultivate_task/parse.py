@@ -628,8 +628,7 @@ def find_support_card(ctx: UmamusumeContext, img):
             s = SequenceMatcher(None, support_card_text, ctx.cultivate_detail.follow_support_card_name)
             if s.ratio() > 0.7:
                 ctx.ctrl.click(match_result.center_point[0], match_result.center_point[1] - 75,
-                               "" + ctx.cultivate_detail.follow_support_card_name + "<" + str(
-                                   support_card_level) + ">")
+                               f"{ctx.cultivate_detail.follow_support_card_name}<{support_card_level}>")
                 return True
         else:
             break
@@ -786,7 +785,7 @@ def find_race(ctx: UmamusumeContext, img, race_id: int = 0) -> bool:
                     if template_match_result.find_match:
                         log.info(f"Race {race_id} matched")
                         ctx.ctrl.click(pos_center[0], pos_center[1],
-                                       "Select race: " + str(RACE_LIST[race_id][1]))
+                                       f"Select race: {RACE_LIST[race_id][1]}")
                         return True
 
         img[pos[0][1]:pos[1][1], pos[0][0]:pos[1][0]] = 0
@@ -882,7 +881,7 @@ def find_skill(ctx: UmamusumeContext, img, skill: list[str], learn_any_skill: bo
                             if pt >= skill_pt_cost:
                                 log.info(f"Buying skill '{detected_text}' - Points: {pt}, Cost: {skill_pt_cost}")
                                 ctx.ctrl.click(match_result.center_point[0] + 128, match_result.center_point[1],
-                                               "Bonus Skills" + detected_text)
+                                               f"Bonus Skills{detected_text}")
                                 if target_match is not None and target_match in skill:
                                     skill.remove(target_match)
                                     log.info(f"Removed '{target_match}' from skill list. Remaining: {skill}")
