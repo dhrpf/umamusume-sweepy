@@ -560,6 +560,10 @@ def script_info(ctx: UmamusumeContext):
                     ctx.cultivate_detail.turn_info.turn_operation = None
 
         if title_text == TITLE[22]:  # Consecutive Racing (was TITLE[20])
+            # Check if we should bypass the warning (G1 race with rival)
+            if getattr(ctx.cultivate_detail.turn_info, 'bypass_race_warning', False):
+                log.info("Bypassing 3 consecutive races warning (G1 race with rival)")
+                ctx.cultivate_detail.turn_info.bypass_race_warning = False
             ctx.ctrl.click_by_point(CULTIVATE_TOO_MUCH_RACE_WARNING_CONFIRM)
         if title_text == TITLE[23]:  # Infirmary Confirmation (was TITLE[21])
             ctx.ctrl.click_by_point(CULTIVATE_OPERATION_COMMON_CONFIRM)

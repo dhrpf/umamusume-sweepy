@@ -1,5 +1,6 @@
 import cv2
 import re
+import time
 
 from bot.recog.image_matcher import image_match
 from bot.recog.ocr import ocr_line
@@ -105,6 +106,8 @@ def handle_mant_turn_start(ctx, current_date):
 
 def handle_mant_shop_scan(ctx, current_date):
     if ctx.cultivate_detail.mant_shop_scanned_this_turn:
+        return False
+    if getattr(ctx.cultivate_detail, 'mant_shop_handled_this_turn', False):
         return False
     from module.umamusume.scenario.mant.shop import (
         is_shop_scan_turn, scan_mant_shop, buy_shop_items,
@@ -411,11 +414,14 @@ def handle_mant_shop_scan(ctx, current_date):
         ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
         t.sleep(1)
 
+    ctx.cultivate_detail.mant_shop_handled_this_turn = True
     ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
     return True
 
 
 def handle_mant_emergency_shop_buys(ctx, current_date):
+    if getattr(ctx.cultivate_detail, 'mant_shop_handled_this_turn', False):
+        return False
     if getattr(ctx.cultivate_detail.turn_info, 'mant_emergency_shop_done', False):
         return False
 
@@ -568,6 +574,7 @@ def handle_mant_emergency_shop_buys(ctx, current_date):
     scan_result = scan_mant_shop(ctx)
     if scan_result is None:
         ctx.ctrl.trigger_decision_reset = True
+        ctx.cultivate_detail.mant_shop_handled_this_turn = True
         return True
 
     ctx.cultivate_detail.turn_info.mant_emergency_shop_done = True
@@ -580,6 +587,7 @@ def handle_mant_emergency_shop_buys(ctx, current_date):
     if not final_targets:
         ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
         _t.sleep(1)
+        ctx.cultivate_detail.mant_shop_handled_this_turn = True
         return True
 
     bought, _ = buy_shop_items(ctx, final_targets, items_list, ratio, drag_ratio, first_item_gy)
@@ -601,6 +609,7 @@ def handle_mant_emergency_shop_buys(ctx, current_date):
         ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
         _t.sleep(1)
 
+    ctx.cultivate_detail.mant_shop_handled_this_turn = True
     return True
 
 
@@ -639,6 +648,8 @@ def would_cleat_be_used(cleat_name, race_id, current_date, owned_map):
 
 
 def handle_mant_cleat_shop_buy(ctx, current_date):
+    if getattr(ctx.cultivate_detail, 'mant_shop_handled_this_turn', False):
+        return False
     from module.umamusume.constants.game_constants import CLASSIC_YEAR_END, SENIOR_YEAR_END
     from module.umamusume.scenario.mant.shop import (
         SHOP_ITEM_COSTS, scan_mant_shop, buy_shop_items, BACK_BTN_X, BACK_BTN_Y
@@ -707,6 +718,7 @@ def execute_cleat_buy(ctx, cleat_name, cost):
     scan_result = scan_mant_shop(ctx)
     if scan_result is None:
         ctx.ctrl.trigger_decision_reset = True
+        ctx.cultivate_detail.mant_shop_handled_this_turn = True
         return True
 
     ctx.cultivate_detail.turn_info.mant_cleat_shop_done = True
@@ -717,6 +729,7 @@ def execute_cleat_buy(ctx, cleat_name, cost):
     if cleat_name not in fresh_available:
         ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
         _t.sleep(1)
+        ctx.cultivate_detail.mant_shop_handled_this_turn = True
         return True
 
     bought, _ = buy_shop_items(ctx, [cleat_name], items_list, ratio, drag_ratio, first_item_gy)
@@ -738,6 +751,7 @@ def execute_cleat_buy(ctx, cleat_name, cost):
         ctx.ctrl.click(BACK_BTN_X, BACK_BTN_Y)
         _t.sleep(1)
 
+    ctx.cultivate_detail.mant_shop_handled_this_turn = True
     return True
 
 
@@ -862,6 +876,14 @@ def color_match(px, target, tol):
             abs(int(px[2]) - target[2]) <= tol)
 
 
+def is_late_dec_date(date_id):
+    """Check if the date corresponds to Late December (year-end)."""
+    from module.umamusume.constants.game_constants import (
+        JUNIOR_YEAR_END, CLASSIC_YEAR_END, SENIOR_YEAR_END
+    )
+    return date_id in (JUNIOR_YEAR_END, CLASSIC_YEAR_END, SENIOR_YEAR_END)
+
+
 def handle_mant_rival_race(ctx, img):
     if getattr(ctx.cultivate_detail.turn_info, 'mant_rival_checked', False):
         return
@@ -872,6 +894,42 @@ def handle_mant_rival_race(ctx, img):
     px = img_rgb[1089, rival_x]
     if color_match(px, RIVAL_COLOR_1, RIVAL_TOLERANCE) or color_match(px, RIVAL_COLOR_2, RIVAL_TOLERANCE):
         log.info("rival race detected")
+        
+        # Check if there's a scheduled race and if it's a G1
+        turn_op = getattr(ctx.cultivate_detail.turn_info, 'turn_operation', None)
+        from module.umamusume.define import TurnOperationType
+        has_scheduled_race = (turn_op is not None and
+                             getattr(turn_op, 'turn_operation_type', None) == TurnOperationType.TURN_OPERATION_TYPE_RACE)
+        
+        if has_scheduled_race:
+            race_id = getattr(turn_op, 'race_id', 0)
+            from module.umamusume.asset.race_data import is_g1_race
+            is_g1 = is_g1_race(race_id)
+            is_year_end = is_late_dec_date(current_date)
+            
+            if is_g1:
+                log.info(f"G1 rival race detected (race_id: {race_id})")
+                
+                # Check energy level
+                from bot.conn.fetch import read_energy
+                energy = read_energy()
+                if energy == 0:
+                    time.sleep(0.15)
+                    energy = read_energy()
+                
+                # Proceed with race if: Late Dec (year-end) OR energy > 5
+                if is_year_end or energy > 5:
+                    log.info(f"Proceeding with G1 rival race (is_year_end: {is_year_end}, energy: {energy})")
+                    # Set flag to bypass 3 consecutive races warning
+                    ctx.cultivate_detail.turn_info.bypass_race_warning = True
+                    # Keep the turn_operation as-is, proceed to race
+                    ctx.cultivate_detail.turn_info.parse_train_info_finish = True
+                    ctx.cultivate_detail.turn_info.mant_rival_checked = True
+                    return
+                else:
+                    log.info(f"Insufficient energy for G1 rival race (energy: {energy}, need > 5)")
+        
+        # Default behavior: clear operation if not proceeding with G1 rival race
         ctx.cultivate_detail.turn_info.turn_operation = None
         ctx.cultivate_detail.turn_info.parse_train_info_finish = False
     ctx.cultivate_detail.turn_info.mant_rival_checked = True

@@ -68,6 +68,7 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
         ctx.cultivate_detail.turn_info = TurnInfo()
         ctx.cultivate_detail.turn_info.date = current_date
         ctx.cultivate_detail.mant_shop_scanned_this_turn = False
+        ctx.cultivate_detail.mant_shop_handled_this_turn = False
         if current_date > 0:
             ctx.cultivate_detail.team_sirius_available_dates = []
             ctx.cultivate_detail.pal_event_stage = 0
