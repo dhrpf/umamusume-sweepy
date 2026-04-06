@@ -895,7 +895,7 @@ def handle_mant_rival_race(ctx, img):
     if color_match(px, RIVAL_COLOR_1, RIVAL_TOLERANCE) or color_match(px, RIVAL_COLOR_2, RIVAL_TOLERANCE):
         log.info("rival race detected")
 
-        # Check if there's a scheduled race and if it's a G1
+        # Check if there's a scheduled race and its grade
         turn_op = getattr(ctx.cultivate_detail.turn_info, 'turn_operation', None)
         from module.umamusume.define import TurnOperationType
         has_scheduled_race = (turn_op is not None and
@@ -903,12 +903,16 @@ def handle_mant_rival_race(ctx, img):
 
         if has_scheduled_race:
             race_id = getattr(turn_op, 'race_id', 0)
-            from module.umamusume.asset.race_data import is_g1_race
+            from module.umamusume.asset.race_data import is_g1_race, is_g2_race, is_g3_race
             is_g1 = is_g1_race(race_id)
+            is_g2 = is_g2_race(race_id)
+            is_g3 = is_g3_race(race_id)
+            is_high_grade = is_g1 or is_g2 or is_g3
             is_year_end = is_late_dec_date(current_date)
 
-            if is_g1:
-                log.info(f"G1 rival race detected (race_id: {race_id})")
+            if is_high_grade:
+                grade_name = "G1" if is_g1 else ("G2" if is_g2 else "G3")
+                log.info(f"{grade_name} rival race detected (race_id: {race_id})")
 
                 # Check energy level
                 from bot.conn.fetch import read_energy
@@ -917,9 +921,21 @@ def handle_mant_rival_race(ctx, img):
                     time.sleep(0.15)
                     energy = read_energy()
 
+                # Try energy recovery for G1/G2 when energy <= 0
+                if energy <= 0 and (is_g1 or is_g2):
+                    log.info(f"Energy <= 0 for {grade_name} rival race - attempting energy recovery")
+                    from module.umamusume.scenario.mant.inventory import handle_energy_drink_fallback
+                    if handle_energy_drink_fallback(ctx):
+                        time.sleep(0.5)
+                        energy = read_energy()
+                        if energy == 0:
+                            time.sleep(0.15)
+                            energy = read_energy()
+                        log.info(f"Energy after recovery: {energy}")
+
                 # Proceed with race if: Late Dec (year-end) OR energy > 5
                 if is_year_end or energy > 5:
-                    log.info(f"Proceeding with G1 rival race (is_year_end: {is_year_end}, energy: {energy})")
+                    log.info(f"Proceeding with {grade_name} rival race (is_year_end: {is_year_end}, energy: {energy})")
                     # Set flag to bypass 3 consecutive races warning
                     ctx.cultivate_detail.turn_info.bypass_race_warning = True
                     # Keep the turn_operation as-is, proceed to race
@@ -927,9 +943,9 @@ def handle_mant_rival_race(ctx, img):
                     ctx.cultivate_detail.turn_info.mant_rival_checked = True
                     return
                 else:
-                    log.info(f"Insufficient energy for G1 rival race (energy: {energy}, need > 5) - continuing with current operation")
+                    log.info(f"Insufficient energy for {grade_name} rival race (energy: {energy}, need > 5) - continuing with current operation")
             else:
-                log.info(f"Non-G1 rival race (race_id: {race_id}) - continuing with current operation")
+                log.info(f"Non-G1/G2/G3 rival race (race_id: {race_id}) - continuing with current operation")
         else:
             log.info("Rival detected but no race scheduled - continuing with current operation")
 

@@ -54,3 +54,11 @@ def get_races_for_period(time_period: int) -> list[int]:
 
 def is_g1_race(race_id):
     return RACE_GRADE.get(race_id, '') == 'G1'
+
+
+def is_g2_race(race_id):
+    return RACE_GRADE.get(race_id, '') == 'G2'
+
+
+def is_g3_race(race_id):
+    return RACE_GRADE.get(race_id, '') == 'G3'

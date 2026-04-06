@@ -30,6 +30,32 @@ URA_RACE_WINDOWS = [
 def weights_for_date(date):
     return (0.11, 0.10) if date <= DATE_SPRING_END else (0.03, 0.05)
 
+def should_protect_race(race_id, ctx):
+    """
+    Check if a race should be protected from being overridden by rest/trip/medic.
+    Returns True if the race MUST be run (G1/G2/G3, or other races with rival).
+    """
+    if race_id is None or race_id == 0:
+        return False
+
+    from module.umamusume.asset.race_data import is_g1_race, is_g2_race, is_g3_race
+
+    # G1/G2/G3 races are always protected
+    if is_g1_race(race_id):
+        return True
+    if is_g2_race(race_id):
+        return True
+    if is_g3_race(race_id):
+        return True
+
+    # Non-G1/G2/G3 races with rival are protected
+    if hasattr(ctx.cultivate_detail.turn_info, 'mant_rival_checked'):
+        if getattr(ctx.cultivate_detail.turn_info, 'mant_rival_checked', False):
+            log.info(f"Non-G1/G2/G3 race {race_id} protected due to rival detection")
+            return True
+
+    return False
+
 def get_ura_race_id_and_template(date):
     for rng, rid, tpl in URA_RACE_WINDOWS:
         if rng[0] <= date <= rng[1]:
@@ -292,14 +318,39 @@ def get_operation(ctx: UmamusumeContext) -> TurnOperation | None:
                                             return turn_operation
                     except Exception:
                         pass
+                
+                # Check if URA race is protected
+                if should_protect_race(ura_race_id, ctx):
+                    log.info(f"URA race {ura_race_id} is protected - proceeding with race instead of rest")
+                    log.info(f"Proceeding with URA race - stamina: {energy}")
+                    turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_RACE
+                    turn_operation.race_id = ura_race_id
+                    return turn_operation
+                
                 log.info(f"Low stamina ({energy}) - prioritizing rest over URA race")
                 turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_REST
                 return turn_operation
             elif trip:
+                # Check if URA race is protected
+                if should_protect_race(ura_race_id, ctx):
+                    log.info(f"URA race {ura_race_id} is protected - proceeding with race instead of trip")
+                    log.info(f"Proceeding with URA race - stamina: {energy}")
+                    turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_RACE
+                    turn_operation.race_id = ura_race_id
+                    return turn_operation
+                
                 log.info(f"Low stamina/motivation - prioritizing trip over URA race")
                 turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_TRIP
                 return turn_operation
             elif medic:
+                # Check if URA race is protected
+                if should_protect_race(ura_race_id, ctx):
+                    log.info(f"URA race {ura_race_id} is protected - proceeding with race instead of medic")
+                    log.info(f"Proceeding with URA race - stamina: {energy}")
+                    turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_RACE
+                    turn_operation.race_id = ura_race_id
+                    return turn_operation
+                
                 log.info(f"Low stamina - prioritizing medic over URA race")
                 turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_MEDIC
                 return turn_operation
@@ -319,8 +370,12 @@ def get_operation(ctx: UmamusumeContext) -> TurnOperation | None:
             except Exception:
                 pass
             if not skip_race:
+                extra_race_id = extra_race_this_turn[0]
+                # Check if extra race is protected
+                if should_protect_race(extra_race_id, ctx):
+                    log.info(f"Extra race {extra_race_id} is protected - will prioritize over rest/trip")
                 turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_RACE
-                turn_operation.race_id = extra_race_this_turn[0]
+                turn_operation.race_id = extra_race_id
                 return turn_operation
 
     medic = False
@@ -432,6 +487,14 @@ def get_operation(ctx: UmamusumeContext) -> TurnOperation | None:
                 else:
                     expect_operation_type = TurnOperationType.TURN_OPERATION_TYPE_TRAINING
                     turn_operation.training_type = TrainingType.TRAINING_TYPE_INTELLIGENCE
+
+    # Check if there's already a protected race operation
+    existing_op = ctx.cultivate_detail.turn_info.turn_operation
+    if existing_op is not None and existing_op.turn_operation_type == TurnOperationType.TURN_OPERATION_TYPE_RACE:
+        existing_race_id = getattr(existing_op, 'race_id', 0)
+        if should_protect_race(existing_race_id, ctx):
+            log.info(f"Protected race operation already set (race_id: {existing_race_id}) - keeping it")
+            return existing_op
 
     if expect_operation_type is TurnOperationType.TURN_OPERATION_TYPE_UNKNOWN:
         expect_operation_type = TurnOperationType.TURN_OPERATION_TYPE_TRAINING

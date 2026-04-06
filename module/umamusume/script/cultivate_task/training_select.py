@@ -76,17 +76,26 @@ def script_cultivate_training_select(ctx: UmamusumeContext):
                 uma = ctx.cultivate_detail.turn_info.uma_attribute
                 current_stats = (uma.speed, uma.stamina, uma.power, uma.will, uma.intelligence)
                 if current_stats != cached_stats:
-                    log.info(f"Cache invalid. was {cached_stats}, now {current_stats})")
+                    log.info(f"[training_select] Cache invalid: was {cached_stats}, now {current_stats}")
                     ctx.cultivate_detail.turn_info.turn_operation = None
                     ctx.cultivate_detail.turn_info.parse_train_info_finish = False
                     ctx.cultivate_detail.mant_cleat_used = False
                     turn_op = None
+                else:
+                    log.info(f"[training_select] Cache VALID (stats match)")
+            else:
+                log.info(f"[training_select] No cached stats to validate against")
         except Exception:
             pass
 
     if turn_op is not None:
         if turn_op.turn_operation_type == TurnOperationType.TURN_OPERATION_TYPE_TRAINING:
             training_type = turn_op.training_type
+            # Training already decided and we're entering training select screen.
+            # Clear cache so that when we return from training animation with
+            # legitimately changed stats, the cache invalidation doesn't fire
+            # on the next entry and force a full re-scan.
+            ctx.cultivate_detail.last_decision_stats = None
             ctx.ctrl.click_by_point(TRAINING_POINT_LIST[training_type.value - 1])
             time.sleep(TRAINING_CLICK_DELAY)
             ctx.ctrl.click_by_point(TRAINING_POINT_LIST[training_type.value - 1])

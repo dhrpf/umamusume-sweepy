@@ -22,7 +22,11 @@ log = logger.get_logger(__name__)
 
 
 def script_cultivate_goal_race(ctx: UmamusumeContext):
-    log.info("Entering goal race function")
+    turn_op = ctx.cultivate_detail.turn_info.turn_operation if ctx.cultivate_detail.turn_info else None
+    op_type = getattr(turn_op, 'turn_operation_type', None)
+    op_name = op_type.name if op_type is not None else 'None'
+    race_id = getattr(turn_op, 'race_id', 'N/A')
+    log.info(f"[goal_race] op={op_name}, race_id={race_id}, parse_train={getattr(ctx.cultivate_detail.turn_info, 'parse_train_info_finish', 'N/A')}")
 
     mant_cfg = getattr(getattr(ctx.task.detail, 'scenario_config', None), 'mant_config', None)
     if mant_cfg is not None:
@@ -43,13 +47,17 @@ def script_cultivate_goal_race(ctx: UmamusumeContext):
     if current_date == -1:
         if not hasattr(ctx.cultivate_detail, 'goal_race_parse_failures'):
             ctx.cultivate_detail.goal_race_parse_failures = 0
-        
+
         ctx.cultivate_detail.goal_race_parse_failures += 1
         log.warning(f"Failed to parse date (attempt {ctx.cultivate_detail.goal_race_parse_failures})")
-        
+
         if ctx.cultivate_detail.goal_race_parse_failures >= 3:
-            ctx.ctrl.trigger_decision_reset = True
             ctx.cultivate_detail.goal_race_parse_failures = 0
+            if ctx.cultivate_detail.turn_info is not None:
+                ctx.cultivate_detail.turn_info.parse_train_info_finish = False
+                ctx.cultivate_detail.turn_info.turn_operation = None
+            ctx.ctrl.click_by_point(RETURN_TO_CULTIVATE_MAIN_MENU)
+            ctx.ctrl.trigger_decision_reset = True
         return
     
     ctx.cultivate_detail.goal_race_parse_failures = 0
@@ -72,9 +80,9 @@ def script_cultivate_goal_race(ctx: UmamusumeContext):
             log.info(f"This is a regular race (ID: {race_id}) - entering detail interface")
             if mant_cfg is not None and race_id == 0:
                 from module.umamusume.scenario.mant.inventory import (
-                    handle_energy_drink_max_before_race, handle_glow_sticks_before_race
+                    handle_energy_drink_fallback, handle_glow_sticks_before_race
                 )
-                handle_energy_drink_max_before_race(ctx)
+                handle_energy_drink_fallback(ctx)
                 handle_glow_sticks_before_race(ctx)
                 ctx.cultivate_detail.mant_climax_pending_train = True
                 ctx.cultivate_detail.turn_info.turn_operation.turn_operation_type = TurnOperationType.TURN_OPERATION_TYPE_RACE

@@ -854,7 +854,7 @@ def buy_shop_items(ctx, target_names, items_list, ratio, drag_ratio, first_item_
     # Track clicked items to prevent re-clicking due to scroll movement
     # Stores (item_name, click_y) tuples
     clicked_items = []
-    CLICKED_DEDUP_THRESHOLD = 150  # pixels
+    CLICKED_DEDUP_THRESHOLD = 300  # pixels
 
     # Scroll to top first
     scroll_to_top(ctx)

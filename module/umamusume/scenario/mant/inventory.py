@@ -1511,6 +1511,25 @@ def handle_energy_drink_max_before_race(ctx):
     return use_item_and_update_inventory(ctx, 'Energy Drink MAX')
 
 
+def handle_energy_drink_fallback(ctx):
+    """Try Energy Drink MAX first, then fall back to other energy items if unavailable."""
+    owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
+    owned_map = {n: q for n, q in owned}
+    current_energy = getattr(ctx.cultivate_detail.turn_info, 'cached_energy', None)
+    if current_energy is None:
+        return False
+    if int(current_energy) > 1:
+        return False
+    # Try Energy Drink MAX first
+    if owned_map.get('Energy Drink MAX', 0) > 0:
+        return use_item_and_update_inventory(ctx, 'Energy Drink MAX')
+    # Fallback: try other energy items in priority order
+    for item_name in ('Energy Drink MAX EX', 'Vita 65', 'Vita 40', 'Vita 20'):
+        if owned_map.get(item_name, 0) > 0:
+            return use_item_and_update_inventory(ctx, item_name)
+    return False
+
+
 def handle_glow_sticks_before_race(ctx):
     owned = getattr(ctx.cultivate_detail, 'mant_owned_items', [])
     owned_map = {n: q for n, q in owned}
