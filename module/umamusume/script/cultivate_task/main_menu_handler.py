@@ -200,6 +200,14 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
 
 
     if turn_operation is not None and turn_operation.turn_operation_type == TurnOperationType.TURN_OPERATION_TYPE_REST:
+        if getattr(ctx.cultivate_detail, 'team_sirius_enabled', False) and not ctx.cultivate_detail.team_sirius_available_dates:
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            from module.umamusume.asset.template import UI_RECREATION_FRIEND_NOTIFICATION
+            ts_result = image_match(img_gray, UI_RECREATION_FRIEND_NOTIFICATION)
+            if ts_result.find_match:
+                from module.umamusume.script.cultivate_task.helpers import detect_team_sirius_dates
+                dates = detect_team_sirius_dates(ctx)
+                ctx.cultivate_detail.team_sirius_available_dates = dates
         if should_use_team_sirius_recreation(ctx):
             if execute_team_sirius_recreation(ctx, trip_click_point=get_trip(ctx)):
                 return
@@ -212,7 +220,7 @@ def script_cultivate_main_menu(ctx: UmamusumeContext):
         ctx.cultivate_detail.turn_info.turn_operation = None
         ctx.cultivate_detail.turn_info.parse_main_menu_finish = False
         ctx.cultivate_detail.turn_info.parse_train_info_finish = False
-        ctx.ctrl.click_by_point(TO_TRAINING_SELECT)
+        ctx.ctrl.click_by_point(CULTIVATE_REST)
         return
     
     if turn_operation is not None and turn_operation.turn_operation_type == TurnOperationType.TURN_OPERATION_TYPE_TRIP:
