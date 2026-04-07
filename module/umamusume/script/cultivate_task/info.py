@@ -135,8 +135,19 @@ def script_info(ctx: UmamusumeContext):
             if title_text == "":
                 log.warning(f"Still no match with lower threshold - OCR: '{original_text}'")
                 try:
+                    from module.umamusume.asset.template import REF_NEXT
+                    img_full = getattr(ctx, 'current_screen_gray', None)
+                    if img_full is None:
+                        img_full = cv2.cvtColor(ctx.current_screen, cv2.COLOR_BGR2GRAY)
+                    next_match = image_match(img_full, REF_NEXT)
+                    if next_match.find_match:
+                        ctx.ctrl.click(next_match.center_point[0], next_match.center_point[1], "REF_NEXT")
+                        time.sleep(0.5)
+                        return
+                except Exception:
+                    pass
+                try:
                     ctx.ctrl.click_by_point(ESCAPE)
-                    log.info("fallback click")
                     time.sleep(1)
                 except Exception as e:
                     log.error(f"Fallback ESCAPE click failed: {e}")
