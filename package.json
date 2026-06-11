@@ -2,7 +2,8 @@
   "name": "umamusume-sweepy",
   "version": "1.0.0",
   "scripts": {
-    "start": "python main.py"
+    "start": "python main.py",
+    "launch": "python launcher.py"
   },
   "dependencies": {
     "steam-user": "^5.0.0"
