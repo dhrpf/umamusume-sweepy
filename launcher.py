@@ -77,19 +77,18 @@ class AccountProcess:
             print(prefix + line, end='', flush=True)
 
     def _monitor(self):
-        while not _shutdown.is_set():
-            self.process.wait()
-            if _shutdown.is_set():
-                return
-            code = self.process.returncode
-            if code == 0:
-                print(f'[{self.name}] stopped (clean exit).', flush=True)
-                return
-            print(f'[{self.name}] crashed (exit {code}), restarting in {RESTART_DELAY}s...', flush=True)
-            if _shutdown.wait(timeout=RESTART_DELAY):
-                return
-            print(f'[{self.name}] restarting...', flush=True)
-            self.start()
+        self.process.wait()
+        if _shutdown.is_set():
+            return
+        code = self.process.returncode
+        if code == 0:
+            print(f'[{self.name}] stopped (clean exit).', flush=True)
+            return
+        print(f'[{self.name}] crashed (exit {code}), restarting in {RESTART_DELAY}s...', flush=True)
+        if _shutdown.wait(timeout=RESTART_DELAY):
+            return
+        print(f'[{self.name}] restarting...', flush=True)
+        self.start()
 
 
 def main():
