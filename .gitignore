@@ -6,4 +6,5 @@
 career_bot/.timing_dna
 output-daily.json
 docs/*
+!docs/superpowers/
 graphify-out/
