@@ -176,6 +176,7 @@ JS_CODE = r'''
 
 
 DIR = os.path.dirname(os.path.abspath(__file__))
+PORT = int(os.environ.get("PORT", 1616))
 
 AUTH_CACHE_PATH = runtime_output_root() / 'auth_cache.json'
 
@@ -1779,9 +1780,9 @@ if __name__ == "__main__":
         pass
 
     set_console_topmost()
-    kill_listeners_on_port(1616)
+    kill_listeners_on_port(PORT)
     if not refresh_auth_before_serving():
         raise SystemExit(1)
     auto_login_from_cache()
-    print("Access the Web UI at: http://127.0.0.1:1616", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=1616, log_level="error")
+    print(f"Access the Web UI at: http://127.0.0.1:{PORT}", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="error")
