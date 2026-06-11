@@ -71,6 +71,9 @@ def write_settings(base_dir, settings):
 
 
 def configured_master_mdb_path(base_dir):
+    override = os.environ.get("UMA_MASTER_MDB")
+    if override:
+        return Path(override).expanduser().resolve()
     settings = read_settings(base_dir)
     configured = (settings.get("master_data") or {}).get("master_mdb_path")
     return Path(configured).expanduser() if configured else default_master_mdb_path()
