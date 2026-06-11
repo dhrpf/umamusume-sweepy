@@ -42,44 +42,82 @@ def runtime_output_root():
 TRACE_DIR = runtime_output_root() / "trace_logs"
 
 TICKET_GEN_JS = """const SteamUser = require("steam-user");
+const fs = require("fs");
+const path = require("path");
 
 const args = process.argv.slice(2);
 let username = "";
 let password = "";
 let appid = 3224770;
 let code = "";
+let keyfile = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--username") username = args[++i];
   else if (args[i] === "--password") password = args[++i];
   else if (args[i] === "--appid") appid = parseInt(args[++i]);
   else if (args[i] === "--code") code = args[++i];
+  else if (args[i] === "--keyfile") keyfile = args[++i];
 }
 
-if (!username || !password) {
-  process.stderr.write(
-    "Usage: node ticket_gen.js --username X --password Y [--code Z]\\n"
-  );
+let savedRefreshToken = null;
+if (keyfile) {
+  try { savedRefreshToken = fs.readFileSync(keyfile, "utf8").trim(); } catch(e) {}
+}
+
+const usingRefreshToken = Boolean(savedRefreshToken);
+
+if (!usingRefreshToken && (!username || !password)) {
+  process.stderr.write("Usage: node -e ... -- --username X --password Y [--code Z] [--keyfile PATH]\\n");
   process.exit(1);
 }
 
 const client = new SteamUser();
 
-const loginOpts = {
-  accountName: username,
-  password: password,
-};
-
-if (code) {
-  loginOpts.twoFactorCode = code;
+const loginOpts = {};
+if (usingRefreshToken) {
+  loginOpts.refreshToken = savedRefreshToken;
+} else {
+  loginOpts.accountName = username;
+  loginOpts.password = password;
+  if (code) loginOpts.twoFactorCode = code;
 }
 
 client.logOn(loginOpts);
 
+let ticketResult = null;
+let tokenSaved = usingRefreshToken;
+
+function tryExit() {
+  if (!ticketResult) return;
+  if (keyfile && !tokenSaved) return;
+  const out = { steam_id: ticketResult.steam_id, session_ticket: ticketResult.session_ticket };
+  process.stdout.write(JSON.stringify(out) + "\\n");
+  process.stderr.write("Ticket generated (" + ticketResult._buflen + " bytes)\\n");
+  setTimeout(() => process.exit(0), 100);
+}
+
+client.on("refreshToken", (token) => {
+  tokenSaved = true;
+  if (keyfile) {
+    try {
+      fs.mkdirSync(path.dirname(keyfile), { recursive: true });
+      fs.writeFileSync(keyfile, token, "utf8");
+      process.stderr.write("REFRESH_TOKEN_SAVED\\n");
+    } catch(e) {
+      process.stderr.write("REFRESH_TOKEN_SAVE_FAILED: " + e.message + "\\n");
+    }
+  }
+  tryExit();
+});
+
 client.on("steamGuard", (domain, callback) => {
-  process.stderr.write(
-    "NEED_GUARD:" + (domain || "2fa") + "\\n"
-  );
+  if (usingRefreshToken) {
+    if (keyfile) { try { fs.unlinkSync(keyfile); } catch(e) {} }
+    process.stderr.write("REFRESH_TOKEN_EXPIRED\\n");
+    process.exit(3);
+  }
+  process.stderr.write("NEED_GUARD:" + (domain || "2fa") + "\\n");
   process.exit(2);
 });
 
@@ -89,24 +127,25 @@ client.on("error", (err) => {
 });
 
 client.on("loggedOn", () => {
-  process.stderr.write(
-    "Logged in as " + client.steamID.getSteamID64() + "\\n"
-  );
+  process.stderr.write("Logged in as " + client.steamID.getSteamID64() + "\\n");
   client.createAuthSessionTicket(appid, (err, sessionTicket) => {
     if (err) {
       process.stderr.write("Ticket error: " + err.message + "\\n");
       process.exit(1);
     }
     const buf = Buffer.isBuffer(sessionTicket) ? sessionTicket : sessionTicket.sessionTicket || sessionTicket;
-    const result = {
+    ticketResult = {
       steam_id: client.steamID.getSteamID64(),
       session_ticket: Buffer.from(buf).toString("hex").toUpperCase(),
+      _buflen: Buffer.from(buf).length,
     };
-    process.stdout.write(JSON.stringify(result) + "\\n");
-    process.stderr.write(
-      "Ticket generated (" + Buffer.from(buf).length + " bytes)\\n"
-    );
-    setTimeout(() => process.exit(0), 500);
+    tryExit();
+    setTimeout(() => {
+      if (!tokenSaved) process.stderr.write("REFRESH_TOKEN_TIMEOUT\\n");
+      process.stdout.write(JSON.stringify(ticketResult) + "\\n");
+      process.stderr.write("Ticket generated (" + ticketResult._buflen + " bytes)\\n");
+      process.exit(0);
+    }, 4000);
   });
 });
 """
@@ -194,34 +233,84 @@ def unpack(text, udid):
     p = unpad(AES.new(key, AES.MODE_CBC, get_iv(udid)).decrypt(cipher), 16)
     return msgpack.unpackb(p[4:4+struct.unpack('<I', p[:4])[0]], raw=False, strict_map_key=False)
 
+def unpack_request(text, udid, _debug=False):
+    """Decode an outgoing request body (pack() format: headerLen + header + cipher + key)."""
+    if isinstance(text, str):
+        text = text.encode('latin-1')
+    raw = base64.b64decode(text)
+    if len(raw) < 4:
+        if _debug: print(f"[unpack_request] too short: {len(raw)}")
+        return None
+    header_len = struct.unpack_from('<I', raw, 0)[0]
+    body_start = 4 + header_len
+    if _debug: print(f"[unpack_request] raw={len(raw)} header_len={header_len} body_start={body_start}")
+    if body_start + 32 >= len(raw):
+        if _debug: print(f"[unpack_request] body_start overflow")
+        return None
+    cipher = raw[body_start:-32]
+    key = raw[-32:]
+    if _debug: print(f"[unpack_request] cipher={len(cipher)} key={len(key)} cipher%16={len(cipher)%16}")
+    if not cipher or len(cipher) % 16 != 0:
+        return None
+    p = unpad(AES.new(key, AES.MODE_CBC, get_iv(udid)).decrypt(cipher), 16)
+    return msgpack.unpackb(p[4:4+struct.unpack('<I', p[:4])[0]], raw=False, strict_map_key=False)
+
 def get_gpu():
-    if platform.system() != "Windows":
-        raise RuntimeError(f"Unsupported OS: {platform.system()}. Only Windows is supported for PC info consistency.")
+    if platform.system() == "Windows":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Video") as video_key:
+                for i in range(winreg.QueryInfoKey(video_key)[0]):
+                    adapter_guid = winreg.EnumKey(video_key, i)
+                    adapter_path = rf"SYSTEM\CurrentControlSet\Control\Video\{adapter_guid}\0000"
+                    try:
+                        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, adapter_path) as adapter_key:
+                            value, _ = winreg.QueryValueEx(adapter_key, "HardwareInformation.AdapterString")
+                            if isinstance(value, bytes):
+                                value = value.decode("utf-16-le", errors="ignore")
+                            gpu_name = str(value).replace("\x00", "").strip()
+                            if gpu_name:
+                                return gpu_name
+                    except OSError:
+                        continue
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch GPU info: {e}") from e
+        raise RuntimeError("Failed to fetch GPU info: display adapter registry value empty")
+
+    # Linux
+    try:
+        result = subprocess.run(
+            ['lspci', '-mm'],
+            capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            if 'VGA' in line or '3D' in line or 'Display' in line:
+                parts = line.split('"')
+                if len(parts) >= 6:
+                    return f"{parts[3]} {parts[5]}".strip()
+                return parts[-2].strip() if len(parts) >= 2 else line.strip()
+    except Exception:
+        pass
 
     try:
-        import winreg
+        drm = Path('/sys/class/drm')
+        for card in sorted(drm.iterdir()):
+            vendor_file = card / 'device' / 'vendor'
+            model_file = card / 'device' / 'uevent'
+            if model_file.exists():
+                for ln in model_file.read_text().splitlines():
+                    if ln.startswith('DRIVER=') or ln.startswith('PCI_ID='):
+                        return ln.split('=', 1)[1].strip()
+    except Exception:
+        pass
 
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Video") as video_key:
-            for i in range(winreg.QueryInfoKey(video_key)[0]):
-                adapter_guid = winreg.EnumKey(video_key, i)
-                adapter_path = rf"SYSTEM\CurrentControlSet\Control\Video\{adapter_guid}\0000"
-                try:
-                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, adapter_path) as adapter_key:
-                        value, _ = winreg.QueryValueEx(adapter_key, "HardwareInformation.AdapterString")
-                        if isinstance(value, bytes):
-                            value = value.decode("utf-16-le", errors="ignore")
-                        gpu_name = str(value).replace("\x00", "").strip()
-                        if gpu_name:
-                            return gpu_name
-                except OSError:
-                    continue
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch GPU info: {e}") from e
-
-    raise RuntimeError("Failed to fetch GPU info: display adapter registry value empty")
+    return "Unknown GPU"
 
 def get_os():
-    return f"Windows 11  ({platform.version()}) 64bit"
+    sys = platform.system()
+    if sys == "Windows":
+        return f"Windows 11  ({platform.version()}) 64bit"
+    return f"{sys} {platform.release()} ({platform.version()}) 64bit"
 
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -232,34 +321,52 @@ def get_ip():
 
 def get_hwid(seed_string="default"):
     guid = str(uuid.uuid4()).lower()
-    
-    if platform.system() != "Windows":
-        raise RuntimeError(f"Unsupported OS: {platform.system()}. Only Windows is supported for HWID consistency.")
-    
-    try:
-        import winreg
 
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as bios_key:
-            device_name, _ = winreg.QueryValueEx(bios_key, "SystemProductName")
-            device_name = str(device_name).strip()
+    if platform.system() == "Windows":
+        try:
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as bios_key:
+                device_name, _ = winreg.QueryValueEx(bios_key, "SystemProductName")
+                device_name = str(device_name).strip()
+                try:
+                    board_mfg, _ = winreg.QueryValueEx(bios_key, "BaseBoardManufacturer")
+                    if board_mfg:
+                        device_name = f"{device_name} ({str(board_mfg).strip()})"
+                except OSError:
+                    pass
+            if not device_name:
+                raise RuntimeError("System product name returned empty. Refusing to start.")
+
+            machine_guid = ""
             try:
-                board_mfg, _ = winreg.QueryValueEx(bios_key, "BaseBoardManufacturer")
-                if board_mfg:
-                    device_name = f"{device_name} ({str(board_mfg).strip()})"
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as crypto_key:
+                    machine_guid, _ = winreg.QueryValueEx(crypto_key, "MachineGuid")
             except OSError:
                 pass
-        if not device_name:
-            raise RuntimeError("System product name returned empty. Refusing to start.")
-            
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch system product name: {e}. Refusing to start.")
+    else:
+        # Linux: read DMI product name from sysfs
+        try:
+            dmi_name = Path('/sys/class/dmi/id/product_name').read_text().strip()
+            dmi_mfg = ''
+            try:
+                dmi_mfg = Path('/sys/class/dmi/id/board_vendor').read_text().strip()
+            except Exception:
+                pass
+            device_name = f"{dmi_name} ({dmi_mfg})" if dmi_mfg else dmi_name
+            if not device_name or device_name in ('', '()'):
+                raise RuntimeError("DMI product name empty")
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch system product name: {e}. Refusing to start.")
+
         machine_guid = ""
         try:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography") as crypto_key:
-                machine_guid, _ = winreg.QueryValueEx(crypto_key, "MachineGuid")
-        except OSError:
+            machine_guid = Path('/etc/machine-id').read_text().strip()
+        except Exception:
             pass
-            
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch system product name: {e}. Refusing to start.")
 
     hardware_string = f"{device_name}_{machine_guid}_{seed_string}"
     device_id = hashlib.sha1(hardware_string.encode()).hexdigest()
@@ -278,26 +385,39 @@ def check_deps():
     if not os.path.exists(os.path.join(DIR, 'node_modules')):
         subprocess.run(['npm', 'install', '--silent'], check=True, cwd=DIR)
 
-def get_ticket(u, p, c=''):
+def _steam_keyfile_path(username):
+    safe = ''.join(c for c in username if c.isalnum() or c in '-_.')
+    return runtime_output_root() / 'steam_refresh_tokens' / f'{safe}.jwt'
+
+def _run_ticket_cmd(u, p, c, keyfile):
     global LAST_TICKET_GEN_RESULT
-    check_deps()
-    cmd = ['node', '-e', TICKET_GEN_JS, '--', '--dummy', '--username', u, '--password', p]
+    cmd = ['node', '-e', TICKET_GEN_JS, '--', '--dummy', '--username', u, '--password', p,
+           '--keyfile', str(keyfile)]
     if c: cmd += ['--code', c]
-    
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=DIR)
-    LAST_TICKET_GEN_RESULT = {
-        'stdout': proc.stdout,
-        'stderr': proc.stderr,
-        'returncode': proc.returncode,
-    }
+    LAST_TICKET_GEN_RESULT = {'stdout': proc.stdout, 'stderr': proc.stderr, 'returncode': proc.returncode}
+    for line in proc.stderr.splitlines():
+        if any(tag in line for tag in ('REFRESH_TOKEN', 'Ticket', 'Logged in', 'ERROR', 'NEED_GUARD')):
+            print(f'[steam] {line}', flush=True)
+    return proc
+
+def get_ticket(u, p, c=''):
+    check_deps()
+    keyfile = _steam_keyfile_path(u)
+
+    proc = _run_ticket_cmd(u, p, c, keyfile)
+
+    if proc.returncode == 3:
+        # refresh token expired — retry without token (password only)
+        proc = _run_ticket_cmd(u, p, c, keyfile)
+
     if proc.returncode == 2:
         raise Exception('STEAM_GUARD_REQUIRED')
-        
+
     out = proc.stdout.strip()
     if not out or proc.returncode != 0:
-        error_msg = proc.stderr.strip() or 'fail'
-        raise Exception(error_msg)
-        
+        raise Exception(proc.stderr.strip() or 'fail')
+
     line = out.split('\n')[-1]
     try:
         d = json.loads(line)
@@ -462,8 +582,6 @@ class UmaClient:
             and self.udid_str
             and self.auth_key_hex
             and self.auth_key_hex != 'YOUR_AUTH_KEY_HERE'
-            and self.steam_id
-            and self.steam_ticket
         )
 
     def refresh_cached_account_state(self, data):
@@ -623,6 +741,25 @@ class UmaClient:
                     print(f"API error 208 (SERVER BUSY) on {ep}, sleeping and retrying... (attempts left: {retry_208-1})")
                     dna_sleep(0.6, 1.4, 1.0, 0.1)
                 return self.call(ep, args, retry_208=retry_208 - 1)
+
+            if rc == 214:
+                new_res_ver = str(dh.get('resource_version') or '').strip()
+                if new_res_ver and new_res_ver != self.res_ver:
+                    print(f"[res_ver] updated {self.res_ver} -> {new_res_ver}, retrying {ep}")
+                    self.res_ver = new_res_ver
+                    self.save_config()
+                    try:
+                        cache_path = runtime_output_root() / 'auth_cache.json'
+                        if cache_path.exists():
+                            cache = json.loads(cache_path.read_text(encoding='utf-8'))
+                            cache['res_ver'] = new_res_ver
+                            cache_path.write_text(json.dumps(cache, ensure_ascii=False), encoding='utf-8')
+                    except Exception:
+                        pass
+                    headers['RES-VER'] = new_res_ver
+                    return self.call(ep, args, retry_208=retry_208, retry_205=retry_205)
+                raise Exception(f'API error 214 on {ep}: res_ver already current ({self.res_ver})')
+
             err_detail = format_api_error(ep, rc, res)
             err_msg = f'API error {rc} on {ep}: {err_detail}'
             if not (rc == 102 and ep in {"single_mode_free/race_end", "single_mode_free/race_out"}):
@@ -686,6 +823,12 @@ class UmaClient:
     def login(self, max_retries=3):
         using_existing_auth = self.has_captured_auth()
         if not using_existing_auth:
+            partial = bool(self.auth_key_hex and self.auth_key_hex != 'YOUR_AUTH_KEY_HERE' and self.viewer_id)
+            if partial:
+                raise Exception(
+                    "Auth key and viewer_id present but auth check failed — "
+                    "use capture-login with the game running to refresh credentials."
+                )
             self.signup()
             using_existing_auth = self.has_captured_auth()
 

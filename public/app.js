@@ -15,7 +15,7 @@ const state = {
     scenarioType: "Mant",
     burnClocks: false,
     displayedClocksUsed: 0,
-    devEnabled: false,
+    devEnabled: true,
     consecutiveRunnerFails: 0
 };
 const els = {
@@ -106,6 +106,7 @@ const els = {
         });
         const storedDev = localStorage.getItem(devStorageKey);
         if (storedDev !== null) setDevEnabled(storedDev === 'true', { persist: false });
+        else setDevEnabled(true, { persist: true });
 
         if (els.devBtn) {
             els.devBtn.addEventListener('click', () => {
@@ -1966,6 +1967,7 @@ const els = {
                     bgClearTimer(state.runnerTimer);
                     state.runnerTimer = 0;
                 }
+                loadRunHistory();
                 if (runner.last_error) {
                     els.startStatus.classList.toggle('error', true);
                     if (!rows.length) els.startStatus.innerText = runner.last_error;
@@ -2378,6 +2380,49 @@ const els = {
             }
         }
 
+        function formatRunDuration(sec) {
+            if (sec == null || sec < 0) return '—';
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const s = sec % 60;
+            if (h > 0) return `${h}h ${m}m`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+        }
+
+        function renderRunHistory(runs) {
+            const el = document.getElementById('run-history-list');
+            if (!el) return;
+            if (!runs || !runs.length) {
+                el.innerHTML = '<div class="run-history-empty">No completed runs yet.</div>';
+                return;
+            }
+            const rows = runs.map(r => {
+                const sc = r.status === 'finished' ? 'run-status-ok' : r.status === 'error' ? 'run-status-err' : 'run-status-warn';
+                const date = r.started_at ? r.started_at.replace('T', ' ').slice(0, 16) : '—';
+                const fans = r.final_fans ? Number(r.final_fans).toLocaleString() : '—';
+                return `<tr>
+                    <td class="run-history-date">${escapeHtml(date)}</td>
+                    <td>${escapeHtml(formatRunDuration(r.duration_sec))}</td>
+                    <td><span class="run-status ${escapeAttr(sc)}">${escapeHtml(r.status || '—')}</span></td>
+                    <td>${escapeHtml(r.preset_name || '—')}</td>
+                    <td>${escapeHtml(String(r.final_turn || 0))}</td>
+                    <td>${escapeHtml(fans)}</td>
+                </tr>`;
+            }).join('');
+            el.innerHTML = `<div class="run-history-wrap"><table class="run-history-table">
+                <thead><tr><th>DATE</th><th>DURATION</th><th>STATUS</th><th>PRESET</th><th>TURN</th><th>FANS</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table></div>`;
+        }
+
+        async function loadRunHistory() {
+            try {
+                const data = await apiJson('/api/career/history');
+                if (data && data.success) renderRunHistory(data.runs);
+            } catch(e) {}
+        }
+
         async function renderDashboard(data, options = {}) {
             dashData = data;
             dashData.validDecks = data.decks.filter(isValidDeck);
@@ -2406,6 +2451,8 @@ const els = {
             renderTeamPanel();
 
             startRunnerPolling();
+            loadRunHistory();
+            makeSectionToggle('run-history-toggle', 'run-history-chevron', 'run-history-body');
             await waitForDomPaint(2);
             setLoadingScreen(false);
             await waitForDomPaint(2);

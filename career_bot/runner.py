@@ -451,6 +451,7 @@ class CareerRunner:
             "guts": int(chara.get("guts") or 0),
             "wit": int(chara.get("wiz") or 0),
             "skill_point": int(chara.get("skill_point") or 0),
+            "fans": int(chara.get("fans") or 0),
         }
 
     def _format_turn_stats(self, stats):

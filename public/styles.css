@@ -2442,3 +2442,46 @@ body.dashboard-mode .turn-delay-control {
 .badge-preop {
   background: #9370db;
 }
+.run-history-wrap {
+  max-height: 18rem;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.18);
+}
+.run-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+.run-history-table th,
+.run-history-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+  vertical-align: top;
+}
+.run-history-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(12, 15, 22, 0.96);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+.run-history-date { white-space: nowrap; }
+.run-status {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 900;
+}
+.run-status-ok  { background: rgba(80, 200, 80, 0.18); color: #6ddc6d; }
+.run-status-err { background: rgba(255, 80, 80, 0.18); color: #ff7070; }
+.run-status-warn { background: rgba(255, 200, 50, 0.18); color: #ffd050; }
+.run-history-empty {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.6rem 0;
+}

@@ -28,9 +28,26 @@ TEXT_DATA_CATEGORIES = {
 
 
 def default_master_mdb_path():
+    # Explicit override
+    override = os.environ.get("UMA_MASTER_MDB")
+    if override:
+        return Path(override).expanduser().resolve()
+
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
         return Path(local_app_data).parent / "LocalLow" / "Cygames" / "Umamusume" / "master" / "master.mdb"
+
+    import platform
+    if platform.system() == "Linux":
+        # Proton/Steam Play default location
+        proton_path = (
+            Path.home() / ".steam" / "steam" / "steamapps" / "compatdata"
+            / "3224770" / "pfx" / "drive_c" / "users" / "steamuser"
+            / "AppData" / "LocalLow" / "Cygames" / "Umamusume" / "master" / "master.mdb"
+        )
+        if proton_path.exists():
+            return proton_path
+
     return Path.home() / "AppData" / "LocalLow" / "Cygames" / "Umamusume" / "master" / "master.mdb"
 
 

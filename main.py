@@ -21,10 +21,10 @@ import frida
 from career_bot import master_data
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
-from uma_api.client import UmaClient
+from uma_api.client import UmaClient, runtime_output_root
 from career_bot.delay import GateKeeper, dna_sleep, dna_uniform
 
-PROCESS_NAME = "UmamusumePrettyDerby.exe"
+PROCESS_NAME = os.environ.get("UMA_PROCESS_NAME", "UmamusumePrettyDerby.exe")
 APP_ID = "3224770"
 
 JS_CODE = r'''
@@ -176,6 +176,29 @@ JS_CODE = r'''
 
 
 DIR = os.path.dirname(os.path.abspath(__file__))
+
+AUTH_CACHE_PATH = runtime_output_root() / 'auth_cache.json'
+
+def save_auth_cache(cfg):
+    try:
+        AUTH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        safe = {k: v for k, v in cfg.items() if k not in ('steam_session_ticket',)}
+        with open(AUTH_CACHE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(safe, f)
+    except Exception as e:
+        print(f'[auth cache] save failed: {e}', flush=True)
+
+def load_auth_cache():
+    try:
+        if not AUTH_CACHE_PATH.exists():
+            return None
+        with open(AUTH_CACHE_PATH, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        if has_fresh_auth_config(cfg):
+            return cfg
+    except Exception:
+        pass
+    return None
 
 app = FastAPI()
 
@@ -675,7 +698,8 @@ class RunCareerRequest(BaseModel):
     preset_name: str = ""
     max_steps: int = 2500
     burn_clocks: bool = False
-    dev_mode: bool = False
+    dev_mode: bool = True
+    stop_on_empty_tp: bool = False
 
 class SaveRacesRequest(BaseModel):
     preset_name: str
@@ -801,6 +825,8 @@ def start_career_from_request(req):
     tp_info = active_start_state['tp_info']
     current_tp = int(tp_info.get('current_tp') or 0)
     if req.use_tp and current_tp < req.use_tp:
+        if getattr(req, 'stop_on_empty_tp', False):
+            return {"success": False, "detail": "TP_EXHAUSTED", "current_tp": current_tp}
         for attempt in range(3):
             try:
                 needed = ((req.use_tp - current_tp) + 29) // 30
@@ -874,6 +900,91 @@ def apply_career_result(result):
         active_dashboard_data["account"] = account
     return account, chara_info
 
+def _build_dashboard_from_login_response(res):
+    """Populate all dashboard globals from a login/load_index response. Returns dashboard dict."""
+    global active_account, active_start_state, active_parent_cards, active_parent_rank_points, active_dashboard_data
+    d = res.get('data', {})
+    career_data = None
+    if d.get('single_mode_chara_light') or d.get('single_mode_chara'):
+        try:
+            career_res = active_client.load_career()
+            career_data = career_res.get('data')
+        except Exception:
+            pass
+    account = get_account_status(d, career_data)
+    active_account = account
+    active_start_state = {}
+    active_parent_cards = {}
+    active_parent_rank_points = {}
+    update_start_state(d)
+    umas = []
+    for card in d.get('card_list', []):
+        cid = str(card.get('card_id', card.get('id', '')))
+        umas.append({'id': cid, 'name': chara_map.get(cid, f"Unknown ({cid})")})
+    supports = []
+    for s in d.get('support_card_list', []):
+        sid = str(s.get('support_card_id', s.get('id', '')))
+        info = support_map.get(sid)
+        if info:
+            supports.append({'id': sid, 'name': info['name'], 'type': display_support_type(info['type']), 'rarity': info['rarity']})
+        else:
+            supports.append({'id': sid, 'name': f"Unknown ({sid})", 'type': 'Unknown', 'rarity': '?'})
+    decks = []
+    for deck in d.get('support_card_deck_array', []):
+        cards = []
+        for cid in deck.get('support_card_id_array', []):
+            sid = str(cid)
+            info = support_map.get(sid)
+            if info:
+                cards.append({'id': sid, 'name': info['name'], 'rarity': info['rarity'], 'type': display_support_type(info['type'])})
+            else:
+                cards.append({'id': sid, 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
+        decks.append({'id': deck.get('deck_id'), 'name': deck.get('name', f'Deck {deck.get("deck_id")}'), 'cards': cards})
+    parents = []
+    for chara in d.get('trained_chara', []):
+        raw_id = str(chara.get('card_id', ''))
+        if '{' in raw_id or '-' in raw_id or not raw_id.isdigit():
+            found = False
+            for key, val in chara.items():
+                val_str = str(val)
+                if val_str.isdigit() and len(val_str) >= 4:
+                    raw_id = val_str
+                    found = True
+                    break
+            if not found:
+                continue
+        cid = raw_id
+        tree = {
+            "self": {"card_id": cid, "name": chara_map.get(cid, f"Unknown ({cid})"), "factors": [], "wins": get_win_summary(chara.get('win_saddle_id_array', []))},
+            "p1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+            "p2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+            "gp1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+            "gp2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+            "gp3": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
+            "gp4": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])}
+        }
+        tree["self"]["factors"] = get_factors(get_chara_factor_ids(chara), cid)
+        for sc in chara.get('succession_chara_array', []):
+            pos = sc.get('position_id')
+            sc_cid = sc.get('card_id', 0)
+            key = {10: "p1", 20: "p2", 11: "gp1", 12: "gp2", 21: "gp3", 22: "gp4"}.get(pos, "")
+            if key:
+                tree[key]["card_id"] = sc_cid
+                tree[key]["name"] = chara_map.get(str(sc_cid), f"Unknown ({sc_cid})")
+                tree[key]["factors"] = get_factors(sc.get('factor_id_array', []), sc_cid)
+                tree[key]["wins"] = get_win_summary(sc.get('win_saddle_id_array', []))
+        parents.append({'instance_id': chara.get('trained_chara_id'), 'card_id': cid, 'name': chara_map.get(cid, f"Unknown ({cid})"), 'rank': chara.get('rank', 0), 'tree': tree})
+        lineage_cards = [int(cid)]
+        for sc in chara.get('succession_chara_array', []) or []:
+            sc_cid = sc.get('card_id', 0)
+            if sc_cid:
+                lineage_cards.append(int(sc_cid))
+        active_parent_cards[int(chara.get('trained_chara_id'))] = lineage_cards
+        active_parent_rank_points[int(chara.get('trained_chara_id'))] = {'rank': chara.get('rank', 0), 'rank_score': chara.get('rank_score', 0)}
+    active_dashboard_data = {"success": True, "account": account, "umas": umas, "supports": supports, "decks": decks, "parents": parents}
+    return active_dashboard_data
+
+
 @app.post("/api/login")
 async def login(req: LoginRequest):
     from uma_api.client import UmaClient, get_ticket
@@ -914,6 +1025,8 @@ async def login(req: LoginRequest):
                 'steam_session_ticket': tkt,
             })
         cfg['steam_password_seed'] = req.password
+        if req.username:
+            cfg['steam_username'] = req.username
         if not has_fresh_auth_config(cfg):
             raise Exception('Fresh in-game auth capture required; switch to the target in-game account, restart capture, then login again')
 
@@ -923,153 +1036,8 @@ async def login(req: LoginRequest):
         if not res:
             raise HTTPException(status_code=401, detail="Game login failed")
         active_client = gated_client
-
-        d = res.get('data', {})
-        career_data = None
-        if d.get('single_mode_chara_light') or d.get('single_mode_chara'):
-            try:
-                career_res = active_client.load_career()
-                career_data = career_res.get('data')
-            except Exception:
-                pass
-        
-        account = get_account_status(d, career_data)
-        active_account = account
-        active_start_state = {}
-        active_parent_cards = {}
-        active_parent_rank_points = {}
-        update_start_state(d)
-        
-        umas = []
-        card_list = d.get('card_list', [])
-        for card in card_list:
-            cid = str(card.get('card_id', card.get('id', '')))
-            umas.append({
-                'id': cid, 
-                'name': chara_map.get(cid, f"Unknown ({cid})")
-            })
-            
-        supports = []
-        support_card_list = d.get('support_card_list', [])
-        for s in support_card_list:
-            sid = str(s.get('support_card_id', s.get('id', '')))
-            info = support_map.get(sid)
-            if info:
-                supports.append({
-                    'id': sid, 
-                    'name': info['name'], 
-                    'type': display_support_type(info['type']),
-                    'rarity': info['rarity']
-                })
-            else:
-                supports.append({
-                    'id': sid, 
-                    'name': f"Unknown ({sid})", 
-                    'type': 'Unknown', 
-                    'rarity': '?'
-                })
-                
-        decks = []
-        deck_array = d.get('support_card_deck_array', [])
-        for deck in deck_array:
-            cards = []
-            for cid in deck.get('support_card_id_array', []):
-                sid = str(cid)
-                info = support_map.get(sid)
-                if info:
-                    cards.append({
-                        'id': sid,
-                        'name': info['name'],
-                        'rarity': info['rarity'],
-                        'type': display_support_type(info['type'])
-                    })
-                else:
-                    cards.append({'id': sid, 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
-            
-            decks.append({
-                'id': deck.get('deck_id'),
-                'name': deck.get('name', f'Deck {deck.get("deck_id")}'),
-                'cards': cards
-            })
-
-        parents = []
-        trained_chara_list = d.get('trained_chara', [])
-        for chara in trained_chara_list:
-
-
-            raw_id = str(chara.get('card_id', ''))
-
-            if '{' in raw_id or '-' in raw_id or not raw_id.isdigit():
-                found = False
-                for key, val in chara.items():
-                    val_str = str(val)
-                    if val_str.isdigit() and len(val_str) >= 4:
-                        raw_id = val_str
-                        found = True
-                        break
-                if not found:
-                    continue
-            
-            cid = raw_id
-
-            tree = {
-                "self": {"card_id": cid, "name": chara_map.get(cid, f"Unknown ({cid})"), "factors": [], "wins": get_win_summary(chara.get('win_saddle_id_array', []))},
-                "p1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
-                "p2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
-                "gp1": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
-                "gp2": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
-                "gp3": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])},
-                "gp4": {"card_id": 0, "name": "", "factors": [], "wins": get_win_summary([])}
-            }
-            
-            tree["self"]["factors"] = get_factors(get_chara_factor_ids(chara), cid)
-
-            for sc in chara.get('succession_chara_array', []):
-                pos = sc.get('position_id')
-                sc_cid = sc.get('card_id', 0)
-                key = ""
-                if pos == 10: key = "p1"
-                elif pos == 20: key = "p2"
-                elif pos == 11: key = "gp1"
-                elif pos == 12: key = "gp2"
-                elif pos == 21: key = "gp3"
-                elif pos == 22: key = "gp4"
-                
-                if key:
-                    tree[key]["card_id"] = sc_cid
-                    tree[key]["name"] = chara_map.get(str(sc_cid), f"Unknown ({sc_cid})")
-                    tree[key]["factors"] = get_factors(sc.get('factor_id_array', []), sc_cid)
-                    tree[key]["wins"] = get_win_summary(sc.get('win_saddle_id_array', []))
-
-
-            parents.append({
-                'instance_id': chara.get('trained_chara_id'),
-                'card_id': cid,
-                'name': chara_map.get(cid, f"Unknown ({cid})"),
-                'rank': chara.get('rank', 0),
-                'tree': tree
-            })
-            lineage_cards = [int(cid)]
-            for sc in chara.get('succession_chara_array', []) or []:
-                sc_cid = sc.get('card_id', 0)
-                if sc_cid:
-                    lineage_cards.append(int(sc_cid))
-            active_parent_cards[int(chara.get('trained_chara_id'))] = lineage_cards
-            active_parent_rank_points[int(chara.get('trained_chara_id'))] = {
-                'rank': chara.get('rank', 0),
-                'rank_score': chara.get('rank_score', 0)
-            }
-
-                
-        active_dashboard_data = {
-            "success": True,
-            "account": account,
-            "umas": umas,
-            "supports": supports,
-            "decks": decks,
-            "parents": parents
-        }
-        return active_dashboard_data
+        save_auth_cache(cfg)
+        return _build_dashboard_from_login_response(res)
     except Exception as e:
         msg = str(e)
         if "STEAM_GUARD_REQUIRED" in msg:
@@ -1098,6 +1066,85 @@ async def update_selection(req: UISelectionRequest):
     global active_selection
     active_selection = req.selection
     return {"success": True}
+
+@app.post("/api/capture-login")
+def capture_login():
+    global active_client, active_account, active_dashboard_data, active_start_state
+    global active_parent_cards, active_parent_rank_points, raw_load_index_response
+    global active_selection, pending_game_auth_config
+
+    timeout_sec = int(os.environ.get('SWEEPY_AUTH_CAPTURE_TIMEOUT_SEC', '120'))
+    deadline = time.time() + timeout_sec
+
+    captured_data = {}
+    done = {'ok': False}
+
+    def on_message(message, data):
+        if message.get('type') == 'error':
+            return
+        payload = message.get('payload') or {}
+        if payload.get('type') == 'creds' and payload.get('app_ver') and payload.get('res_ver'):
+            try:
+                from uma_api.client import unpack_request
+                wire = unpack_request(payload.get('body') or '', payload.get('udid') or '')
+                for key in ('viewer_id', 'device_id', 'device_name', 'graphics_device_name',
+                            'ip_address', 'platform_os_version', 'locale',
+                            'steam_id', 'steam_session_ticket'):
+                    if wire and wire.get(key) is not None:
+                        payload[key] = wire.get(key)
+            except Exception:
+                pass
+            captured_data.update(payload)
+            done['ok'] = True
+
+    remote = os.environ.get('FRIDA_REMOTE', '')
+    device = frida.get_device_manager().add_remote_device(remote) if remote else frida.get_local_device()
+    needle = PROCESS_NAME.lower()
+    procs = device.enumerate_processes()
+    match = [p for p in procs if needle in p.name.lower()]
+    if not match:
+        return {"success": False, "detail": f"Game not running ({PROCESS_NAME})"}
+
+    session = None
+    try:
+        session = device.attach(match[0].pid)
+        script = session.create_script(JS_CODE)
+        script.on('message', on_message)
+        script.load()
+        print('[capture-login] Attached. Make any in-game action to capture auth...', flush=True)
+        while time.time() < deadline:
+            if done['ok'] and has_fresh_auth_config(captured_data):
+                break
+            dna_sleep(0.5, 0.5)
+    except Exception as e:
+        return {"success": False, "detail": f"Frida error: {e}"}
+    finally:
+        if session:
+            try: session.detach()
+            except Exception: pass
+
+    if not done['ok'] or not has_fresh_auth_config(captured_data):
+        return {"success": False, "detail": "No auth captured within timeout. Make an in-game action and try again."}
+
+    cfg = dict(captured_data)
+    save_auth_cache(cfg)
+
+    try:
+        c = UmaClient(cfg, trace_enabled=False)
+        gated_client = GateKeeper(c)
+        res = gated_client.login()
+        if not res:
+            return {"success": False, "detail": "Game login failed"}
+        active_client = gated_client
+        raw_load_index_response = None
+        active_selection = {"deck": None, "friend": None, "trainee": None, "veterans": []}
+        save_auth_cache(cfg)
+        dashboard = _build_dashboard_from_login_response(res)
+        print('[capture-login] Login successful.', flush=True)
+        return {"success": True, "account": active_account}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
+
 
 @app.post("/api/logout")
 async def logout():
@@ -1170,6 +1217,9 @@ def manage_career_loop(req, preset, initial_result):
             try:
                 started = start_career_from_request(req)
                 if not started.get("success"):
+                    if started.get("detail") == "TP_EXHAUSTED":
+                        print(f'[loop] TP exhausted ({started.get("current_tp")} < {req.use_tp}), stopping.', flush=True)
+                        return
                     consecutive_fails += 1
                     if consecutive_fails >= 5:
                         break
@@ -1264,6 +1314,33 @@ async def run_career(req: RunCareerRequest):
 @app.get("/api/career/runner")
 async def career_runner_status():
     return {"success": True, "runner": career_runner.snapshot()}
+
+@app.get("/api/career/history")
+async def career_run_history():
+    from datetime import datetime as _dt
+    logs_dir = runtime_output_root() / 'bot_logs'
+    if not logs_dir.exists():
+        return {"success": True, "runs": []}
+    runs = []
+    for f in sorted(logs_dir.glob('career_log_*.json'), reverse=True)[:50]:
+        try:
+            data = json.loads(f.read_text(encoding='utf-8'))
+            started = data.get('started_at')
+            ended = data.get('ended_at')
+            duration_sec = None
+            if started and ended:
+                duration_sec = int((_dt.fromisoformat(ended) - _dt.fromisoformat(started)).total_seconds())
+            runs.append({
+                'started_at': started,
+                'duration_sec': duration_sec,
+                'status': data.get('status'),
+                'preset_name': data.get('preset_name', ''),
+                'final_turn': data.get('final_turn', 0),
+                'final_fans': data.get('final_fans', 0),
+            })
+        except Exception:
+            pass
+    return {"success": True, "runs": runs}
 
 @app.post("/api/career/runner/stop")
 async def stop_career_runner():
@@ -1464,10 +1541,15 @@ def set_console_topmost():
         pass
 
 def kill_process_by_name(name):
-    if os.name != 'nt':
-        return
     try:
-        subprocess.run(['taskkill', '/IM', name, '/F'], capture_output=True, text=True, timeout=10)
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/IM', name, '/F'], capture_output=True, text=True, timeout=10)
+        else:
+            needle = name.lower()
+            procs = frida.get_local_device().enumerate_processes()
+            for p in procs:
+                if needle in p.name.lower():
+                    subprocess.run(['kill', str(p.pid)], capture_output=True, timeout=5)
     except Exception:
         pass
 
@@ -1534,11 +1616,12 @@ def has_fresh_auth_config(cfg):
     return True
 
 def launch_game():
-    if os.name != 'nt':
-        print('Auth refresh needs Windows Steam launch.')
-        return False
     try:
-        os.startfile(f'steam://rungameid/{APP_ID}')
+        if os.name == 'nt':
+            os.startfile(f'steam://rungameid/{APP_ID}')
+        else:
+            subprocess.Popen(['xdg-open', f'steam://rungameid/{APP_ID}'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except Exception as e:
         print(f'Failed to launch Umamusume through Steam: {e}')
@@ -1546,6 +1629,13 @@ def launch_game():
 
 def refresh_auth_before_serving(timeout_sec=None):
     global pending_game_auth_config
+
+    cached = load_auth_cache()
+    if cached:
+        pending_game_auth_config = cached
+        print('[auth cache] Loaded saved credentials — skipping game launch.', flush=True)
+        return True
+
     timeout_sec = timeout_sec or int(os.environ.get('SWEEPY_AUTH_CAPTURE_TIMEOUT_SEC', '180'))
     started_at = time.time()
     deadline = started_at + timeout_sec
@@ -1588,13 +1678,28 @@ def refresh_auth_before_serving(timeout_sec=None):
                 captured_data.update(payload)
                 done['ok'] = True
 
+    def _get_device():
+        remote = os.environ.get('FRIDA_REMOTE', '')
+        if remote:
+            return frida.get_device_manager().add_remote_device(remote)
+        return frida.get_local_device()
+
+    def _find_and_attach():
+        device = _get_device()
+        needle = PROCESS_NAME.lower()
+        procs = device.enumerate_processes()
+        for p in procs:
+            if needle in p.name.lower():
+                return device.attach(p.pid)
+        return device.attach(PROCESS_NAME)
+
     while time.time() < deadline:
         try:
-            session = frida.attach(PROCESS_NAME)
+            session = _find_and_attach()
             break
         except Exception:
             dna_sleep(1.0, 1.0)
-    
+
     if not session:
         print(f'Error: {PROCESS_NAME} not found within timeout.', flush=True)
         return False
@@ -1608,6 +1713,7 @@ def refresh_auth_before_serving(timeout_sec=None):
             if done['ok']:
                 if has_fresh_auth_config(captured_data):
                     pending_game_auth_config = dict(captured_data)
+                    save_auth_cache(captured_data)
                     dna_sleep(2.0, 4.0)
                     kill_process_by_name(PROCESS_NAME)
                     return True
@@ -1625,6 +1731,45 @@ def refresh_auth_before_serving(timeout_sec=None):
     return False
 
 
+def auto_login_from_cache():
+    global active_client, active_account, active_dashboard_data, active_start_state
+    global active_parent_cards, active_parent_rank_points, raw_load_index_response, active_selection
+    cfg = load_auth_cache()
+    if not cfg:
+        return False
+    username = cfg.get('steam_username', '')
+    password = cfg.get('steam_password_seed', '')
+    if not username:
+        return False
+    from uma_api.client import get_ticket, _steam_keyfile_path
+    if not _steam_keyfile_path(username).exists():
+        print('[auto-login] No saved refresh token — log in manually via the web UI to save one.', flush=True)
+        return False
+    try:
+        print(f'[auto-login] Logging in as {username}...', flush=True)
+        sid, tkt = get_ticket(username, password)
+        cfg.update({'steam_id': sid, 'steam_session_ticket': tkt})
+        c = UmaClient(cfg, trace_enabled=False)
+        gated_client = GateKeeper(c)
+        res = gated_client.login()
+        if not res:
+            print('[auto-login] Game login failed.', flush=True)
+            return False
+        active_client = gated_client
+        save_auth_cache(cfg)
+        _build_dashboard_from_login_response(res)
+        raw_load_index_response = None
+        active_selection = {"deck": None, "friend": None, "trainee": None, "veterans": []}
+        print('[auto-login] Done.', flush=True)
+        return True
+    except Exception as e:
+        if 'STEAM_GUARD_REQUIRED' in str(e):
+            print('[auto-login] Steam Guard required — log in manually via the web UI.', flush=True)
+        else:
+            print(f'[auto-login] Failed: {e}', flush=True)
+        return False
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -1637,5 +1782,6 @@ if __name__ == "__main__":
     kill_listeners_on_port(1616)
     if not refresh_auth_before_serving():
         raise SystemExit(1)
+    auto_login_from_cache()
     print("Access the Web UI at: http://127.0.0.1:1616", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=1616, log_level="error")

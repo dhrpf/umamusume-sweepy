@@ -126,6 +126,8 @@ def finish_report(report, status=None):
     turns = report.get("turns") or []
     if turns:
         report["final_turn"] = max(safe_int(turn.get("turn")) for turn in turns)
+        fans_values = [safe_int((turn.get("stats") or {}).get("fans")) for turn in turns]
+        report["final_fans"] = max(fans_values) if fans_values else 0
 
 
 def write_report(report, output_dir):
