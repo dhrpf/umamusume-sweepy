@@ -16,7 +16,7 @@ _BASE_DELAYS = {
     'continue': (0.96, 4.82, 3.05),
     'exec_command': (2.86, 17.68, 4.82),
     'finish_career': (3.05, 15.49, 3.54),
-    'gain_skills': (7.02, 60.37, 30.62),
+    'gain_skills': (7.02, 90.37, 50.62),
     'read_info': (1.16, 14.69, 5.26),
     'recovery_trainer_point': (0.62, 4.55, 1.06),
     'multi_item_exchange': (4.20, 13.79, 8.29),

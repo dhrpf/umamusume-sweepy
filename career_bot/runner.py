@@ -183,10 +183,6 @@ class CareerRunner:
                 self._mark(turn=turn)
                 self._track_turn_scores(state)
 
-                if turn == 77 and not getattr(self, "dev_mode", False):
-                    print("Turn 77 reached terminating", flush=True)
-                    self.stop()
-                    break
                 
                 self.skill_buyer.last_attempt = []
                 self.skill_buyer.last_result = {}
@@ -231,13 +227,13 @@ class CareerRunner:
                         state = self._drain_events(client, strategy, state)
                     data = state.get("data") or {}
                     chara = data.get("chara_info") or {}
-                    self._mark(turn=chara["turn"])
+                    self._mark(turn=chara.get("turn", turn))
                     decision = strategy.next_decision(state, preset)
 
                     if self.report:
                         add_decision(self.report, state, decision)
-                
-                self._log(decision.action, chara["turn"], decision.reason)
+
+                self._log(decision.action, chara.get("turn", turn), decision.reason)
                 if decision.action == "idle":
                     self._mark(last_action=decision.reason)
                     break
@@ -994,6 +990,19 @@ class CareerRunner:
 
         return out
 
+    def _reload_after_reconcile(self, client, payload, current_turn):
+        """After a 102 ("already done") on race_end/race_out, the race has already
+        advanced server-side but `payload` is stale. Reload the real career state
+        so the loop continues from where the server actually is."""
+        try:
+            fresh = client.load_career()
+            if (fresh.get("data") or {}).get("chara_info"):
+                self._log("race_reconcile_reload", current_turn, "reloaded post-race state")
+                return fresh
+        except Exception as e:
+            self._log("race_reconcile_reload_failed", current_turn, str(e))
+        return payload
+
     def _race_progress(self, client, payload, preset=None):
         current_turn = payload["current_turn"]
         phase = payload.get("phase")
@@ -1020,7 +1029,7 @@ class CareerRunner:
             except Exception as e:
                 if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
                     self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
-                    return payload
+                    return self._reload_after_reconcile(client, payload, current_turn)
                 raise
         if phase == "out":
             self._log("race_out", current_turn, "resume")
@@ -1029,7 +1038,7 @@ class CareerRunner:
             except Exception as e:
                 if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
                     self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
-                    return payload
+                    return self._reload_after_reconcile(client, payload, current_turn)
                 raise
         race_start_info = payload.get("race_start_info") or {}
         program_id = race_start_info.get("program_id")
@@ -1069,7 +1078,7 @@ class CareerRunner:
         except Exception as e:
             if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
                 self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
-                return payload
+                return self._reload_after_reconcile(client, payload, current_turn)
             raise
 
     def _buy_skills(self, client, state, preset, force):

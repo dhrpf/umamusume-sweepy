@@ -128,7 +128,7 @@ def test_build_env_inherits_os_env(monkeypatch):
 - [ ] **Step 2: Run tests — verify they fail**
 
 ```bash
-cd $HOME/personal/umamusume-sweepy
+cd ~/personal/umamusume-sweepy
 python -m pytest tests/test_launcher.py -v 2>&1 | head -20
 ```
 

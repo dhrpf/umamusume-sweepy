@@ -170,6 +170,20 @@
                                 RACE SCHEDULE
                             </h2>
                             <div id="race-body" class="collapsible-body">
+                                <div class="trackblazer-schedule-row">
+                                    <label class="trackblazer-schedule-label" for="trackblazer-schedule-select">Race Schedule Template</label>
+                                    <select id="trackblazer-schedule-select" class="trackblazer-schedule-select">
+                                        <option value="">— None —</option>
+                                    </select>
+                                </div>
+                                <div id="trackblazer-panel" class="trackblazer-panel" style="display:none">
+                                    <div class="trackblazer-header">
+                                        <span class="trackblazer-label">Trackblazer Addon</span>
+                                        <span class="trackblazer-stats" id="trackblazer-stats"></span>
+                                        <span class="trackblazer-hint" id="trackblazer-hint"></span>
+                                    </div>
+                                    <div class="trackblazer-epithets" id="trackblazer-epithets"></div>
+                                </div>
                                 <div id="race-slot-popup-overlay" class="race-slot-popup-overlay" style="display: none;">
                                     <div class="race-slot-popup">
                                         <div class="race-slot-popup-header">
@@ -223,6 +237,16 @@
                                 <div class="friend-toolbar">
                                     <div id="friend-status" class="friend-status">Loading friends...</div>
                                 </div>
+                                <div class="filter-bar" id="friend-filter-bar" style="display:none">
+                                    <select id="friend-type-filter" class="filter-select" style="width:8rem">
+                                        <option value="">All Types</option>
+                                        <option value="Speed">Speed</option>
+                                        <option value="Stamina">Stamina</option>
+                                        <option value="Power">Power</option>
+                                        <option value="Guts">Guts</option>
+                                        <option value="Wit">Wit</option>
+                                    </select>
+                                </div>
                                 <div id="friend-grid" class="data-grid"></div>
                             </div>
                         </section>
@@ -241,6 +265,10 @@
                                 PARENTS <span id="parent-count"></span>
                             </h2>
                             <div id="parents-body" class="collapsible-body expanded">
+                                <div class="filter-bar" style="flex-direction:column; align-items:flex-start; gap:6px;">
+                                    <input id="parent-name-filter" class="filter-input" type="text" placeholder="Filter by parent name..." style="width:14rem">
+                                    <div id="parent-spark-filters"></div>
+                                </div>
                                 <div id="parent-grid" class="data-grid"></div>
                             </div>
                         </section>

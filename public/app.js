@@ -16,7 +16,10 @@ const state = {
     burnClocks: false,
     displayedClocksUsed: 0,
     devEnabled: true,
-    consecutiveRunnerFails: 0
+    consecutiveRunnerFails: 0,
+    friendTypeFilter: "",
+    parentNameFilter: "",
+    parentSparkFilters: {},
 };
 const els = {
     loadingScreen: document.getElementById('loading-screen'),
@@ -757,6 +760,51 @@ const els = {
                     body: JSON.stringify({ selection: payload })
                 });
             } catch (e) {}
+            saveSelectionToPreset();
+        }
+
+        async function saveSelectionToPreset() {
+            if (!state.selectedPreset) return;
+            const current = getCurrentPreset();
+            if (!current) return;
+
+            const team = {};
+            if (selection.deck && selection.deck.id != null) team.deck = { id: selection.deck.id };
+            if (selection.trainee && selection.trainee.id != null) team.trainee = { id: selection.trainee.id };
+            const veterans = (selection.veterans || [])
+                .filter(v => v && v.instance_id != null)
+                .map(v => ({ instance_id: v.instance_id }));
+            if (veterans.length) team.veterans = veterans;
+            if (selection.friend && selection.friend.viewer_id != null) {
+                team.friend = {
+                    viewer_id: selection.friend.viewer_id,
+                    support_card_id: selection.friend.support_card_id,
+                };
+            }
+            current.team_selection = team;
+
+            try {
+                await apiJson('/api/presets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ preset: current })
+                });
+            } catch (e) {}
+        }
+
+        function applyPresetTeamSelection() {
+            const activeCareer = state.account && state.account.career && state.account.career.active;
+            if (activeCareer) return;
+            const current = getCurrentPreset();
+            if (!current || !current.team_selection) return;
+
+            resetSelection();
+            document.querySelectorAll('.deck-container.selected, #uma-grid .grid-card.selected, #parent-grid .grid-card.selected, #friend-grid .grid-card.selected')
+                .forEach(el => el.classList.remove('selected'));
+
+            applyServerSelection(current.team_selection);
+            renderFriends();
+            renderTeamPanel();
         }
 
         function deselect(action, idx) {
@@ -772,7 +820,7 @@ const els = {
             } else if (action === 'vet') {
                 const vet = selection.veterans[idx];
                 if (vet != null) {
-                    const card = document.querySelectorAll('#parent-grid .grid-card')[vet._gridIdx];
+                    const card = document.querySelector(`#parent-grid .grid-card[data-pidx="${vet._gridIdx}"]`);
                     if (card) card.classList.remove('selected');
                 }
                 selection.veterans.splice(idx, 1);
@@ -980,7 +1028,12 @@ const els = {
         }
         function getVisibleFriends() {
             const friends = (dashData && dashData.friends) || [];
-            return friends.filter(friendAllowed);
+            const typeFilter = (state.friendTypeFilter || '').toLowerCase();
+            return friends.filter(f => {
+                if (!friendAllowed(f)) return false;
+                if (typeFilter && (f.type || '').toLowerCase() !== typeFilter) return false;
+                return true;
+            });
         }
         function clearInvalidFriendSelection() {
             if (selection.friend && !friendAllowed(selection.friend)) {
@@ -1046,6 +1099,7 @@ const els = {
                 const data = await raceRes.json();
                 state.raceData = Array.isArray(data.races) ? data.races : [];
                 syncSelectedPresetRaces();
+                renderTrackblazer();
                 renderRaces();
             } catch (e) {}
         }
@@ -1068,6 +1122,77 @@ const els = {
             state.selectedRaces = (current?.extra_race_list || [])
                 .map(id => parseInt(id, 10))
                 .filter(id => Number.isFinite(id));
+        }
+
+        function renderTrackblazer() {
+            const panel = document.getElementById('trackblazer-panel');
+            const statsEl = document.getElementById('trackblazer-stats');
+            const hintEl = document.getElementById('trackblazer-hint');
+            const epEl = document.getElementById('trackblazer-epithets');
+            if (!panel || !statsEl || !hintEl || !epEl) return;
+
+            const current = getCurrentPreset();
+            const tb = current?.trackblazer;
+
+            if (!tb) {
+                panel.style.display = 'none';
+                return;
+            }
+
+            statsEl.textContent = `+${tb.stat_bonus} Stats`;
+            hintEl.textContent = `${tb.skill_hint} Hint`;
+            epEl.innerHTML = (tb.epithets || []).map(e =>
+                `<span class="trackblazer-epithet-tag">${escapeHtml(e)}</span>`
+            ).join('');
+            panel.style.display = 'flex';
+        }
+
+        function populateTrackblazerSelect() {
+            const sel = document.getElementById('trackblazer-schedule-select');
+            if (!sel) return;
+            // Keep the — None — option, remove others
+            while (sel.options.length > 1) sel.remove(1);
+            if (!state.presets) return;
+            let added = 0;
+            for (const p of state.presets) {
+                if (!p.trackblazer) continue;
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.textContent = `${p.name}  (+${p.trackblazer.stat_bonus} Stats · ${p.trackblazer.skill_hint})`;
+                sel.appendChild(opt);
+                added++;
+            }
+            // Auto-select if the current preset has trackblazer data
+            const current = getCurrentPreset();
+            sel.value = (current?.trackblazer) ? current.name : '';
+        }
+
+        function bindTrackblazerSchedule() {
+            const sel = document.getElementById('trackblazer-schedule-select');
+            if (!sel) return;
+            sel.addEventListener('change', function() {
+                const name = this.value;
+                if (!name || !state.presets) return;
+                const preset = state.presets.find(p => p.name === name);
+                if (!preset || !preset.extra_race_list) return;
+
+                // Fill race schedule
+                state.selectedRaces = preset.extra_race_list
+                    .map(id => parseInt(id, 10))
+                    .filter(id => Number.isFinite(id));
+
+                // Also update the bot preset selector to match if it's a trackblazer preset
+                if (els.presetSelect && preset.trackblazer) {
+                    els.presetSelect.value = name;
+                    state.selectedPreset = name;
+                    localStorage.setItem('uma_selected_preset', name);
+                    populatePresetUI();
+                    renderTrackblazer();
+                }
+
+                renderRaces();
+                autoSaveRaces();
+            });
         }
 
         function getYearSlots(yearIdx) {
@@ -1556,7 +1681,10 @@ const els = {
                     localStorage.setItem('uma_selected_preset', state.selectedPreset);
                     syncSelectedPresetRaces();
                     populatePresetUI();
+                    populateTrackblazerSelect();
+                    renderTrackblazer();
                     renderRaces();
+                    applyPresetTeamSelection();
                 });
             }
 
@@ -1723,6 +1851,7 @@ const els = {
                     if (els.presetSelect) els.presetSelect.value = state.selectedPreset;
                     syncSelectedPresetRaces();
                     populatePresetUI();
+                    renderTrackblazer();
                     renderRaces();
                 } catch (e) { alert("Failed to save new preset."); }
             });
@@ -1764,18 +1893,21 @@ const els = {
                     localStorage.setItem('uma_selected_preset', state.selectedPreset);
                     if (els.presetSelect) els.presetSelect.value = state.selectedPreset;
                     populatePresetUI();
+                    populateTrackblazerSelect();
                 } else {
                     state.presets = [];
                     state.selectedPreset = "";
                     localStorage.removeItem('uma_selected_preset');
                     if (els.presetSelect) els.presetSelect.innerHTML = "";
                     populatePresetUI();
+                    populateTrackblazerSelect();
                 }
             } catch(e) {
                 state.presets = [];
                 state.selectedPreset = "";
                 localStorage.removeItem('uma_selected_preset');
                 populatePresetUI();
+                populateTrackblazerSelect();
             }
             syncStartButton();
             await loadRaceData();
@@ -1799,6 +1931,8 @@ const els = {
             }
 
             els.friendCount.innerText = `(${visibleFriends.length}/${friends.length})`;
+            const filterBar = document.getElementById('friend-filter-bar');
+            if (filterBar) filterBar.style.display = friends.length > 0 ? '' : 'none';
             els.friendGrid.innerHTML = visibleFriends.map(friend => {
                 const imgId = friend.support_card_id || '10001';
                 const lb = friend.limit_break_count ?? '?';
@@ -1821,6 +1955,87 @@ const els = {
                 if (id) seen.add(id);
             });
             dashData.friendExcludeIds = Array.from(seen);
+        }
+
+        function bindFilterHandlers() {
+            const friendType = document.getElementById('friend-type-filter');
+            if (friendType) {
+                friendType.addEventListener('change', () => {
+                    state.friendTypeFilter = friendType.value;
+                    renderFriends();
+                    document.getElementById('friend-filter-bar').style.display = '';
+                });
+            }
+
+            const parentName = document.getElementById('parent-name-filter');
+            if (parentName) parentName.addEventListener('input', () => {
+                state.parentNameFilter = parentName.value || '';
+                renderParents((dashData && dashData.parents) || []);
+            });
+            renderParentSparkFilters();
+        }
+
+        const PARENT_BLUE_SPARKS = [
+            { key: 'speed', label: 'Speed', category: 'stat' },
+            { key: 'stamina', label: 'Stamina', category: 'stat' },
+            { key: 'power', label: 'Power', category: 'stat' },
+            { key: 'guts', label: 'Guts', category: 'stat' },
+            { key: 'wit', label: 'Wit', category: 'stat' },
+        ];
+        const PARENT_PINK_SPARKS = [
+            { key: 'turf', label: 'Turf', category: 'aptitude' },
+            { key: 'dirt', label: 'Dirt', category: 'aptitude' },
+            { key: 'short', label: 'Short', category: 'aptitude' },
+            { key: 'mile', label: 'Mile', category: 'aptitude' },
+            { key: 'medium', label: 'Medium', category: 'aptitude' },
+            { key: 'long', label: 'Long', category: 'aptitude' },
+            { key: 'front', label: 'Front Runner', category: 'aptitude' },
+            { key: 'pace', label: 'Pace Chaser', category: 'aptitude' },
+            { key: 'late', label: 'Late Surger', category: 'aptitude' },
+            { key: 'end', label: 'End Closer', category: 'aptitude' },
+        ];
+        const PARENT_SPARK_BY_KEY = {};
+        [...PARENT_BLUE_SPARKS, ...PARENT_PINK_SPARKS].forEach(s => { PARENT_SPARK_BY_KEY[s.key] = s; });
+
+        function renderParentSparkFilters() {
+            const container = document.getElementById('parent-spark-filters');
+            if (!container) return;
+            const filters = state.parentSparkFilters || {};
+            const chipHtml = spark => {
+                const th = filters[spark.key] || 0;
+                const tint = spark.category === 'stat' ? '96,165,250' : '244,114,182';
+                const active = th > 0;
+                const bg = active ? `rgba(${tint},0.22)` : 'rgba(255,255,255,0.05)';
+                const border = active ? `rgb(${tint})` : 'transparent';
+                const color = active ? 'var(--text-main)' : '#a1a1aa';
+                const star = th === 3 ? '3★' : th > 0 ? `${th}★+` : '';
+                return `<div class="parent-spark-chip" data-key="${spark.key}" style="padding:0.35rem 0.7rem; border-radius:1rem; font-size:0.75rem; cursor:pointer; background:${bg}; border:1px solid ${border}; color:${color}; font-weight:bold; transition:all 0.1s;">${spark.label}${star ? ` <span style="opacity:0.85">${star}</span>` : ''}</div>`;
+            };
+            const anyActive = Object.keys(filters).length > 0;
+            let html = '<div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:4px;">';
+            html += PARENT_BLUE_SPARKS.map(chipHtml).join('');
+            html += '</div><div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">';
+            html += PARENT_PINK_SPARKS.map(chipHtml).join('');
+            if (anyActive) html += `<div id="parent-spark-clear" style="padding:0.35rem 0.7rem; border-radius:1rem; font-size:0.75rem; cursor:pointer; background:rgba(255,255,255,0.05); border:1px solid transparent; color:#a1a1aa; font-weight:bold;">Clear ✕</div>`;
+            html += '</div>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.parent-spark-chip').forEach(el => {
+                el.addEventListener('click', () => {
+                    const key = el.getAttribute('data-key');
+                    const next = ((state.parentSparkFilters[key] || 0) + 1) % 4; // off->1->2->3->off
+                    if (next === 0) delete state.parentSparkFilters[key];
+                    else state.parentSparkFilters[key] = next;
+                    renderParentSparkFilters();
+                    renderParents((dashData && dashData.parents) || []);
+                });
+            });
+            const clear = document.getElementById('parent-spark-clear');
+            if (clear) clear.addEventListener('click', () => {
+                state.parentSparkFilters = {};
+                renderParentSparkFilters();
+                renderParents((dashData && dashData.parents) || []);
+            });
         }
         async function loadFriends(refresh = false) {
             if (!dashData || state.isFetchingFriends) return;
@@ -2189,9 +2404,12 @@ const els = {
                 element.classList.add('selectable');
                 element.addEventListener('click', () => selectTrainee(index, element));
             });
-            document.querySelectorAll('#parent-grid .grid-card').forEach((element, index) => {
+            document.querySelectorAll('#parent-grid .grid-card').forEach((element) => {
                 element.classList.add('selectable');
-                element.addEventListener('click', () => selectParent(index, element));
+                element.addEventListener('click', () => {
+                    const pidx = parseInt(element.dataset.pidx, 10);
+                    if (!isNaN(pidx)) selectParent(pidx, element);
+                });
             });
         }
         function isValidDeck(deck) {
@@ -2265,9 +2483,39 @@ const els = {
             }).join('');
         }
         function renderParents(parents) {
-            els.parentGrid.innerHTML = parents.map(parent => {
+            const nameQ = (state.parentNameFilter || '').toLowerCase().trim();
+            const sparkFilters = state.parentSparkFilters || {};
+            const sparkSpecs = Object.keys(sparkFilters).map(key => {
+                const spark = PARENT_SPARK_BY_KEY[key];
+                return { label: spark.label, category: spark.category, min: sparkFilters[key] };
+            });
+
+            let filtered = parents;
+            if (nameQ) {
+                filtered = filtered.filter(p => (p.name || '').toLowerCase().includes(nameQ));
+            }
+            if (sparkSpecs.length) {
+                // OR: parent passes if any active spark chip is satisfied in self/p1/p2
+                filtered = filtered.filter(p => {
+                    const tree = p.tree || {};
+                    for (const key of ['self', 'p1', 'p2']) {
+                        const node = tree[key];
+                        if (!node || !node.factors) continue;
+                        for (const f of node.factors) {
+                            for (const s of sparkSpecs) {
+                                if (f.category === s.category && (f.name || '') === s.label && (f.stars || 0) >= s.min) return true;
+                            }
+                        }
+                    }
+                    return false;
+                });
+            }
+
+            els.parentGrid.innerHTML = filtered.map((parent, fi) => {
                 const imgId = parent.card_id || '100101';
-                return `<div class="grid-card">
+                // Find the original index in the full parents array for selection
+                const origIdx = parents.indexOf(parent);
+                return `<div class="grid-card" data-pidx="${origIdx}">
                     <div class="rank-badge">${rankMap[parent.rank] || '??'}</div>
                     <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                     <div class="sparks-tooltip" style="--spark-bg: url('/api/images/${imgId}.png')">
@@ -2284,6 +2532,24 @@ const els = {
                     </div>
                 </div>`;
             }).join('');
+            if (els.parentCount) {
+                const total = parents.length;
+                const shown = filtered.length;
+                els.parentCount.innerText = shown < total ? `(${shown}/${total})` : `(${total})`;
+            }
+            // Re-bind spark tooltips and parent click handlers (DOM was re-created)
+            bindSparkTooltips();
+            document.querySelectorAll('#parent-grid .grid-card').forEach((element) => {
+                element.classList.remove('vet-full');
+                element.classList.add('selectable');
+                element.addEventListener('click', () => {
+                    const pidx = parseInt(element.dataset.pidx, 10);
+                    if (!isNaN(pidx)) selectParent(pidx, element);
+                });
+            });
+            updateVetSelectability();
+            syncFriendSelection();
+            renderTeamPanel();
         }
         function renderTrainees(umas) {
             els.umaGrid.innerHTML = umas.map(uma => {
@@ -2347,8 +2613,8 @@ const els = {
                             if (selection.veterans.length < 2 && !selection.veterans.find(v => Number(v.instance_id) === pId)) {
                                 p._gridIdx = idx;
                                 selection.veterans.push(p);
-                                const parentEls = document.querySelectorAll('#parent-grid .grid-card');
-                                if (parentEls[idx]) parentEls[idx].classList.add('selected');
+                                const parentEl = document.querySelector(`#parent-grid .grid-card[data-pidx="${idx}"]`);
+                                if (parentEl) parentEl.classList.add('selected');
                             }
                         }
                     });
@@ -2385,8 +2651,8 @@ const els = {
                         const parent = dashData.parents[pIdx];
                         parent._gridIdx = pIdx;
                         selection.veterans.push(parent);
-                        const parentEls = document.querySelectorAll('#parent-grid .grid-card');
-                        if (parentEls[pIdx]) parentEls[pIdx].classList.add('selected');
+                        const parentEl = document.querySelector(`#parent-grid .grid-card[data-pidx="${pIdx}"]`);
+                        if (parentEl) parentEl.classList.add('selected');
                     }
                 });
                 updateVetSelectability();
@@ -2458,6 +2724,7 @@ const els = {
             autoLoadCareerSelection();
 
             await loadPresets();
+            applyPresetTeamSelection();
             if (!dashData.friends.length) {
                 loadFriends(false);
             } else {
@@ -2467,6 +2734,8 @@ const els = {
             attachSelectionHandlers();
             bindRaceHandlers();
             bindPresetHandlers();
+            bindTrackblazerSchedule();
+            bindFilterHandlers();
             renderTeamPanel();
 
             startRunnerPolling();

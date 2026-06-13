@@ -8,3 +8,7 @@ output-daily.json
 docs/*
 !docs/superpowers/
 graphify-out/
+experiments/
+accounts.json
+docs/
+data/presets/

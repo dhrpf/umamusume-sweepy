@@ -1293,6 +1293,32 @@ body.dashboard-mode .turn-delay-control {
 .section-title-toggle:hover {
   background: rgba(var(--accent-primary-rgb), 0.07);
 }
+/* ── Filter Bar ── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+.filter-select, .filter-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.35rem;
+  color: var(--text-main);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
+.filter-select:focus, .filter-input:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+}
+.filter-input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* ── Data Grids ── */
 .data-grid {
   --grid-min: 8.6rem;
   display: grid;
@@ -1909,7 +1935,7 @@ body.dashboard-mode .turn-delay-control {
 }
 .grid-card.vet-full {
   opacity: 0.45;
-  pointer-events: none;
+  cursor: default;
 }
 .deck-container {
   cursor: pointer;
@@ -2142,6 +2168,95 @@ body.dashboard-mode .turn-delay-control {
     font-size: 1.15rem;
   }
 }
+/* ── Trackblazer Schedule Selector ── */
+.trackblazer-schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 242, 255, 0.04);
+  border: 1px solid rgba(0, 242, 255, 0.12);
+  border-radius: 0.5rem;
+}
+.trackblazer-schedule-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04rem;
+  white-space: nowrap;
+}
+.trackblazer-schedule-select {
+  flex: 1;
+  max-width: 28rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.4rem;
+  color: var(--text-main);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.trackblazer-schedule-select:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+}
+
+/* ── Trackblazer Addon Panel ── */
+.trackblazer-panel {
+  background: linear-gradient(135deg, rgba(0, 242, 255, 0.06), rgba(255, 171, 64, 0.06));
+  border: 1px solid rgba(0, 242, 255, 0.2);
+  border-radius: 0.6rem;
+  margin-bottom: 0.8rem;
+  padding: 0.7rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.trackblazer-header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.trackblazer-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06rem;
+  color: var(--accent-primary);
+  opacity: 0.8;
+}
+.trackblazer-stats {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffd700;
+}
+.trackblazer-hint {
+  font-size: 0.85rem;
+  color: #7ec8e3;
+}
+.trackblazer-hint::before {
+  content: "🎴 ";
+}
+.trackblazer-stats::before {
+  content: "⭐ ";
+}
+.trackblazer-epithets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.trackblazer-epithet-tag {
+  font-size: 0.7rem;
+  background: rgba(0, 242, 255, 0.1);
+  border: 1px solid rgba(0, 242, 255, 0.2);
+  border-radius: 1rem;
+  padding: 0.15rem 0.5rem;
+  color: var(--text-dim);
+}
+
 .race-year-container {
   display: flex;
   flex-direction: column;

@@ -17,6 +17,10 @@ WINEPREFIX=~/.local/share/Steam/steamapps/compatdata/3224770/pfx \
   "$HOME/.local/share/Steam/steamapps/common/Proton - Experimental/files/bin/wine" \
   ~/frida-server-17.9.1-windows-x86_64.exe
 
+WINEPREFIX=~/.local/share/Steam/steamapps/compatdata/3224770/pfx \
+  "$HOME/.local/share/Steam/compatibilitytools.d/GE-Proton10-34/files/bin/wine" \
+  ~/frida-server-17.9.1-windows-x86_64.exe
+
 # Capture game API calls for reverse engineering
 FRIDA_REMOTE=127.0.0.1:27042 venv/bin/python capture_dailies.py output.json
 

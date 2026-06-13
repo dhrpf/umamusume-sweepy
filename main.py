@@ -19,6 +19,7 @@ import time
 import threading
 import frida
 from career_bot import master_data
+from career_bot import affinity as affinity_calc
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
 from uma_api.client import UmaClient, runtime_output_root
@@ -214,6 +215,7 @@ active_dashboard_data = None
 active_start_state = {}
 active_parent_cards = {}
 active_parent_rank_points = {}
+active_parent_full = {}  # trained_chara_id -> full trained-chara dict (for affinity calc)
 pending_game_auth_config = {}
 raw_load_index_response = None
 active_selection = {
@@ -301,6 +303,10 @@ def update_start_state(data):
     if isinstance(item_list, list) and item_list:
         active_start_state['current_money'] = get_item_count(item_list, 59)
         active_start_state['succession_rank_point'] = get_item_count(item_list, 75)
+    elif active_client:
+        # Most endpoints don't return item_list — use item_map updated by call() internally
+        active_start_state['current_money'] = active_client.item_map.get(59, 0)
+        active_start_state['succession_rank_point'] = active_client.item_map.get(75, 0)
 
 
 def normalize_friend_cards(data):
@@ -424,13 +430,12 @@ def parent_rank_point(parent_id):
     rank = int(parent.get('rank') or 0)
     if rank == 13:
         return 62
-    return int(parent.get('rank_point') or 0)
+    return int(parent.get('rank_score') or 0)
 
 
 def selected_succession_rank_point(req):
-    selected_total = parent_rank_point(req.parent_id_1) + parent_rank_point(req.parent_id_2)
-    if selected_total:
-        return selected_total
+    # Always use the account's total rank point balance (item 75), not per-parent sums
+    # The API expects current_succession_rank_point = what the player currently has
     return active_start_state.get('succession_rank_point', 0)
 
 skill_data = {}
@@ -813,7 +818,8 @@ def start_career_from_request(req):
         return {"success": False, "detail": selection_error}
 
     try:
-        res = active_client.read_info()
+        # load/index returns full item list (read_info/index doesn't)
+        res = active_client.call('load/index', {'adid': ''})
         data = res.get('data', {})
         active_client.refresh_cached_account_state(data)
         update_start_state(data)
@@ -863,14 +869,81 @@ def start_career_from_request(req):
         if req.use_tp and current_tp < req.use_tp:
             return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
     current_money = active_start_state['current_money']
+    p1_rank = active_parent_rank_points.get(int(req.parent_id_1))
+    p2_rank = active_parent_rank_points.get(int(req.parent_id_2))
+    # current_succession_rank_point = succession affinity (相性). The server validates it.
+    # Compute it from master.mdb + the two parents' lineage; fall back to item-75 only on failure.
     succession_rank_point = selected_succession_rank_point(req)
-
     try:
-        active_client.pre_single_mode([req.friend_viewer_id] if req.friend_viewer_id else [])
-        dna_sleep(0.5, 1.5)
+        p1_full = active_parent_full.get(int(req.parent_id_1))
+        p2_full = active_parent_full.get(int(req.parent_id_2))
+        if p1_full and p2_full:
+            mdb = str(master_data.configured_master_mdb_path(base_dir))
+            aff = affinity_calc.calculate_affinity(mdb, req.card_id, p1_full, p2_full)
+            print(f"[start_career] affinity={aff['total']} (chara={aff['chara_compat']} race={aff['race_compat']}) item75-fallback-was={succession_rank_point}", flush=True)
+            succession_rank_point = aff['total']
+        else:
+            print(f"[start_career] affinity: missing parent data ({req.parent_id_1}={bool(p1_full)} {req.parent_id_2}={bool(p2_full)}); using fallback {succession_rank_point}", flush=True)
+    except Exception as e:
+        print(f"[start_career] affinity calc FAILED: {e}; using fallback {succession_rank_point}", flush=True)
+    print(f"[start_career] parents={req.parent_id_1}(rank={p1_rank.get('rank') if p1_rank else '?'}) {req.parent_id_2}(rank={p2_rank.get('rank') if p2_rank else '?'}) sp={succession_rank_point}", flush=True)
+
+    # Fresh session to clear any stuck single_mode state
+    try:
+        active_client.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
+        print(f"[start_career] start_session OK", flush=True)
     except Exception:
         pass
+    # Clear any leftover single_mode career before starting fresh.
+    # Prefer a graceful finish (claims rewards if the run is complete); only
+    # force-delete an orphan that the server won't let us finish normally.
+    leftover_turn = None
+    try:
+        existing = active_client.load_career()
+        chara = (existing.get('data') or {}).get('chara_info') or {}
+        if chara:
+            leftover_turn = int(chara.get('turn') or 0)
+    except Exception:
+        leftover_turn = None  # 102/no-career -> nothing to clean
+    if leftover_turn is not None:
+        print(f"[start_career] leftover career detected (turn={leftover_turn}); attempting graceful finish", flush=True)
+        try:
+            fc = active_client.finish_career(current_turn=leftover_turn, is_force_delete=False)
+            print(f"[start_career] finish_career(graceful) OK rc={(fc or {}).get('data_headers', {}).get('result_code')}", flush=True)
+        except Exception as e:
+            print(f"[start_career] graceful finish failed ({e}); force-deleting orphan", flush=True)
+            try:
+                active_client.finish_career(current_turn=leftover_turn or 99, is_force_delete=True)
+            except Exception as e2:
+                print(f"[start_career] force_delete also failed: {e2}", flush=True)
+    else:
+        print(f"[start_career] no leftover career to clean", flush=True)
+    try:
+        # Don't pass exclude_viewer_ids — game doesn't send them either and it may affect server state
+        active_client.pre_single_mode()
+        dna_sleep(0.5, 1.5)
+    except Exception as e:
+        print(f"[start_career] pre_single_mode FAILED: {e}", flush=True)
 
+    start_payload = dict(
+        card_id=req.card_id,
+        support_card_ids=req.support_card_ids,
+        friend_viewer_id=req.friend_viewer_id,
+        friend_card_id=req.friend_card_id,
+        parent_id_1=req.parent_id_1,
+        parent_id_2=req.parent_id_2,
+        scenario_id=req.scenario_id,
+        deck_id=req.deck_id,
+        use_tp=req.use_tp,
+        tp_info={'current_tp': tp_info.get('current_tp'), 'max_tp': tp_info.get('max_tp')},
+        current_money=current_money,
+        succession_rank_point=succession_rank_point,
+        difficulty_id=req.difficulty_id,
+        difficulty=req.difficulty,
+        is_boost=req.is_boost,
+        boost_story_event_id=req.boost_story_event_id
+    )
+    print(f"[start_career] payload: {json.dumps(start_payload, ensure_ascii=False)}", flush=True)
     result = active_client.start_career(
         card_id=req.card_id,
         support_card_ids=req.support_card_ids,
@@ -996,6 +1069,7 @@ def _build_dashboard_from_login_response(res):
                 lineage_cards.append(int(sc_cid))
         active_parent_cards[int(chara.get('trained_chara_id'))] = lineage_cards
         active_parent_rank_points[int(chara.get('trained_chara_id'))] = {'rank': chara.get('rank', 0), 'rank_score': chara.get('rank_score', 0)}
+        active_parent_full[int(chara.get('trained_chara_id'))] = chara
     active_dashboard_data = {"success": True, "account": account, "umas": umas, "supports": supports, "decks": decks, "parents": parents}
     return active_dashboard_data
 
@@ -1051,6 +1125,8 @@ async def login(req: LoginRequest):
         if not res:
             raise HTTPException(status_code=401, detail="Game login failed")
         active_client = gated_client
+        cfg['res_ver'] = c.res_ver
+        cfg['app_ver'] = c.app_ver
         save_auth_cache(cfg)
         return _build_dashboard_from_login_response(res)
     except Exception as e:
@@ -1153,6 +1229,8 @@ def capture_login():
         active_client = gated_client
         raw_load_index_response = None
         active_selection = {"deck": None, "friend": None, "trainee": None, "veterans": []}
+        cfg['res_ver'] = c.res_ver
+        cfg['app_ver'] = c.app_ver
         save_auth_cache(cfg)
         dashboard = _build_dashboard_from_login_response(res)
         print('[capture-login] Login successful.', flush=True)
@@ -1280,9 +1358,12 @@ def manage_career_loop(req, preset, initial_result):
                 break
         else:
             consecutive_fails = 0
-            if active_account and "career" in active_account and active_account["career"]:
-                active_account["career"]["active"] = False
-            
+        # Always clear the local active-career flag before the next start attempt.
+        # start_career_from_request refuses if it thinks a career is active; the
+        # leftover (errored/stuck) run is cleaned up there via graceful-finish/force-delete.
+        if active_account and "career" in active_account and active_account["career"]:
+            active_account["career"]["active"] = False
+
         if not req.dev_mode:
             break
 
@@ -1815,6 +1896,8 @@ def auto_login_from_cache():
             print('[auto-login] Game login failed.', flush=True)
             return False
         active_client = gated_client
+        cfg['res_ver'] = c.res_ver
+        cfg['app_ver'] = c.app_ver
         save_auth_cache(cfg)
         _build_dashboard_from_login_response(res)
         raw_load_index_response = None

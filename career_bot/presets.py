@@ -67,6 +67,37 @@ def normalize_race_list(value):
     return result
 
 
+def normalize_team_selection(value):
+    """Keep only the id fields needed to re-select a saved team on reload."""
+    if not isinstance(value, dict):
+        return None
+    result = {}
+
+    deck = value.get("deck")
+    if isinstance(deck, dict) and deck.get("id") not in (None, ""):
+        result["deck"] = {"id": deck["id"]}
+
+    trainee = value.get("trainee")
+    if isinstance(trainee, dict) and trainee.get("id") not in (None, ""):
+        result["trainee"] = {"id": trainee["id"]}
+
+    veterans = []
+    for vet in value.get("veterans") or []:
+        if isinstance(vet, dict) and vet.get("instance_id") not in (None, ""):
+            veterans.append({"instance_id": vet["instance_id"]})
+    if veterans:
+        result["veterans"] = veterans
+
+    friend = value.get("friend")
+    if isinstance(friend, dict) and friend.get("viewer_id") not in (None, ""):
+        result["friend"] = {
+            "viewer_id": friend.get("viewer_id"),
+            "support_card_id": friend.get("support_card_id"),
+        }
+
+    return result or None
+
+
 def serialize_preset(raw):
     data = dict(raw or {})
     serialized = {}
@@ -83,6 +114,13 @@ def serialize_preset(raw):
 
     serialized["extra_race_list"] = normalize_race_list(data.get("extra_race_list", data.get("race_list", [])))
     serialized["learn_skill_threshold"] = as_int(data.get("learn_skill_threshold"), 888)
+
+    if data.get("trackblazer"):
+        serialized["trackblazer"] = data["trackblazer"]
+
+    team_selection = normalize_team_selection(data.get("team_selection"))
+    if team_selection:
+        serialized["team_selection"] = team_selection
 
     return serialized
 

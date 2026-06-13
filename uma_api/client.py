@@ -727,6 +727,11 @@ class UmaClient:
                 self.viewer_id = new_vid
                 self.regen_sid()
             raise Exception(f'709 on {ep}')
+        if rc == 1055:
+            print(f"VIEWER ID INVALID on 1055: viewer_id={self.viewer_id}")
+            print(f"  data_headers={json.dumps(dh, ensure_ascii=False)}")
+            print(f"  data={json.dumps(res.get('data', {}), ensure_ascii=False)[:500]}")
+            raise Exception(f'1055 on {ep}')
         if rc != 1:
             if rc == 205 and retry_205 > 0:
                 print(f"205 on {ep}, retrying... ({retry_205} left)")
@@ -851,6 +856,9 @@ class UmaClient:
                 if '709' in err and attempt < max_retries:
                     dna_sleep(0.83, 0.83)
                     continue
+                if '1055' in err and attempt < max_retries:
+                    dna_sleep(0.83, 0.83)
+                    continue
                 if '394' in err and attempt < max_retries:
                     dna_sleep(2.5, 2.5)
                     continue
@@ -915,6 +923,8 @@ class UmaClient:
             "graphics_device_name": self.graphics_device,
             "ip_address": self.ip_address,
             "platform_os_version": self.platform_os,
+            "res_ver": self.res_ver,
+            "app_ver": self.app_ver,
         }
 
     def pre_single_mode(self, exclude_viewer_ids=None):
