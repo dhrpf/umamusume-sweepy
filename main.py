@@ -701,6 +701,9 @@ class RunCareerRequest(BaseModel):
     burn_clocks: bool = False
     dev_mode: bool = True
     stop_on_empty_tp: bool = False
+    run_delay_min_min: int = 0
+    run_delay_max_min: int = 0
+    tp_mode: str = "carat"
 
 class SaveRacesRequest(BaseModel):
     preset_name: str
