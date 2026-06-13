@@ -126,6 +126,62 @@ def dna_gauss(mean, stddev):
     return _dna_rng.gauss(mean, stddev)
 
 
+# --- Run pacing / TP strategy (pure helpers) ---
+
+DEFAULT_RUN_DELAY_FALLBACK_SEC = 6.0
+TP_REGEN_SECONDS_PER_TP = 600   # 1 TP regenerates every 10 minutes
+TP_REGEN_BUFFER_SEC = 60        # cushion so the threshold is actually crossed
+TP_REGEN_MIN_WAIT_SEC = 60      # floor so we never busy-loop
+
+
+def resolve_tp_mode(value):
+    """Normalize a tp_mode value. Anything that isn't 'wait' -> 'carat'."""
+    if isinstance(value, str) and value.strip().lower() == "wait":
+        return "wait"
+    return "carat"
+
+
+def pick_delay_seconds(min_min, max_min, rng=None):
+    """Pick a randomized inter-run delay in SECONDS from a [min, max] MINUTE range.
+
+    - (0, 0) -> DEFAULT_RUN_DELAY_FALLBACK_SEC (keeps the legacy short gap).
+    - max < min -> max is clamped up to min.
+    - negative inputs are treated as 0.
+    """
+    lo = max(0.0, float(min_min or 0))
+    hi = max(0.0, float(max_min or 0))
+    if hi < lo:
+        hi = lo
+    if lo == 0 and hi == 0:
+        return DEFAULT_RUN_DELAY_FALLBACK_SEC
+    r = rng or random
+    return r.uniform(lo, hi) * 60.0
+
+
+def compute_regen_wait_seconds(use_tp, current_tp):
+    """Seconds to wait for natural TP regen to reach use_tp (10 min per TP)."""
+    deficit = int(use_tp) - int(current_tp)
+    if deficit <= 0:
+        return TP_REGEN_MIN_WAIT_SEC
+    return max(TP_REGEN_MIN_WAIT_SEC,
+               deficit * TP_REGEN_SECONDS_PER_TP + TP_REGEN_BUFFER_SEC)
+
+
+def decide_tp_action(use_tp, current_tp, tp_mode, stop_on_empty_tp):
+    """Decide what to do when starting a career given current TP.
+
+    Returns one of: 'ok', 'stop', 'wait', 'carat'.
+    Precedence: enough TP -> ok; stop flag -> stop; tp_mode -> wait/carat.
+    """
+    if not use_tp or int(current_tp) >= int(use_tp):
+        return "ok"
+    if stop_on_empty_tp:
+        return "stop"
+    if resolve_tp_mode(tp_mode) == "wait":
+        return "wait"
+    return "carat"
+
+
 class GateKeeper:
     def __init__(self, client):
         super().__setattr__('_client', client)
