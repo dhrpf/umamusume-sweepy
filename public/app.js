@@ -74,6 +74,9 @@ const els = {
     presetDelBtn: document.getElementById('preset-del-btn'),
     presetRunningStyle: document.getElementById('preset-running-style'),
     presetSkillThreshold: document.getElementById('preset-skill-threshold'),
+    presetDelayMin: document.getElementById('preset-delay-min'),
+    presetDelayMax: document.getElementById('preset-delay-max'),
+    presetTpMode: document.getElementById('preset-tp-mode'),
     presetEditSkillsBtn: document.getElementById('preset-edit-skills-btn'),
     skillModal: document.getElementById('skill-modal'),
     skillSearch: document.getElementById('skill-search'),
@@ -1520,6 +1523,9 @@ const els = {
 
             current.learn_skill_threshold = parseInt(els.presetSkillThreshold.value) || 888;
             current.running_style = parseInt(els.presetRunningStyle?.value) || 1;
+            current.run_delay_min_min = parseInt(els.presetDelayMin?.value) || 0;
+            current.run_delay_max_min = parseInt(els.presetDelayMax?.value) || 0;
+            current.tp_mode = (els.presetTpMode?.value === 'wait') ? 'wait' : 'carat';
 
             try {
                 await apiJson('/api/presets', {
@@ -1537,6 +1543,9 @@ const els = {
 
             els.presetSkillThreshold.value = current.learn_skill_threshold || 888;
             if (els.presetRunningStyle) els.presetRunningStyle.value = current.running_style || 1;
+            if (els.presetDelayMin) els.presetDelayMin.value = current.run_delay_min_min ?? 0;
+            if (els.presetDelayMax) els.presetDelayMax.value = current.run_delay_max_min ?? 0;
+            if (els.presetTpMode) els.presetTpMode.value = (current.tp_mode === 'wait') ? 'wait' : 'carat';
         }
 
         function bindPresetHandlers() {
@@ -1553,6 +1562,9 @@ const els = {
             const saveHandler = () => savePresetConfig();
             els.presetSkillThreshold?.addEventListener('change', saveHandler);
             els.presetRunningStyle?.addEventListener('change', saveHandler);
+            els.presetDelayMin?.addEventListener('change', saveHandler);
+            els.presetDelayMax?.addEventListener('change', saveHandler);
+            els.presetTpMode?.addEventListener('change', saveHandler);
 
             els.presetEditSkillsBtn?.addEventListener('click', () => {
                 if (!state.selectedPreset) return;
@@ -1688,7 +1700,10 @@ const els = {
                     learn_skill_list: [],
                     learn_skill_blacklist: [],
                     extra_race_list: [],
-                    learn_skill_threshold: 888
+                    learn_skill_threshold: 888,
+                    run_delay_min_min: 10,
+                    run_delay_max_min: 50,
+                    tp_mode: 'carat'
                 };
 
                 try {
@@ -1893,7 +1908,10 @@ const els = {
                 preset_name: state.selectedPreset,
                 max_steps: 2500,
                 burn_clocks: state.burnClocks,
-                dev_mode: state.devEnabled
+                dev_mode: state.devEnabled,
+                run_delay_min_min: Number(getCurrentPreset()?.run_delay_min_min ?? 0),
+                run_delay_max_min: Number(getCurrentPreset()?.run_delay_max_min ?? 0),
+                tp_mode: (getCurrentPreset()?.tp_mode === 'wait') ? 'wait' : 'carat'
             };
             try {
                 const data = await apiJson('/api/career/run', {

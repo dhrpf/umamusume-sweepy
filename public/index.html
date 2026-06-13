@@ -131,6 +131,23 @@
                                         <input id="preset-skill-threshold" class="form-input master-data-input preset-input" type="number">
                                     </div>
                                 </div>
+                                <div class="preset-control-row preset-control-grid">
+                                    <div class="preset-field">
+                                        <label class="form-label" for="preset-delay-min">RUN DELAY MIN (min)</label>
+                                        <input id="preset-delay-min" class="form-input master-data-input preset-input" type="number" min="0">
+                                    </div>
+                                    <div class="preset-field">
+                                        <label class="form-label" for="preset-delay-max">RUN DELAY MAX (min)</label>
+                                        <input id="preset-delay-max" class="form-input master-data-input preset-input" type="number" min="0">
+                                    </div>
+                                    <div class="preset-field">
+                                        <label class="form-label" for="preset-tp-mode">TP WHEN EMPTY</label>
+                                        <select id="preset-tp-mode" class="form-input master-data-input preset-input">
+                                            <option value="carat">Restore with carats</option>
+                                            <option value="wait">Wait for regen</option>
+                                        </select>
+                                    </div>
+                                </div>
                                 <button id="preset-edit-skills-btn" class="btn btn-sm preset-wide-btn" type="button">CONFIGURE SKILLS (PRIORITIES & BLACKLIST)</button>
                             </div>
                         </section>
