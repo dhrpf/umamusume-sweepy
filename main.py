@@ -1210,17 +1210,69 @@ def manage_career_loop(req, preset, initial_result):
     global backend_loop_stop, active_account, active_client
     max_steps = max(1, min(int(req.max_steps or 2500), 3000))
     consecutive_fails = 0
+
+    def acquire_start():
+        """Start a career, handling TP wait/recover and transient failures.
+
+        Returns the career-start result dict, or None if the loop should stop
+        (TP exhausted with stop mode, too many failures, or stop requested).
+        """
+        nonlocal consecutive_fails
+        while not backend_loop_stop:
+            try:
+                started = start_career_from_request(req)
+                if not started.get("success"):
+                    detail = started.get("detail")
+                    if detail == "TP_EXHAUSTED":
+                        print(f'[loop] TP exhausted ({started.get("current_tp")} < {req.use_tp}), stopping.', flush=True)
+                        return None
+                    if detail == "TP_REGEN_WAIT":
+                        wait_sec = compute_regen_wait_seconds(req.use_tp, started.get("current_tp") or 0)
+                        print(f'[loop] waiting {wait_sec/60:.0f}m for TP regen ({started.get("current_tp")} < {req.use_tp})', flush=True)
+                        if not _interruptible_sleep(wait_sec):
+                            return None
+                        continue
+                    consecutive_fails += 1
+                    if consecutive_fails >= 5:
+                        return None
+                    for _ in range(15):
+                        if backend_loop_stop:
+                            return None
+                        dna_sleep(1.0, 1.0)
+                    continue
+                consecutive_fails = 0
+                return started["result"]
+            except Exception:
+                consecutive_fails += 1
+                if consecutive_fails >= 5:
+                    return None
+                for _ in range(15):
+                    if backend_loop_stop:
+                        return None
+                    dna_sleep(1.0, 1.0)
+        return None
+
     current_result = initial_result
-    
+
     while not backend_loop_stop:
+        # Acquire a career to run if we don't already have a started one. This is
+        # the path when launched at low TP (initial_result is None): the loop waits
+        # for regen / recovers carats here before career 1.
+        if current_result is None:
+            current_result = acquire_start()
+            if current_result is None:
+                return
+            account, chara_info = apply_career_result(current_result)
+            active_account = account
+
         career_runner.start(active_client, preset, current_result, max_steps, burn_clocks=req.burn_clocks, dev_mode=req.dev_mode)
-        
+
         while career_runner.snapshot().get("running"):
             if backend_loop_stop:
                 career_runner.stop()
                 return
             dna_sleep(1.0, 1.0)
-            
+
         status = career_runner.snapshot()
         if status.get("last_error"):
             consecutive_fails += 1
@@ -1233,7 +1285,7 @@ def manage_career_loop(req, preset, initial_result):
             
         if not req.dev_mode:
             break
-            
+
         delay_sec = pick_delay_seconds(
             getattr(req, 'run_delay_min_min', 0),
             getattr(req, 'run_delay_max_min', 0),
@@ -1242,45 +1294,8 @@ def manage_career_loop(req, preset, initial_result):
         if not _interruptible_sleep(delay_sec):
             return
 
-        started_ok = False
-        while not started_ok and not backend_loop_stop:
-            try:
-                started = start_career_from_request(req)
-                if not started.get("success"):
-                    detail = started.get("detail")
-                    if detail == "TP_EXHAUSTED":
-                        print(f'[loop] TP exhausted ({started.get("current_tp")} < {req.use_tp}), stopping.', flush=True)
-                        return
-                    if detail == "TP_REGEN_WAIT":
-                        wait_sec = compute_regen_wait_seconds(req.use_tp, started.get("current_tp") or 0)
-                        print(f'[loop] waiting {wait_sec/60:.0f}m for TP regen ({started.get("current_tp")} < {req.use_tp})', flush=True)
-                        if not _interruptible_sleep(wait_sec):
-                            return
-                        continue
-                    consecutive_fails += 1
-                    if consecutive_fails >= 5:
-                        break
-                    for _ in range(15):
-                        if backend_loop_stop:
-                            return
-                        dna_sleep(1.0, 1.0)
-                    continue
-                current_result = started["result"]
-                account, chara_info = apply_career_result(current_result)
-                active_account = account
-                started_ok = True
-                consecutive_fails = 0
-            except Exception as e:
-                consecutive_fails += 1
-                if consecutive_fails >= 5:
-                    break
-                for _ in range(15):
-                    if backend_loop_stop:
-                        return
-                    dna_sleep(1.0, 1.0)
-
-        if not started_ok:
-            break
+        # Force re-acquire of the next career at the top of the loop.
+        current_result = None
 
 @app.post("/api/career/run")
 async def run_career(req: RunCareerRequest):
@@ -1330,9 +1345,16 @@ async def run_career(req: RunCareerRequest):
                 req.scenario_id = int(preset.get("scenario_id", 4))
             started = start_career_from_request(req)
             if not started.get("success"):
-                return started
-            result = started["result"]
-            account, chara_info = apply_career_result(result)
+                # In dev_mode, a TP regen wait must not abort the launch. Start the loop
+                # with no seed career and let it wait for TP, then start career 1.
+                if req.dev_mode and started.get("detail") == "TP_REGEN_WAIT":
+                    result = None
+                    chara_info = {}
+                else:
+                    return started
+            else:
+                result = started["result"]
+                account, chara_info = apply_career_result(result)
 
         apply_deck_type_counts(preset, req=req, chara_info=chara_info)
         

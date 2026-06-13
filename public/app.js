@@ -114,6 +114,7 @@ const els = {
         if (els.devBtn) {
             els.devBtn.addEventListener('click', () => {
                 setDevEnabled(!state.devEnabled, { persist: true });
+                syncStartButton();
             });
         }
 
