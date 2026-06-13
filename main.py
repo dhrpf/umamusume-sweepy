@@ -22,7 +22,10 @@ from career_bot import master_data
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
 from uma_api.client import UmaClient, runtime_output_root
-from career_bot.delay import GateKeeper, dna_sleep, dna_uniform
+from career_bot.delay import (
+    GateKeeper, dna_sleep, dna_uniform,
+    decide_tp_action, pick_delay_seconds, compute_regen_wait_seconds,
+)
 
 PROCESS_NAME = os.environ.get("UMA_PROCESS_NAME", "UmamusumePrettyDerby.exe")
 APP_ID = "3224770"
@@ -828,9 +831,17 @@ def start_career_from_request(req):
 
     tp_info = active_start_state['tp_info']
     current_tp = int(tp_info.get('current_tp') or 0)
-    if req.use_tp and current_tp < req.use_tp:
-        if getattr(req, 'stop_on_empty_tp', False):
-            return {"success": False, "detail": "TP_EXHAUSTED", "current_tp": current_tp}
+    tp_action = decide_tp_action(
+        req.use_tp, current_tp,
+        getattr(req, 'tp_mode', 'carat'),
+        getattr(req, 'stop_on_empty_tp', False),
+    )
+    if tp_action == "stop":
+        return {"success": False, "detail": "TP_EXHAUSTED", "current_tp": current_tp}
+    if tp_action == "wait":
+        return {"success": False, "detail": "TP_REGEN_WAIT",
+                "current_tp": current_tp, "use_tp": req.use_tp}
+    if tp_action == "carat":
         for attempt in range(3):
             try:
                 needed = ((req.use_tp - current_tp) + 29) // 30
@@ -849,8 +860,8 @@ def start_career_from_request(req):
                         pass
                 dna_sleep(1.0, 1.0)
 
-    if req.use_tp and current_tp < req.use_tp:
-        return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
+        if req.use_tp and current_tp < req.use_tp:
+            return {"success": False, "detail": f"Not enough TP: {current_tp}/{req.use_tp}"}
     current_money = active_start_state['current_money']
     succession_rank_point = selected_succession_rank_point(req)
 
@@ -1183,6 +1194,18 @@ async def start_career(req: StartCareerRequest):
 backend_loop_thread = None
 backend_loop_stop = False
 
+def _interruptible_sleep(total_sec):
+    """Sleep total_sec in 1s slices; return False if backend_loop_stop is set."""
+    end = time.monotonic() + total_sec
+    while True:
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return True
+        if backend_loop_stop:
+            return False
+        time.sleep(min(1.0, remaining))
+
+
 def manage_career_loop(req, preset, initial_result):
     global backend_loop_stop, active_account, active_client
     max_steps = max(1, min(int(req.max_steps or 2500), 3000))
@@ -1211,19 +1234,29 @@ def manage_career_loop(req, preset, initial_result):
         if not req.dev_mode:
             break
             
-        for _ in range(6):
-            if backend_loop_stop:
-                return
-            dna_sleep(1.0, 1.0)
-            
+        delay_sec = pick_delay_seconds(
+            getattr(req, 'run_delay_min_min', 0),
+            getattr(req, 'run_delay_max_min', 0),
+        )
+        print(f'[loop] waiting {delay_sec/60:.1f}m before next career', flush=True)
+        if not _interruptible_sleep(delay_sec):
+            return
+
         started_ok = False
         while not started_ok and not backend_loop_stop:
             try:
                 started = start_career_from_request(req)
                 if not started.get("success"):
-                    if started.get("detail") == "TP_EXHAUSTED":
+                    detail = started.get("detail")
+                    if detail == "TP_EXHAUSTED":
                         print(f'[loop] TP exhausted ({started.get("current_tp")} < {req.use_tp}), stopping.', flush=True)
                         return
+                    if detail == "TP_REGEN_WAIT":
+                        wait_sec = compute_regen_wait_seconds(req.use_tp, started.get("current_tp") or 0)
+                        print(f'[loop] waiting {wait_sec/60:.0f}m for TP regen ({started.get("current_tp")} < {req.use_tp})', flush=True)
+                        if not _interruptible_sleep(wait_sec):
+                            return
+                        continue
                     consecutive_fails += 1
                     if consecutive_fails >= 5:
                         break
