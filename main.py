@@ -1309,6 +1309,13 @@ def manage_career_loop(req, preset, initial_result):
                         print(f'[loop] waiting {wait_sec/60:.0f}m for TP regen ({started.get("current_tp")} < {req.use_tp})', flush=True)
                         if not _interruptible_sleep(wait_sec):
                             return None
+                        # Session may have expired during long wait; re-init before
+                        # the next load/index call on the retry.
+                        try:
+                            active_client.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
+                            print(f'[loop] start_session after TP regen wait OK', flush=True)
+                        except Exception:
+                            pass
                         continue
                     consecutive_fails += 1
                     if consecutive_fails >= 5:

@@ -1124,15 +1124,15 @@ const els = {
                 .filter(id => Number.isFinite(id));
         }
 
-        function renderTrackblazer() {
+        function renderTrackblazer(preset) {
             const panel = document.getElementById('trackblazer-panel');
             const statsEl = document.getElementById('trackblazer-stats');
             const hintEl = document.getElementById('trackblazer-hint');
             const epEl = document.getElementById('trackblazer-epithets');
             if (!panel || !statsEl || !hintEl || !epEl) return;
 
-            const current = getCurrentPreset();
-            const tb = current?.trackblazer;
+            const src = preset || getCurrentPreset();
+            const tb = src?.trackblazer;
 
             if (!tb) {
                 panel.style.display = 'none';
@@ -1172,7 +1172,14 @@ const els = {
             if (!sel) return;
             sel.addEventListener('change', function() {
                 const name = this.value;
-                if (!name || !state.presets) return;
+                if (!name || !state.presets) {
+                    // Clear trackblazer panel and races when "-- None --" selected
+                    renderTrackblazer(null);
+                    state.selectedRaces = [];
+                    renderRaces();
+                    autoSaveRaces();
+                    return;
+                }
                 const preset = state.presets.find(p => p.name === name);
                 if (!preset || !preset.extra_race_list) return;
 
@@ -1181,15 +1188,7 @@ const els = {
                     .map(id => parseInt(id, 10))
                     .filter(id => Number.isFinite(id));
 
-                // Also update the bot preset selector to match if it's a trackblazer preset
-                if (els.presetSelect && preset.trackblazer) {
-                    els.presetSelect.value = name;
-                    state.selectedPreset = name;
-                    localStorage.setItem('uma_selected_preset', name);
-                    populatePresetUI();
-                    renderTrackblazer();
-                }
-
+                renderTrackblazer(preset);
                 renderRaces();
                 autoSaveRaces();
             });
