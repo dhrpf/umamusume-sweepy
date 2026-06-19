@@ -492,6 +492,7 @@ const els = {
             if (!els.turnDelayMin || !els.turnDelayMax || !els.temptFateBtn) return;
             const sync = () => {
                 saveDelaySettings(normalizeDelayBounds(els.turnDelayMin.value, els.turnDelayMax.value, false));
+                if (state.selectedPreset) savePresetConfig();
             };
             els.turnDelayMin.addEventListener('input', sync);
             els.turnDelayMax.addEventListener('input', sync);
@@ -503,6 +504,7 @@ const els = {
                     ? normalizeDelayBounds(restoreMin, restoreMax, false)
                     : normalizeDelayBounds(0, 0, true, restoreMin, restoreMax)
                 );
+                if (state.selectedPreset) savePresetConfig();
             });
             loadDelaySettings();
         }
@@ -1652,6 +1654,15 @@ const els = {
             current.run_delay_max_min = parseInt(els.presetDelayMax?.value) || 0;
             current.tp_mode = (els.presetTpMode?.value === 'wait') ? 'wait' : 'carat';
 
+            // Persist current turn delay sliders into preset
+            const delayMin = parseFloat(els.turnDelayMin?.value);
+            const delayMax = parseFloat(els.turnDelayMax?.value);
+            if (Number.isFinite(delayMin) && Number.isFinite(delayMax)) {
+                current.turn_delay_min_sec = delayMin;
+                current.turn_delay_max_sec = delayMax;
+                current.turn_delay_disabled = els.temptFateBtn?.classList.contains('is-active') || false;
+            }
+
             try {
                 await apiJson('/api/presets', {
                     method: 'POST',
@@ -1671,6 +1682,17 @@ const els = {
             if (els.presetDelayMin) els.presetDelayMin.value = current.run_delay_min_min ?? 0;
             if (els.presetDelayMax) els.presetDelayMax.value = current.run_delay_max_min ?? 0;
             if (els.presetTpMode) els.presetTpMode.value = (current.tp_mode === 'wait') ? 'wait' : 'carat';
+
+            // Apply preset turn delay to the global delay module
+            if (current.turn_delay_min_sec != null && current.turn_delay_max_sec != null) {
+                saveDelaySettings(normalizeDelayBounds(
+                    current.turn_delay_min_sec,
+                    current.turn_delay_max_sec,
+                    current.turn_delay_disabled || false,
+                    current.turn_delay_min_sec,
+                    current.turn_delay_max_sec,
+                ));
+            }
         }
 
         function bindPresetHandlers() {
@@ -2105,7 +2127,10 @@ const els = {
                 preset_name: state.selectedPreset,
                 max_steps: 2500,
                 burn_clocks: state.burnClocks,
-                dev_mode: state.devEnabled
+                dev_mode: state.devEnabled,
+                run_delay_min_min: Number(getCurrentPreset()?.run_delay_min_min ?? 0),
+                run_delay_max_min: Number(getCurrentPreset()?.run_delay_max_min ?? 0),
+                tp_mode: (getCurrentPreset()?.tp_mode === 'wait') ? 'wait' : 'carat'
             } : {
                 card_id: Number(selection.trainee.id),
                 support_card_ids: selection.deck.cards.map(card => Number(card.id)),
@@ -2684,7 +2709,7 @@ const els = {
             const rows = runs.map(r => {
                 const sc = r.status === 'finished' ? 'run-status-ok' : r.status === 'error' ? 'run-status-err' : 'run-status-warn';
                 const date = r.started_at ? r.started_at.replace('T', ' ').slice(0, 16) : '—';
-                const fans = r.final_fans ? Number(r.final_fans).toLocaleString() : '—';
+                const fans = r.final_fans != null ? Number(r.final_fans).toLocaleString() : '—';
                 return `<tr>
                     <td class="run-history-date">${escapeHtml(date)}</td>
                     <td>${escapeHtml(formatRunDuration(r.duration_sec))}</td>

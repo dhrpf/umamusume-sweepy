@@ -122,6 +122,14 @@ def serialize_preset(raw):
     if team_selection:
         serialized["team_selection"] = team_selection
 
+    # Run pacing / TP
+    serialized["run_delay_min_min"] = as_int(data.get("run_delay_min_min"), 10)
+    serialized["run_delay_max_min"] = as_int(data.get("run_delay_max_min"), 50)
+    serialized["tp_mode"] = "wait" if str(data.get("tp_mode") or "").strip().lower() == "wait" else "carat"
+    serialized["turn_delay_min_sec"] = float(data.get("turn_delay_min_sec") or 2.5)
+    serialized["turn_delay_max_sec"] = float(data.get("turn_delay_max_sec") or 5.0)
+    serialized["turn_delay_disabled"] = bool(data.get("turn_delay_disabled", False))
+
     return serialized
 
 def hydrate_preset(raw):

@@ -292,6 +292,14 @@ def get_turn_delay():
         "disabled": getattr(delay_module, "GLOBAL_DELAYS_DISABLED", False)
     }
 
+def _apply_preset_turn_delay(preset):
+    """Apply turn-delay values from a preset dict to the global delay module."""
+    min_sec = preset.get("turn_delay_min_sec")
+    max_sec = preset.get("turn_delay_max_sec")
+    disabled = preset.get("turn_delay_disabled", False)
+    if min_sec is not None and max_sec is not None:
+        set_turn_delay(float(min_sec), float(max_sec), bool(disabled))
+
 def update_start_state(data):
     global active_start_state
     if not data:
@@ -1288,6 +1296,16 @@ def manage_career_loop(req, preset, initial_result):
     global backend_loop_stop, active_account, active_client
     max_steps = max(1, min(int(req.max_steps or 2500), 3000))
     consecutive_fails = 0
+    auth_failures = 0
+
+    # Pacing: preset is the source of truth; req may have defaults if the
+    # frontend's activeCareer branch skipped these fields.
+    loop_run_delay_min = int(preset.get("run_delay_min_min") or req.run_delay_min_min or 10)
+    loop_run_delay_max = int(preset.get("run_delay_max_min") or req.run_delay_max_min or 50)
+    loop_tp_mode = preset.get("tp_mode") or req.tp_mode or "carat"
+    # Force the request to use the preset's tp_mode so acquire_start →
+    # start_career_from_request picks it up regardless of what the frontend sent.
+    req.tp_mode = loop_tp_mode
 
     def acquire_start():
         """Start a career, handling TP wait/recover and transient failures.
@@ -1295,7 +1313,7 @@ def manage_career_loop(req, preset, initial_result):
         Returns the career-start result dict, or None if the loop should stop
         (TP exhausted with stop mode, too many failures, or stop requested).
         """
-        nonlocal consecutive_fails
+        nonlocal consecutive_fails, auth_failures
         while not backend_loop_stop:
             try:
                 started = start_career_from_request(req)
@@ -1327,7 +1345,21 @@ def manage_career_loop(req, preset, initial_result):
                     continue
                 consecutive_fails = 0
                 return started["result"]
-            except Exception:
+            except Exception as e:
+                err_str = str(e)
+                # 201 = session expired; re-auth via headless Steam login
+                if "201" in err_str:
+                    auth_failures += 1
+                    print(f'[loop] session expired (201) on start attempt {auth_failures}/3, re-authing...', flush=True)
+                    if auth_failures >= 3:
+                        print(f'[loop] 3 failed auth attempts, stopping.', flush=True)
+                        return None
+                    if auto_login_from_cache():
+                        print(f'[loop] re-auth OK, retrying career start', flush=True)
+                        consecutive_fails = 0
+                        continue
+                    print(f'[loop] re-auth failed', flush=True)
+                    # fall through to normal retry delay
                 consecutive_fails += 1
                 if consecutive_fails >= 5:
                     return None
@@ -1360,9 +1392,26 @@ def manage_career_loop(req, preset, initial_result):
 
         status = career_runner.snapshot()
         if status.get("last_error"):
-            consecutive_fails += 1
-            if consecutive_fails >= 3:
-                break
+            err_str = str(status["last_error"])
+            # 201 = session expired; re-auth instead of blind fail increment
+            if "201" in err_str:
+                auth_failures += 1
+                print(f'[loop] session expired (201) during career ({auth_failures}/3), re-authing...', flush=True)
+                if auth_failures >= 3:
+                    print(f'[loop] 3 failed auth attempts, stopping.', flush=True)
+                    break
+                if auto_login_from_cache():
+                    print(f'[loop] re-auth OK, continuing loop', flush=True)
+                    consecutive_fails = 0
+                else:
+                    print(f'[loop] re-auth failed', flush=True)
+                    consecutive_fails += 1
+                    if consecutive_fails >= 3:
+                        break
+            else:
+                consecutive_fails += 1
+                if consecutive_fails >= 3:
+                    break
         else:
             consecutive_fails = 0
         # Always clear the local active-career flag before the next start attempt.
@@ -1374,10 +1423,7 @@ def manage_career_loop(req, preset, initial_result):
         if not req.dev_mode:
             break
 
-        delay_sec = pick_delay_seconds(
-            getattr(req, 'run_delay_min_min', 0),
-            getattr(req, 'run_delay_max_min', 0),
-        )
+        delay_sec = pick_delay_seconds(loop_run_delay_min, loop_run_delay_max)
         print(f'[loop] waiting {delay_sec/60:.1f}m before next career', flush=True)
         if not _interruptible_sleep(delay_sec):
             return
@@ -1394,6 +1440,9 @@ async def run_career(req: RunCareerRequest):
     preset = preset_store.read_one(preset_name)
     if not preset:
         return {"success": False, "detail": f"{preset_name} preset missing"}
+
+    # Apply preset-level turn delay to the global delay module
+    _apply_preset_turn_delay(preset)
     
     try:
         account = active_account or {}
@@ -1462,32 +1511,81 @@ async def run_career(req: RunCareerRequest):
 async def career_runner_status():
     return {"success": True, "runner": career_runner.snapshot()}
 
+# mtime-keyed cache for career history — avoids re-parsing all JSON on every load
+_history_cache: dict = {"data": None, "newest_mtime": 0.0}
+
+def _read_career_meta(path) -> dict | None:
+    """Read only top-level scalar metadata from a career log, skipping the
+    massive ``turns`` array (~99% of file size) by truncating at the ``"turns"``
+    key and parsing just the prefix as valid JSON (head), then extracting
+    ``final_fans`` from the last 1KB (tail, after turns).  ~50× faster than full parse."""
+    needed = {'started_at', 'ended_at', 'preset_name', 'status', 'final_turn'}
+    try:
+        raw = Path(path).read_bytes()
+        head = raw[:4096]
+        idx = head.find(b'"turns"')
+        if idx < 0:
+            return None
+        # Parse scalars from before the turns array
+        truncated = head[:idx].rstrip(b', \n\r\t') + b'}'
+        parsed = json.loads(truncated)
+        result = {k: parsed[k] for k in needed if k in parsed}
+
+        # final_fans lives after turns — scan the file tail
+        result['final_fans'] = 0
+        tail = raw[-1024:]
+        m = re.search(rb'"final_fans"\s*:\s*(\d+)', tail)
+        if m:
+            result['final_fans'] = int(m.group(1))
+
+        return result
+    except Exception:
+        return None
+
 @app.get("/api/career/history")
 async def career_run_history():
     from datetime import datetime as _dt
     logs_dir = runtime_output_root() / 'bot_logs'
     if not logs_dir.exists():
         return {"success": True, "runs": []}
+
+    # Find newest mtime across all log files (cheap stat, no read/parse)
+    newest_mtime = 0.0
+    try:
+        for f in logs_dir.iterdir():
+            if f.name.startswith("career_log_") and f.suffix == ".json" and f.is_file():
+                mtime = f.stat().st_mtime
+                if mtime > newest_mtime:
+                    newest_mtime = mtime
+    except Exception:
+        pass
+
+    if _history_cache["data"] is not None and newest_mtime <= _history_cache["newest_mtime"]:
+        return _history_cache["data"]
+
     runs = []
     for f in sorted(logs_dir.glob('career_log_*.json'), reverse=True)[:50]:
-        try:
-            data = json.loads(f.read_text(encoding='utf-8'))
-            started = data.get('started_at')
-            ended = data.get('ended_at')
-            duration_sec = None
-            if started and ended:
-                duration_sec = int((_dt.fromisoformat(ended) - _dt.fromisoformat(started)).total_seconds())
-            runs.append({
-                'started_at': started,
-                'duration_sec': duration_sec,
-                'status': data.get('status'),
-                'preset_name': data.get('preset_name', ''),
-                'final_turn': data.get('final_turn', 0),
-                'final_fans': data.get('final_fans', 0),
-            })
-        except Exception:
-            pass
-    return {"success": True, "runs": runs}
+        data = _read_career_meta(f)
+        if data is None:
+            continue
+        started = data.get('started_at')
+        ended = data.get('ended_at')
+        duration_sec = None
+        if started and ended:
+            duration_sec = int((_dt.fromisoformat(ended) - _dt.fromisoformat(started)).total_seconds())
+        runs.append({
+            'started_at': started,
+            'duration_sec': duration_sec,
+            'status': data.get('status'),
+            'preset_name': data.get('preset_name', ''),
+            'final_turn': data.get('final_turn', 0),
+            'final_fans': data.get('final_fans', 0),
+        })
+
+    result = {"success": True, "runs": runs}
+    _history_cache["data"] = result
+    _history_cache["newest_mtime"] = newest_mtime
+    return result
 
 @app.post("/api/career/runner/stop")
 async def stop_career_runner():
