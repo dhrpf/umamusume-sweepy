@@ -324,7 +324,15 @@ class CareerRunner:
             trace_str = traceback.format_exc()
             traceback.print_exc()
             print(f"RUNNER CRASH: {exc}")
-            
+
+            err_str = str(exc)
+            # Re-raise programming errors (not API errors) so they're visible,
+            # not silently absorbed by the career loop.
+            if not any(tag in err_str for tag in ("Network error", "API error", "StateRecoveryError",
+                                                    "102", "201", "205", "208", "213", "214",
+                                                    "709", "1055", "1503")):
+                raise
+
             crash_log_path = runtime_output_root(self.base_dir) / "crash_trace.txt"
             try:
                 crash_log_path.parent.mkdir(parents=True, exist_ok=True)

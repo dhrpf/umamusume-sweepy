@@ -3,6 +3,7 @@ import os
 import signal
 import subprocess
 import sys
+import argparse
 import threading
 import time
 from pathlib import Path
@@ -92,7 +93,12 @@ class AccountProcess:
 
 
 def main():
-    filter_name = sys.argv[1] if len(sys.argv) > 1 else None
+    parser = argparse.ArgumentParser(description="Multi-account Umamusume bot launcher")
+    parser.add_argument("account", nargs="?", default=None,
+                        help="Account name to run (from accounts.json). Runs all enabled accounts if omitted.")
+    parser.add_argument("--list", action="store_true", help="List available accounts and exit")
+    args = parser.parse_args()
+    filter_name = args.account
 
     try:
         accounts = load_accounts(filter_name=filter_name)
@@ -101,7 +107,21 @@ def main():
         sys.exit(1)
     except FileNotFoundError:
         print(f'[launcher] Error: accounts.json not found at {ACCOUNTS_FILE}', file=sys.stderr)
+        print(f'[launcher] Create a JSON array of account objects with "name", "port", and optional "extra_env".', file=sys.stderr)
         sys.exit(1)
+
+    if not accounts:
+        print('[launcher] No enabled accounts found.', file=sys.stderr)
+        sys.exit(1)
+
+    if args.list:
+        print("Available accounts:")
+        all_raw = json.loads(Path(ACCOUNTS_FILE).read_text())
+        for a in all_raw:
+            enabled = a.get("enabled", True)
+            status = "enabled" if enabled else "disabled"
+            print(f"  {a['name']:20s} port={a.get('port', '?')}  [{status}]")
+        sys.exit(0)
 
     if not accounts:
         print('[launcher] No enabled accounts found.', file=sys.stderr)

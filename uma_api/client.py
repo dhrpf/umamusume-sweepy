@@ -6,6 +6,7 @@ import uuid
 from curl_cffi import requests
 import hashlib
 import random
+import re
 import struct
 import msgpack
 from Crypto.Cipher import AES
@@ -39,7 +40,12 @@ def runtime_output_root():
     return here.parent.parent.parent / "uma_runtime"
 
 
-TRACE_DIR = runtime_output_root() / "trace_logs"
+_TRACE_DIR = None
+def _get_trace_dir():
+    global _TRACE_DIR
+    if _TRACE_DIR is None:
+        _TRACE_DIR = runtime_output_root() / "trace_logs"
+    return _TRACE_DIR
 
 TICKET_GEN_JS = """const SteamUser = require("steam-user");
 const fs = require("fs");
@@ -467,7 +473,7 @@ class UmaClient:
 
     def _init_trace_log(self):
         try:
-            log_dir = TRACE_DIR / "api_payloads"
+            log_dir = _get_trace_dir() / "api_payloads"
             log_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             suffix = uuid.uuid4().hex[:6]
@@ -637,13 +643,35 @@ class UmaClient:
         payload.update(self.common())
         
         if ep == 'single_mode_free/race_out':
-            import ctypes
-            try:
-                user32 = ctypes.windll.user32
-                user32.SetProcessDPIAware()
-                screen_h = user32.GetSystemMetrics(1)
-            except Exception:
-                screen_h = 864
+            if platform.system() == 'Windows':
+                import ctypes
+                try:
+                    user32 = ctypes.windll.user32
+                    user32.SetProcessDPIAware()
+                    screen_h = user32.GetSystemMetrics(1)
+                except Exception:
+                    screen_h = 864
+            else:
+                try:
+                    # Try Hyprland first, then xrandr, fall back to 864
+                    if shutil.which('hyprctl'):
+                        res = subprocess.run(['hyprctl', 'monitors', '-j'], capture_output=True, text=True, timeout=5)
+                        monitors = json.loads(res.stdout)
+                        if monitors and isinstance(monitors, list):
+                            screen_h = int(monitors[0].get('height', 864))
+                        else:
+                            screen_h = 864
+                    else:
+                        res = subprocess.run(['xrandr', '--current'], capture_output=True, text=True, timeout=5)
+                        for ln in res.stdout.splitlines():
+                            m = re.search(r'(\d+)x(\d+).*\+', ln)
+                            if m:
+                                screen_h = int(m.group(2))
+                                break
+                        else:
+                            screen_h = 864
+                except Exception:
+                    screen_h = 864
                 
             window_w = int(screen_h * 9 / 16)
             scale_factor = 1080 / window_w

@@ -4,11 +4,6 @@ import re
 import subprocess
 import sys
 
-try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
-except Exception:
-    pass
-
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -231,6 +226,7 @@ turn_delay_restore_max_sec = 5.0
 turn_delay_disabled = False
 preset_store = PresetStore(DIR)
 career_runner = CareerRunner(DIR)
+global_lock = threading.Lock()
 
 base_dir = Path(__file__).parent.absolute()
 master_data_startup_status = master_data.status(base_dir)
@@ -825,8 +821,8 @@ def start_career_from_request(req):
     if selection_error:
         return {"success": False, "detail": selection_error}
 
+    # load/index returns full item list (read_info/index doesn't)
     try:
-        # load/index returns full item list (read_info/index doesn't)
         res = active_client.call('load/index', {'adid': ''})
         data = res.get('data', {})
         active_client.refresh_cached_account_state(data)
@@ -835,9 +831,9 @@ def start_career_from_request(req):
             active_account = get_account_status(data)
             if active_dashboard_data:
                 active_dashboard_data["account"] = active_account
-    except Exception:
-        pass
-        
+    except Exception as e:
+        print(f"[start_career] load/index refresh failed: {e}", flush=True)
+
     if not active_start_state.get('tp_info'):
         return {"success": False, "detail": "Missing live TP state; login again before starting career"}
     if 'current_money' not in active_start_state:
@@ -998,7 +994,7 @@ def apply_career_result(result):
 
 def _build_dashboard_from_login_response(res):
     """Populate all dashboard globals from a login/load_index response. Returns dashboard dict."""
-    global active_account, active_start_state, active_parent_cards, active_parent_rank_points, active_dashboard_data
+    global active_account, active_start_state, active_parent_cards, active_parent_rank_points, active_parent_full, active_dashboard_data
     d = res.get('data', {})
     career_data = None
     if d.get('single_mode_chara_light') or d.get('single_mode_chara'):
@@ -1434,21 +1430,23 @@ def manage_career_loop(req, preset, initial_result):
 @app.post("/api/career/run")
 async def run_career(req: RunCareerRequest):
     global active_account, backend_loop_thread
-    if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
-        return {"success": False, "detail": "Career runner loop already active"}
-    preset_name = req.preset_name or "xguri parent"
-    preset = preset_store.read_one(preset_name)
-    if not preset:
-        return {"success": False, "detail": f"{preset_name} preset missing"}
+    with global_lock:
+        if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
+            return {"success": False, "detail": "Career runner loop already active"}
+        preset_name = req.preset_name or "xguri parent"
+        preset = preset_store.read_one(preset_name)
+        if not preset:
+            return {"success": False, "detail": f"{preset_name} preset missing"}
 
     # Apply preset-level turn delay to the global delay module
     _apply_preset_turn_delay(preset)
     
     try:
-        account = active_account or {}
-        career = account.get("career") or {}
-        if career.get("active"):
-            index_result = active_client.call('load/index')
+        with global_lock:
+            account = active_account or {}
+            career = account.get("career") or {}
+            if career.get("active"):
+                index_result = active_client.call('load/index')
             load_data = index_result.get('data', {})
             update_start_state(load_data)
 
@@ -1590,7 +1588,8 @@ async def career_run_history():
 @app.post("/api/career/runner/stop")
 async def stop_career_runner():
     global backend_loop_stop
-    backend_loop_stop = True
+    with global_lock:
+        backend_loop_stop = True
     career_runner.stop()
     return {"success": True, "runner": career_runner.snapshot()}
 
@@ -1672,32 +1671,33 @@ async def career_action(req: CareerActionRequest):
 @app.post("/api/career/delete")
 async def delete_career(req: DeleteCareerRequest):
     global active_client, active_account, active_dashboard_data, backend_loop_thread
-    if not active_client:
-        return {"success": False, "detail": "Not logged in"}
-    if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
-        return {"success": False, "detail": "Cannot delete career while runner is active"}
+    with global_lock:
+        if not active_client:
+            return {"success": False, "detail": "Not logged in"}
+        if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
+            return {"success": False, "detail": "Cannot delete career while runner is active"}
 
-    try:
-        account = active_account or {}
-        career = account.get("career") or {}
-        if not career.get("active"):
-            load_result = active_client.call('load/index')
-            load_data = load_result.get('data', {})
-            update_start_state(load_data)
-            account = get_account_status(load_data)
-            active_account = account
+        try:
+            account = active_account or {}
             career = account.get("career") or {}
-        current_turn = req.current_turn or career.get("turn", 0) or 1
-        if not career.get("active") and not req.current_turn:
-            return {"success": False, "detail": "No active career"}
-        active_client.finish_career(current_turn=current_turn, is_force_delete=True)
-        account["career"] = None
-        active_account = account
-        if active_dashboard_data:
-            active_dashboard_data["account"] = account
-        return {"success": True, "account": account}
-    except Exception as e:
-        return {"success": False, "detail": str(e)}
+            if not career.get("active"):
+                load_result = active_client.call('load/index')
+                load_data = load_result.get('data', {})
+                update_start_state(load_data)
+                account = get_account_status(load_data)
+                active_account = account
+                career = account.get("career") or {}
+            current_turn = req.current_turn or career.get("turn", 0) or 1
+            if not career.get("active") and not req.current_turn:
+                return {"success": False, "detail": "No active career"}
+            active_client.finish_career(current_turn=current_turn, is_force_delete=True)
+            account["career"] = None
+            active_account = account
+            if active_dashboard_data:
+                active_dashboard_data["account"] = account
+            return {"success": True, "account": account}
+        except Exception as e:
+            return {"success": False, "detail": str(e)}
 
 @app.get("/api/debug/start_state")
 async def get_start_state():
@@ -1800,6 +1800,37 @@ def kill_process_by_name(name):
 
 def kill_listeners_on_port(port):
     if os.name != 'nt':
+        # Linux: use ss to find PIDs listening on the port
+        try:
+            proc = subprocess.run(
+                ['ss', '-tlnp'],
+                capture_output=True, text=True, timeout=5
+            )
+        except Exception:
+            return
+
+        current_pid = os.getpid()
+        pids = set()
+        marker = f':{port}'
+        for line in proc.stdout.splitlines():
+            if marker not in line:
+                continue
+            # ss output: LISTEN 0 128 127.0.0.1:1616 0.0.0.0:* users:(("python",pid=12345,fd=3))
+            import re
+            for m in re.finditer(r'pid=(\d+)', line):
+                pid = int(m.group(1))
+                if pid and pid != current_pid:
+                    pids.add(pid)
+
+        if not pids:
+            return
+        print(f"Port {port} already in use; killing listener PID(s): {', '.join(map(str, sorted(pids)))}", flush=True)
+        for pid in sorted(pids):
+            try:
+                subprocess.run(['kill', str(pid)], capture_output=True, timeout=5)
+            except Exception:
+                pass
+        dna_sleep(0.5, 0.5)
         return
     try:
         proc = subprocess.run(
@@ -2019,6 +2050,17 @@ def auto_login_from_cache():
 
 if __name__ == "__main__":
     import uvicorn
+    import signal
+
+    def _shutdown_handler(signum, frame):
+        """Gracefully stop career runner on SIGINT/SIGTERM."""
+        print("\nShutting down...", flush=True)
+        if career_runner:
+            career_runner.stop()
+        # uvicorn will handle its own cleanup after this
+
+    signal.signal(signal.SIGINT, _shutdown_handler)
+    signal.signal(signal.SIGTERM, _shutdown_handler)
 
     try:
         subprocess.run(["git", "pull"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
