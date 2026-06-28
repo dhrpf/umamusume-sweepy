@@ -822,17 +822,26 @@ def start_career_from_request(req):
         return {"success": False, "detail": selection_error}
 
     # load/index returns full item list (read_info/index doesn't)
-    try:
-        res = active_client.call('load/index', {'adid': ''})
-        data = res.get('data', {})
-        active_client.refresh_cached_account_state(data)
-        update_start_state(data)
-        if active_account:
-            active_account = get_account_status(data)
-            if active_dashboard_data:
-                active_dashboard_data["account"] = active_account
-    except Exception as e:
-        print(f"[start_career] load/index refresh failed: {e}", flush=True)
+    for _load_attempt in range(2):
+        try:
+            res = active_client.call('load/index', {'adid': ''})
+            data = res.get('data', {})
+            active_client.refresh_cached_account_state(data)
+            update_start_state(data)
+            if active_account:
+                active_account = get_account_status(data)
+                if active_dashboard_data:
+                    active_dashboard_data["account"] = active_account
+            break
+        except Exception as e:
+            err_str = str(e)
+            if "201" in err_str and _load_attempt == 0:
+                print(f"[start_career] session expired (201) on load/index, re-authing...", flush=True)
+                if auto_login_from_cache():
+                    print(f"[start_career] re-auth OK, retrying load/index", flush=True)
+                    continue
+            print(f"[start_career] load/index refresh failed: {e}", flush=True)
+            break
 
     if not active_start_state.get('tp_info'):
         return {"success": False, "detail": "Missing live TP state; login again before starting career"}
@@ -1123,7 +1132,7 @@ async def login(req: LoginRequest):
         if not has_fresh_auth_config(cfg):
             raise Exception('Fresh in-game auth capture required; switch to the target in-game account, restart capture, then login again')
 
-        c = UmaClient(cfg, trace_enabled=False)
+        c = UmaClient(cfg, trace_enabled=True)
         gated_client = GateKeeper(c)
         res = gated_client.login()
         if not res:
@@ -1225,7 +1234,7 @@ def capture_login():
     save_auth_cache(cfg)
 
     try:
-        c = UmaClient(cfg, trace_enabled=False)
+        c = UmaClient(cfg, trace_enabled=True)
         gated_client = GateKeeper(c)
         res = gated_client.login()
         if not res:
@@ -1329,7 +1338,15 @@ def manage_career_loop(req, preset, initial_result):
                             active_client.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
                             print(f'[loop] start_session after TP regen wait OK', flush=True)
                         except Exception:
-                            pass
+                            # Session ticket expired during long wait — full re-auth
+                            print(f'[loop] start_session failed after TP wait, re-authing...', flush=True)
+                            try:
+                                if auto_login_from_cache():
+                                    print(f'[loop] re-auth after TP wait OK', flush=True)
+                                else:
+                                    print(f'[loop] re-auth after TP wait failed', flush=True)
+                            except Exception as ae:
+                                print(f'[loop] re-auth after TP wait error: {ae}', flush=True)
                         continue
                     consecutive_fails += 1
                     if consecutive_fails >= 5:
@@ -1447,12 +1464,12 @@ async def run_career(req: RunCareerRequest):
             career = account.get("career") or {}
             if career.get("active"):
                 index_result = active_client.call('load/index')
-            load_data = index_result.get('data', {})
-            update_start_state(load_data)
+                load_data = index_result.get('data', {})
+                update_start_state(load_data)
 
-            account = get_account_status(load_data)
-            active_account = account
-            career = account.get("career") or {}
+                account = get_account_status(load_data)
+                active_account = account
+                career = account.get("career") or {}
 
         if career.get("active"):
             career_result = active_client.load_career()
@@ -1462,13 +1479,13 @@ async def run_career(req: RunCareerRequest):
             active_account = account
             
             career_status = account.get("career")
-            req.card_id = int(career_status.get("card_id"))
+            req.card_id = int(career_status.get("card_id") or 0)
             req.support_card_ids = career_status.get("support_card_ids")
-            req.friend_viewer_id = int(career_status.get("friend_viewer_id"))
-            req.friend_card_id = int(career_status.get("friend_card_id"))
-            req.parent_id_1 = int(career_status.get("parent_id_1"))
-            req.parent_id_2 = int(career_status.get("parent_id_2"))
-            req.deck_id = int(career_status.get("deck_id"))
+            req.friend_viewer_id = int(career_status.get("friend_viewer_id") or 0)
+            req.friend_card_id = int(career_status.get("friend_card_id") or 0)
+            req.parent_id_1 = int(career_status.get("parent_id_1") or 0)
+            req.parent_id_2 = int(career_status.get("parent_id_2") or 0)
+            req.deck_id = int(career_status.get("deck_id") or 0)
             req.scenario_id = int(career_status.get("scenario_id") or preset.get("scenario_id", 4))
             
             chara_info = career_data.get('chara_info') or {}
@@ -2025,7 +2042,7 @@ def auto_login_from_cache():
         print(f'[auto-login] Logging in as {username}...', flush=True)
         sid, tkt = get_ticket(username, password)
         cfg.update({'steam_id': sid, 'steam_session_ticket': tkt})
-        c = UmaClient(cfg, trace_enabled=False)
+        c = UmaClient(cfg, trace_enabled=True)
         gated_client = GateKeeper(c)
         res = gated_client.login()
         if not res:

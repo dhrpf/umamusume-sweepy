@@ -58,6 +58,48 @@ def as_int(value, default):
         return default
 
 
+STAT_VECTOR_LEN = 5
+DEFAULT_MIN_STATS = [0, 0, 0, 0, 0]
+DEFAULT_MAX_STATS = [1200, 1200, 1200, 1200, 1200]
+
+DEFAULT_RACE_COUNT_TARGET = 36
+
+# Per-running-style "parent breeding" stat profiles.
+# Style ids: 1 = Front Runner, 2 = Pace Chaser, 3 = Late Surger, 4 = End Closer.
+STYLE_STAT_PROFILES = {
+    1: {"min": [1200, 1100,  600,    0,  500],
+        "max": [1200, 1200, 1200, 1200, 1200]},
+    2: {"min": [1200,  900, 1100,    0,  500],
+        "max": [1200, 1200, 1200, 1200, 1200]},
+    3: {"min": [1200,  700, 1100,    0,  600],
+        "max": [1200, 1200, 1200, 1200, 1200]},
+    4: {"min": [1200, 1100, 1100,    0,  500],
+        "max": [1200, 1200, 1200, 1200, 1200]},
+}
+
+
+def stat_profile_for_style(style_id, key="min"):
+    profile = STYLE_STAT_PROFILES.get(int(style_id or 0))
+    if not profile:
+        return list(DEFAULT_MIN_STATS if key == "min" else DEFAULT_MAX_STATS)
+    return list(profile.get(key) or (DEFAULT_MIN_STATS if key == "min" else DEFAULT_MAX_STATS))
+
+
+def normalize_stat_vector(value, fallback):
+    base = list(fallback) if fallback else [0] * STAT_VECTOR_LEN
+    if isinstance(value, dict):
+        keys = ("speed", "stamina", "power", "guts", "wit")
+        for idx, key in enumerate(keys):
+            base[idx] = as_int(value.get(key, base[idx]), base[idx])
+        return base[:STAT_VECTOR_LEN]
+    if isinstance(value, list):
+        for idx in range(STAT_VECTOR_LEN):
+            if idx < len(value):
+                base[idx] = as_int(value[idx], base[idx])
+        return base[:STAT_VECTOR_LEN]
+    return base[:STAT_VECTOR_LEN]
+
+
 def normalize_race_list(value):
     result = []
     for item in value if isinstance(value, list) else []:
