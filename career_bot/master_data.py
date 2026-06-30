@@ -554,6 +554,51 @@ def synthesize_factor_map(base_dir, master_data):
     return {"file": "factor_map.json", "rows": len(factors)}
 
 
+# Grade mapping: aptitude value → letter grade
+# 1=G (worst) through 8=S (best) as used by the game
+_APTITUDE_GRADE_MAP = {1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S'}
+
+# card_rarity_data proper fields → short keys used in UI
+_CARD_PROPER_KEY_MAP = {
+    'proper_ground_turf': 'turf',
+    'proper_ground_dirt': 'dirt',
+    'proper_distance_short': 'short',
+    'proper_distance_mile': 'mile',
+    'proper_distance_middle': 'medium',
+    'proper_distance_long': 'long',
+    'proper_running_style_nige': 'front',
+    'proper_running_style_senko': 'pace',
+    'proper_running_style_sashi': 'late',
+    'proper_running_style_oikomi': 'end',
+}
+
+def synthesize_chara_aptitude(base_dir, master_data):
+    """Extract base aptitude per card_id from card_rarity_data.
+    Uses the *lowest* rarity entry as the baseline proper values,
+    since higher rarities may have upgraded aptitudes (awakenings).
+    Returns {card_id_str: {turf: N, dirt: N, ...}}."""
+    data_dir = Path(base_dir) / "data"
+    # Group rows by card_id, keep lowest-rarity entry
+    card_aptitude = {}  # card_id_str -> {rarity: int, values: dict}
+    for row in master_rows(master_data, "card_rarity_data"):
+        card_id = row.get("card_id")
+        rarity = int(row.get("rarity") or 0)
+        if not card_id or not rarity:
+            continue
+        cid = str(card_id)
+        if cid not in card_aptitude or rarity < card_aptitude[cid]["rarity"]:
+            vals = {}
+            for db_key, short_key in _CARD_PROPER_KEY_MAP.items():
+                v = int(row.get(db_key) or 1)
+                vals[short_key] = v
+            card_aptitude[cid] = {"rarity": rarity, **vals}
+    out = {cid: {k: v for k, v in entry.items() if k != "rarity"}
+           for cid, entry in card_aptitude.items()}
+    if out:
+        write_json(data_dir / "chara_aptitude.json", out)
+    return {"file": "chara_aptitude.json", "rows": len(out)}
+
+
 def synthesize_legacy_jsons(base_dir, master_data):
     generated = [
         synthesize_skill_data(base_dir, master_data),
@@ -561,6 +606,7 @@ def synthesize_legacy_jsons(base_dir, master_data):
         synthesize_support_list(base_dir, master_data),
         synthesize_race_map(base_dir, master_data),
         synthesize_factor_map(base_dir, master_data),
+        synthesize_chara_aptitude(base_dir, master_data),
     ]
 
     return {"generated": generated, "preserved": []}

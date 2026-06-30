@@ -1,45 +1,47 @@
-"""
-Capture all game API calls while you play manually.
+#!/usr/bin/env python3
+"""Frida-based Umamusume API call capture using Unity TLS interface hook.
+
+Hooks il2cpp_unity_install_unitytls_interface to intercept ALL HTTP
+requests/responses in plaintext BEFORE TLS encryption. Captures both
+decrypted payloads (JSON) and raw encrypted bodies for later replay.
+
 Usage:
-    FRIDA_REMOTE=127.0.0.1:27042 venv/bin/python capture_dailies.py [output.json]
+    FRIDA_REMOTE=127.0.0.1:27042 ./capture_dailies.py output.json [udid]
 
-Keep frida-server running in Wine. Launch the game. Run this script.
-Do your dailies in-game. Ctrl+C to stop — calls saved to output file.
-Prints decoded request and response payloads to console in real-time.
-Auto-saves every 30s so you don't lose data on crash.
+If udid is provided, skips auth cache lookup — useful when game auth
+isn't cached yet or you want to capture for a different account.
 """
 
-import frida, json, os, sys, time, signal, threading
-from pathlib import Path
-from uma_api.client import unpack_request as _unpack_request, unpack as _unpack
+import json
+import os
+import signal
+import sys
+import threading
+import time
 
-def unpack_request(body, udid):
-    result = _unpack_request(body, udid)
-    if result is None:
-        _unpack_request(body, udid, _debug=True)
-    return result
+import frida
 
-def unpack_response(body, udid):
-    """Decrypt a response body (same pack/unpack scheme)."""
-    try:
-        return _unpack(body, udid)
-    except Exception as e:
-        return f"ERR:{e}"
+TARGET = "UmamusumePrettyDerby"
 
-TARGET = "UmamusumePrettyDerby.exe"
 OUTPUT = sys.argv[1] if len(sys.argv) > 1 else "captured_calls.json"
+CLI_UDID = sys.argv[2] if len(sys.argv) > 2 else None
 
-JS_CAPTURE = r'''
+JS_CAPTURE = r"""
 'use strict';
 (function() {
     var buffers = {};
     var attached = {};
+    var callId = 0;
+    var lastReqEndpoint = {};  // key -> last request endpoint
+    var _readBytes = 0, _readCount = 0;  // DIAG: read-hook delivery tally
+    var _writeBytes = 0, _writeCount = 0;  // DIAG: write-hook delivery tally
 
-    // ---- utility ----
     function hex2(n) { return ('0' + (n & 255).toString(16)).slice(-2); }
+
     function uuidFromHex(h) {
         return h.substring(0,8)+'-'+h.substring(8,12)+'-'+h.substring(12,16)+'-'+h.substring(16,20)+'-'+h.substring(20);
     }
+
     function b64decode(s) {
         var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
         var out = []; var buf = 0; var bits = 0;
@@ -53,6 +55,7 @@ JS_CAPTURE = r'''
         }
         return out;
     }
+
     function extractUdid(decoded, headerLen) {
         var blob1End = 4 + headerLen;
         if (decoded.length < blob1End) return null;
@@ -62,121 +65,127 @@ JS_CAPTURE = r'''
         return uuidFromHex(udidHex);
     }
 
-    // ---- request parsing (POST /umamusume/...) ----
-    function parseReq(text) {
-        if (text.indexOf('/umamusume/') < 0) return null;
-        var em = text.match(/POST\s+\/umamusume\/([^\s]+)\s+HTTP/i);
-        if (!em) return null;
-        var endpoint = em[1];
-        var vm = text.match(/(?:^|\r\n)(?:ViewerID|ViewerId):\s*(\d+)/i);
-        var appVer = text.match(/(?:^|\r\n)APP-VER:\s*([^\r\n]+)/i);
-        var resVer = text.match(/(?:^|\r\n)RES-VER:\s*([^\r\n]+)/i);
-        var idx = text.indexOf('\r\n\r\n');
-        if (idx < 0) return null;
-        var body = text.substring(idx + 4).trim();
-        if (!body) return null;
+    // Parse a complete HTTP request (plaintext before TLS)
+    function parseHttp(buf, isRes, key) {
+        var text = '';
+        for (var i = 0; i < buf.length; i++) text += String.fromCharCode(buf[i]);
 
-        var udid = null;
-        var decoded = b64decode(body);
-        if (decoded.length >= 4) {
-            var headerLen = decoded[0]|(decoded[1]<<8)|(decoded[2]<<16)|(decoded[3]<<24);
-            if (headerLen >= 120 && headerLen <= 2048) udid = extractUdid(decoded, headerLen);
+        if (isRes) {
+            // Response: HTTP/1.1 200 OK
+            var lm = text.match(/HTTP\/\d\.\d\s+(\d+)/);
+            if (!lm) return false;
+            var httpStatus = parseInt(lm[1], 10);
+            var headerEnd = text.indexOf('\r\n\r\n');
+            if (headerEnd < 0) return false;
+            var bodyStart = headerEnd + 4;
+            var clMatch = text.substring(0, headerEnd).match(/Content-Length:\s*(\d+)/i);
+            var length = clMatch ? parseInt(clMatch[1], 10) : 0;
+            // Partial body OK — emit what we have
+            var body = text.substring(bodyStart, bodyStart + (length > 0 ? length : buf.length));
+            // Get endpoint from last request on this key
+            var endpoint = lastReqEndpoint[key] || '';
+            var udid = null;
+            var rawBytes = b64decode(body.trim());
+            if (rawBytes.length >= 4) {
+                var headerLen = rawBytes[0] | (rawBytes[1] << 8) | (rawBytes[2] << 16) | (rawBytes[3] << 24);
+                if (headerLen >= 120 && headerLen <= 2048) udid = extractUdid(rawBytes, headerLen);
+            }
+            send({type: '_diag', from: 'parseHttp', endpoint: endpoint, bodyLen: body.trim().length});
+            send({
+                type: 'res',
+                endpoint: endpoint,
+                http_status: httpStatus,
+                body: body.trim(),
+                udid: udid,
+                ts: Date.now()
+            });
+            return true;
+        } else {
+            // Request: POST /umamusume/{endpoint} HTTP/1.1
+            var lm = text.match(/POST\s+\/umamusume\/(\S+)\s+HTTP/);
+            if (!lm) return false;
+            var endpoint = lm[1];
+            lastReqEndpoint[key] = endpoint;
+            var headerEnd = text.indexOf('\r\n\r\n');
+            if (headerEnd < 0) return false;
+            var bodyStart = headerEnd + 4;
+            var clMatch = text.substring(0, headerEnd).match(/Content-Length:\s*(\d+)/i);
+            var length = clMatch ? parseInt(clMatch[1], 10) : 0;
+            if (length > 0 && buf.length < bodyStart + length) return false; // incomplete
+            var body = text.substring(bodyStart, bodyStart + (length > 0 ? length : buf.length));
+            var udid = null;
+            var rawBytes = b64decode(body.trim());
+            if (rawBytes.length >= 4) {
+                var headerLen = rawBytes[0] | (rawBytes[1] << 8) | (rawBytes[2] << 16) | (rawBytes[3] << 24);
+                if (headerLen >= 120 && headerLen <= 2048) udid = extractUdid(rawBytes, headerLen);
+            }
+            send({
+                type: 'req',
+                endpoint: endpoint,
+                body: body.trim(),
+                udid: udid,
+                app_ver: '',
+                res_ver: '',
+                viewer_id: 0,
+                ts: Date.now()
+            });
+            return true;
         }
-
-        return {
-            type: 'req',
-            endpoint: endpoint,
-            viewer_id: vm ? parseInt(vm[1], 10) : null,
-            app_ver: appVer ? appVer[1].trim() : null,
-            res_ver: resVer ? resVer[1].trim() : null,
-            body: body,
-            udid: udid,
-            ts: Date.now()
-        };
     }
 
-    // ---- response parsing (HTTP/1.1 ... /umamusume/...) ----
-    function parseRes(text) {
-        var lines = text.split('\r\n');
-        var statusLine = lines[0] || '';
-        // Match: HTTP/1.1 200 OK
-        var sm = statusLine.match(/^HTTP\/\d+\.\d+\s+(\d+)/i);
-        if (!sm) return null;
-        var httpStatus = parseInt(sm[1], 10);
-
-        // Find the endpoint in the response (echoed in body or via Content-Type/URL)
-        var ep = '?';
-        for (var i = 0; i < lines.length; i++) {
-            var lc = lines[i].toLowerCase();
-            // Some responses include the endpoint path
-            var epm = lines[i].match(/\/umamusume\/([^\s\r\n]+)/i);
-            if (epm) { ep = epm[1]; break; }
-        }
-
-        // Find empty line separating headers from body
-        var headerEnd = text.indexOf('\r\n\r\n');
-        if (headerEnd < 0) return null;
-        var body = text.substring(headerEnd + 4).trim();
-        if (!body) return null;
-
-        var udid = null;
-        var decoded = b64decode(body);
-        if (decoded.length >= 4) {
-            var headerLen = decoded[0]|(decoded[1]<<8)|(decoded[2]<<16)|(decoded[3]<<24);
-            if (headerLen >= 120 && headerLen <= 2048) udid = extractUdid(decoded, headerLen);
-        }
-
-        return {
-            type: 'res',
-            endpoint: ep,
-            http_status: httpStatus,
-            body: body,
-            udid: udid,
-            ts: Date.now()
-        };
-    }
-
-    // ---- chunk reassembly ----
-    function parseChunk(key, chunk, parseFn, pktType) {
+    function bufferAppend(key, chunk) {
         var buf = (buffers[key] || '') + chunk;
         if (buf.length > 2097152) buf = buf.substring(buf.length - 1048576);
 
-        // For req: look for 'POST /umamusume/' (exact path, avoid binary false positives)
-        var marker = (pktType === 'req') ? 'POST /umamusume/' : 'HTTP/';
-        var start = buf.indexOf(marker);
-        if (start < 0) { buffers[key] = buf.slice(-4096); return; }
-        if (start > 0) buf = buf.substring(start);
+        // Check for HTTP request or response start
+        var reqStart = buf.indexOf('POST /umamusume/');
+        var resStart = buf.indexOf('HTTP/1.');
+        var useRes = false;
+        var start = -1;
 
-        var headerEnd = buf.indexOf('\r\n\r\n');
-        if (headerEnd < 0) {
-            buffers[key] = buf; return;
-        }
-
-        var headers = buf.substring(0, headerEnd);
-        var isPost = headers.match(/^POST\s+\/umamusume\//);
-        if (pktType === 'req' && !isPost) {
-            // False POST match in binary data, discard and wait for real one
+        if (reqStart >= 0 && (resStart < 0 || reqStart < resStart)) {
+            start = reqStart;
+            useRes = false;
+        } else if (resStart >= 0) {
+            start = resStart;
+            useRes = true;
+        } else {
+            // No complete HTTP message yet — trim and wait
             buffers[key] = buf.slice(-4096);
             return;
         }
-        var lm = headers.match(/Content-Length:\s*(\d+)/i);
-        var length = lm ? parseInt(lm[1], 10) : 0;
-        var total = headerEnd + 4 + length;
-        if (length > 0 && buf.length < total) {
-            // Waiting for body
-            var epMatch = headers.match(/\/umamusume\/([^\s\r\n]+)/i);
-            var ep = epMatch ? epMatch[1] : '?';
-            if (buf.length > 4096) send({type: 'bufdiag', key: key, pktType: pktType, state: 'wait_body', ep: ep, len: buf.length, total: total, preview: buf.substring(0, 200).replace(/\n/g, '\\n').replace(/\r/g, '')});
-            buffers[key] = buf; return;
+
+        if (start > 0) buf = buf.substring(start);
+        var headerEnd = buf.indexOf('\r\n\r\n');
+        if (headerEnd < 0) {
+            buffers[key] = buf;
+            return;
         }
 
-        var pkt = parseFn(length > 0 ? buf.substring(0, total) : buf);
-        if (pkt) send(pkt);
+        var headers = buf.substring(0, headerEnd);
+        var clMatch = headers.match(/Content-Length:\s*(\d+)/i);
+        var length = clMatch ? parseInt(clMatch[1], 10) : 0;
+        var bodyStart = headerEnd + 4;
+        var total = bodyStart + (length > 0 ? length : 0);
 
-        buffers[key] = buf.length > total ? buf.substring(total) : '';
+        // Wait for the full body (both requests AND responses) before emitting,
+        // so TLS-fragmented chunks (header chunk, then raw body chunks with no
+        // HTTP prefix) accumulate under this key instead of being discarded.
+        if (length > 0 && buf.length < total) {
+            buffers[key] = buf;
+            return;
+        }
+
+        // We have a complete HTTP message (or partial response body — emit anyway)
+        var rawBuf = [];
+        for (var i = 0; i < buf.length; i++) rawBuf.push(buf.charCodeAt(i) || 0);
+        if (parseHttp(rawBuf, useRes, key)) {
+            buffers[key] = buf.length > total ? buf.substring(total) : '';
+        } else {
+            buffers[key] = buf;
+        }
     }
 
-    // ---- hooking ----
     function hookTls() {
         var ga = Process.findModuleByName('GameAssembly.dll');
         if (!ga) return false;
@@ -184,125 +193,114 @@ JS_CAPTURE = r'''
         if (!installFn) return false;
         var rb = new Uint8Array(installFn.readByteArray(16));
         var realFn = installFn;
+        // Handle jmp/branch at start
         if (rb[0] === 0xe9) {
-            var off = rb[1]|(rb[2]<<8)|(rb[3]<<16)|(rb[4]<<24);
+            var off = rb[1] | (rb[2] << 8) | (rb[3] << 16) | (rb[4] << 24);
             if (off > 0x7fffffff) off -= 0x100000000;
             realFn = installFn.add(5 + off);
             rb = new Uint8Array(realFn.readByteArray(16));
         }
         var globalPtr = null;
-        if (rb[0]===0x48 && rb[1]===0x89 && rb[2]===0x0d) {
-            var disp = rb[3]|(rb[4]<<8)|(rb[5]<<16)|(rb[6]<<24);
+        if (rb[0] === 0x48 && rb[1] === 0x89 && rb[2] === 0x0d) {
+            var disp = rb[3] | (rb[4] << 8) | (rb[5] << 16) | (rb[6] << 24);
             if (disp > 0x7fffffff) disp -= 0x100000000;
             globalPtr = realFn.add(7 + disp);
         }
         if (!globalPtr) return false;
         var iface = globalPtr.readPointer();
         if (!iface || iface.isNull()) return false;
-        var hooked = 0;
+        var hookedTls = 0;
 
-        // Write/send offsets (capture requests) - known to work
+        // Hook read/write callbacks from the TLS interface vtable
+        // Keys: 0xd0=Write, 0xd8=Writev, 0xe0=Read, 0xe8=Handshake
         [0xd0, 0xd8, 0xe0, 0xe8].forEach(function(off) {
             var addr = iface.add(off).readPointer();
             if (!addr || addr.isNull()) return;
-            var key = 'w_' + addr.toString();
+            var key = 'tls_' + addr.toString();
             if (attached[key]) return;
             try {
+                var isRead = (off === 0xe0);
                 Interceptor.attach(addr, {
                     onEnter: function(args) {
                         var len = args[2].toInt32();
                         if (len <= 0 || len > 1048576 || args[1].isNull()) return;
+                        if (isRead) {
+                            this._key = args[0].toString();
+                            this._bufPtr = args[1];
+                            this._bufSize = len;
+                        } else {
+                            // Write callback: data is in the buffer NOW
+                            try {
+                                var bytes = args[1].readByteArray(len);
+                                var u8 = new Uint8Array(bytes);
+                                var s = '';
+                                for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+                                _writeBytes += len; _writeCount++;
+                                bufferAppend(args[0].toString(), s);
+                            } catch (e) {}
+                        }
+                    },
+                    onLeave: function(retVal) {
+                        if (!isRead || !this._bufPtr) return;
+                        // retVal IS the actual byte count read (>0); 0 = nothing ready
+                        var bytesRead = retVal.toInt32();
+                        if (bytesRead <= 0 || bytesRead > this._bufSize) return;
+                        _readBytes += bytesRead; _readCount++;
                         try {
-                            var bytes = args[1].readByteArray(len);
+                            var bytes = this._bufPtr.readByteArray(bytesRead);
                             var u8 = new Uint8Array(bytes);
                             var s = '';
                             for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-                            // Log ALL outgoing data > 100 bytes that might be HTTP
-                            if (len > 100) {
-                                var preview = s.substring(0, 300).replace(/\n/g, '\\n').replace(/\r/g, '').substring(0, 250);
-                                send({type: 'rawsend', len: len, preview: preview});
-                            }
-                            parseChunk(args[0].toString(), s, parseReq, 'req');
-                        } catch(e) {}
+                            bufferAppend(this._key, s);
+                        } catch (e) { send('[READ-ERR] ' + e); }
                     }
                 });
-                attached[key] = true; hooked++;
-            } catch(e) {}
+                attached[key] = true;
+                hookedTls++;
+            } catch (e) {}
         });
-
-        // Read/recv offsets — use onLeave because the buffer is filled by the function
-        var readCandidates = [0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38,
-                             0x40, 0x48, 0x50, 0x58, 0x60, 0x68, 0x70, 0x78,
-                             0x80, 0x88, 0x90, 0x98, 0xa0, 0xa8, 0xb0, 0xb8,
-                             0xc0, 0xc8];
-        readCandidates.forEach(function(off) {
-            var addr = iface.add(off).readPointer();
-            if (!addr || addr.isNull()) return;
-            var key = 'r_' + off.toString(16) + '_' + addr.toString();
-            if (attached[key]) return;
-            try {
-                Interceptor.attach(addr, {
-                    onEnter: function(args) {
-                        // Store buffer pointer, size, and optional bytes_read ptr for onLeave
-                        this.bufPtr = args[1];
-                        this.bufSize = args[2].toInt32();
-                        this.bytesReadPtr = args[3];
-                    },
-                    onLeave: function(retVal) {
-                        if (!this.bufPtr || this.bufPtr.isNull()) return;
-                        // Try return value as bytes_read
-                        var bytesRead = retVal.toInt32();
-                        if (bytesRead <= 0 || bytesRead > 1048576) {
-                            // Try args[3] as pointer to bytes_read
-                            if (this.bytesReadPtr && !this.bytesReadPtr.isNull()) {
-                                try { bytesRead = this.bytesReadPtr.readU32(); } catch(e) {}
-                            }
-                        }
-                        // Fallback: use bufsize (might over-read but better than nothing)
-                        if (bytesRead <= 0 || bytesRead > 1048576)
-                            bytesRead = this.bufSize;
-                        if (bytesRead <= 0 || bytesRead > 1048576) return;
-                        try {
-                            var u8 = new Uint8Array(this.bufPtr.readByteArray(bytesRead));
-                            var s = '';
-                            for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-                            if (s.indexOf('HTTP/') === 0 || s.indexOf('HTTP') >= 0) {
-                                parseChunk('res_' + off.toString(16), s, parseRes, 'res');
-                            }
-                        } catch(e) {}
-                    }
-                });
-                attached[key] = true; hooked++;
-            } catch(e) {}
-        });
-
-        return hooked > 0;
+        return hookedTls > 0;
     }
 
     var tlsDone = false;
-    var timer = setInterval(function() {
-        try { if (!tlsDone) tlsDone = hookTls(); if (tlsDone) clearInterval(timer); } catch(e) {}
-    }, 1000);
+    setInterval(function() {
+        try {
+            // Keep polling: Unity/network layer can rotate TLS callbacks after scene/load.
+            // attached[key] prevents duplicate hooks for same function address.
+            if (hookTls()) tlsDone = true;
+        } catch(e) { send('[HOOK-ERR] ' + e); }
+    }, 5000);
+
+    // JS heartbeat disabled: Frida message spam can wedge long captures.
+    // Python heartbeat remains active.
 })();
-'''
+"""
 
 calls = []
 known_udid = None
 save_lock = threading.Lock()
+script_lock = threading.Lock()
+last_js_msg = time.time()
+script = None
+session = None
 _shutdown = threading.Event()
 _cleaned_up = False
 
-# seed udid from auth cache so decryption works immediately
-try:
-    from uma_api.client import runtime_output_root
-    _cache = runtime_output_root() / 'auth_cache.json'
-    if _cache.exists():
-        _cfg = json.loads(_cache.read_text())
-        known_udid = _cfg.get('udid') or None
-        if known_udid:
-            print(f"[udid] loaded from cache: {known_udid}")
-except Exception as e:
-    print(f"[udid] cache load failed: {e}")
+# Seed udid from CLI arg, or auth cache
+if CLI_UDID:
+    known_udid = CLI_UDID
+    print(f"[udid] from CLI: {known_udid}")
+else:
+    try:
+        from uma_api.client import runtime_output_root
+        _cache = runtime_output_root() / 'auth_cache.json'
+        if _cache.exists():
+            _cfg = json.loads(_cache.read_text())
+            known_udid = _cfg.get('udid') or None
+            if known_udid:
+                print(f"[udid] loaded from cache: {known_udid}")
+    except Exception as e:
+        print(f"[udid] cache load failed: {e}")
 
 
 def save():
@@ -322,29 +320,68 @@ def auto_save_loop():
                 save()
 
 
+def python_heartbeat_loop():
+    while not _shutdown.is_set():
+        _shutdown.wait(timeout=10)
+        if not _shutdown.is_set():
+            age = time.time() - last_js_msg
+            print(f"[PY-HB] alive calls={len(calls)} js_age={age:.1f}s", flush=True)
+
+
+def load_frida_script():
+    global script, last_js_msg
+    with script_lock:
+        # Do NOT unload old script here: unload can block if the Frida script is wedged.
+        # Layer a fresh script instead; duplicate hooks are less bad than a dead capture.
+        last_js_msg = time.time()
+        script = session.create_script(JS_CAPTURE)
+        script.on('message', on_message)
+        script.load()
+        last_js_msg = time.time()
+
+
+def js_watchdog_loop():
+    while not _shutdown.is_set():
+        _shutdown.wait(timeout=5)
+        if _shutdown.is_set():
+            break
+        if time.time() - last_js_msg > 12:
+            print("[watchdog] JS silent >12s; reloading Frida script", flush=True)
+            try:
+                load_frida_script()
+            except Exception as e:
+                print(f"[watchdog] reload failed: {e}", flush=True)
+
+
+_source_display = {}
+_next_source_id = 0
+
+
+def source_id(src):
+    global _next_source_id
+    if src not in _source_display:
+        _source_display[src] = _next_source_id
+        _next_source_id += 1
+    return _source_display[src]
+
+
 def on_message(message, data):
-    global known_udid
+    global known_udid, last_js_msg
+    last_js_msg = time.time()
     if message.get('type') == 'error':
         print(f"[frida error] {message.get('description')}")
         return
+
     payload = message.get('payload') or {}
+    if isinstance(payload, str):
+        print(payload, flush=True)
+        return
     pkt_type = payload.get('type')
-    if pkt_type == 'diag':
-        print(f"[diag] {payload.get('msg')}", flush=True)
+
+    if pkt_type == '_diag':
+        print(f"[DIAG] {payload.get('from','?')} endpoint={payload.get('endpoint','?')} bodyLen={payload.get('bodyLen',0)}", flush=True)
         return
-    if pkt_type == 'rawsend':
-        preview = payload.get('preview', '')
-        # Only print non-umamusume data to find what we're missing
-        if '/umamusume/' not in preview:
-            print(f"[RAWSEND] len={payload.get('len')} preview={preview[:120]}", flush=True)
-        return
-    if pkt_type == 'bufdiag':
-        s = payload.get('state', '')
-        ep = payload.get('ep', '?')
-        ln = payload.get('len', 0)
-        tl = payload.get('total', 0)
-        print(f"[BUFDIAG] {s} ep={ep} buf={ln} total={tl}", flush=True)
-        return
+
     if pkt_type not in ('req', 'res'):
         return
 
@@ -357,10 +394,10 @@ def on_message(message, data):
         print(f"[udid] {udid}")
 
     if pkt_type == 'req':
-        # Decrypt the request body
         decoded = None
         if udid and body:
             try:
+                from uma_api.client import unpack_request
                 decoded = unpack_request(body, udid)
             except Exception as e:
                 decoded = f"ERR:{e}"
@@ -384,16 +421,20 @@ def on_message(message, data):
             print(f"\n>>> REQ {endpoint}", flush=True)
             print(payload_str, flush=True)
         else:
-            print(f"\n>>> REQ {endpoint} [undecoded]", flush=True)
+            print(f"\n>>> REQ {endpoint} [undecoded] body_len={len(body)}", flush=True)
 
     else:  # res
-        # Decrypt the response body
         decoded = None
+        err_info = ''
         if udid and body:
             try:
+                from uma_api.client import unpack as unpack_response
                 decoded = unpack_response(body, udid)
+                if decoded is None:
+                    err_info = '(unpack returned None)'
             except Exception as e:
                 decoded = f"ERR:{e}"
+                err_info = f'({e})'
         decode_ok = decoded and not str(decoded).startswith('ERR:')
         entry = {
             'ts': payload.get('ts'),
@@ -401,7 +442,7 @@ def on_message(message, data):
             'endpoint': endpoint,
             'http_status': payload.get('http_status'),
             'decoded': decoded,
-            'raw_body': body if not decode_ok else None,
+            'raw_body': None if decode_ok else body,
         }
         with save_lock:
             calls.append(entry)
@@ -412,7 +453,7 @@ def on_message(message, data):
             print(f"\n<<< RES {endpoint} (HTTP {payload.get('http_status')})", flush=True)
             print(payload_str, flush=True)
         else:
-            print(f"\n<<< RES {endpoint} (HTTP {payload.get('http_status')}) [undecoded]", flush=True)
+            print(f"\n<<< RES {endpoint} (HTTP {payload.get('http_status')}) [undecoded] {err_info}".rstrip(), flush=True)
 
 
 def cleanup(*_):
@@ -423,7 +464,6 @@ def cleanup(*_):
     _shutdown.set()
     print("\n[cleanup] saving...", flush=True)
     try:
-        # Write without lock to avoid deadlock with Frida callback thread
         with open(OUTPUT, 'w', encoding='utf-8') as f:
             json.dump(calls, f, indent=2, ensure_ascii=False)
         print(f"[cleanup] {len(calls)} calls -> {OUTPUT}", flush=True)
@@ -445,14 +485,15 @@ if not match:
 pid, name = match[0]
 print(f"Attaching to {name} (pid {pid})...")
 session = device.attach(pid)
-script = session.create_script(JS_CAPTURE)
-script.on('message', on_message)
-script.load()
+load_frida_script()
 print("Hooked. DO your dailies in-game. Ctrl+C to stop.\n")
 print("Format: >>> REQ endpoint = request payload, <<< RES endpoint = response payload\n")
 
-# Auto-save every 30s
+# Auto-save every 30s + Python liveness heartbeat
 threading.Thread(target=auto_save_loop, daemon=True).start()
+threading.Thread(target=python_heartbeat_loop, daemon=True).start()
+# Watchdog disabled: without JS heartbeat, silence is normal between network events.
+# threading.Thread(target=js_watchdog_loop, daemon=True).start()
 
 signal.signal(signal.SIGINT, cleanup)
 signal.signal(signal.SIGTERM, cleanup)

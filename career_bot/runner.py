@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from career_bot.scenarios.mant import MantStrategy
+from career_bot.scenarios.ura import UraStrategy
 from career_bot.races import RacePlanner
 from career_bot.skills import SkillBuyer
 from career_bot.items import MantItemManager, ITEM_NAMES, SHOP_ITEM_COSTS, DISPLAY_TO_ID, display_to_slug
@@ -22,6 +23,7 @@ from career_bot.delay import dna_sleep, dna_gauss
 
 STRATEGIES = {
     4: MantStrategy,
+    1: UraStrategy,
 }
 
 
@@ -234,6 +236,8 @@ class CareerRunner:
                         add_decision(self.report, state, decision)
 
                 self._log(decision.action, chara.get("turn", turn), decision.reason)
+                if os.environ.get('SWEEPY_DEBUG'):
+                    print(f"[decision] turn={chara.get('turn', turn)} action={decision.action} reason={decision.reason}", flush=True)
                 if decision.action == "idle":
                     self._mark(last_action=decision.reason)
                     break
@@ -250,15 +254,19 @@ class CareerRunner:
                             continue
                         raise
                 elif decision.action == "command":
-                    self._log("command_exec", decision.payload["current_turn"], f"{decision.payload.get('command_type')}:{decision.payload.get('command_id')}:{decision.payload.get('command_group_id')}")
+                    cmd_payload = dict(decision.payload)
+                    self._log("command_exec", cmd_payload.get("current_turn", "?"), 
+                              f"type={cmd_payload.get('command_type')} id={cmd_payload.get('command_id')} grp={cmd_payload.get('command_group_id')} sel={cmd_payload.get('select_id')}")
                     self._record_action(decision, chara)
                     try:
-                        state = client.exec_command(**decision.payload)
+                        state = client.exec_command(**cmd_payload)
                         data = state.get("data") or {}
                         if data.get("unchecked_event_array"):
                             state = self._drain_events(client, strategy, state)
                     except Exception as exc:
                         if "Network error" in str(exc) or "201" in str(exc) or "205" in str(exc) or "208" in str(exc):
+                            if os.environ.get('SWEEPY_DEBUG'):
+                                print(f"[cmd_payload] {json.dumps({k: v for k, v in cmd_payload.items() if k not in ('viewer_id', 'device', 'device_id', 'device_name', 'graphics_device_name', 'ip_address', 'platform_os_version', 'carrier', 'keychain', 'locale', 'button_info', 'dmm_viewer_id', 'dmm_onetime_token', 'steam_id', 'steam_session_ticket')})}", flush=True)
                             state = self._fresh_career_state(client, strategy)
                             continue
                         if not any(err in str(exc) for err in ("102", "1503")):
@@ -277,7 +285,7 @@ class CareerRunner:
                 elif decision.action == "race_progress":
 
                     self._record_action(decision, chara)
-                    state = self._race_progress(client, decision.payload, preset)
+                    state = self._race_progress(client, decision.payload, preset, strategy)
                 elif decision.action == "finish":
 
                     self._record_action(decision, chara)
@@ -301,12 +309,19 @@ class CareerRunner:
                         print(f"SP still high ({chara.get('skill_point')}), retrying final purchase...")
                         state = self._buy_skills(client, state, preset, True)
 
-                    try:
-                        state = client.finish_career(current_turn=decision.payload["current_turn"], is_force_delete=False)
-                    except Exception as e:
-                        if any(err in str(e) for err in ("102", "201", "StateRecoveryError")):
-                            self._log("finish_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
-                        else:
+                    # Retry finish_career on 205/208 (server busy/locked)
+                    for _retry in range(5):
+                        try:
+                            state = client.finish_career(current_turn=decision.payload["current_turn"], is_force_delete=False)
+                            break
+                        except Exception as e:
+                            if any(err in str(e) for err in ("102", "201", "StateRecoveryError")):
+                                self._log("finish_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
+                                break
+                            if any(err in str(e) for err in ("205", "208")):
+                                self._log("finish_busy", decision.payload["current_turn"], f"server busy, retry {_retry+1}/5")
+                                dna_sleep(2.0, 3.0)
+                                continue
                             raise
                     self._mark(last_action="finish", finished=True)
                     break
@@ -477,17 +492,23 @@ class CareerRunner:
         chara = data.get("chara_info") or {}
         if int(chara.get("playing_state") or 0) == 6:
             turn = chara.get("turn", 1)
-            if hasattr(client, "minigame_end"):
-                state = client.minigame_end(current_turn=turn)
-            else:
-                state = client.call("single_mode_free/minigame_end", {
-                    "result": {
-                        "result_state": 1,
-                        "result_value": 0,
-                        "result_detail_array": None,
-                    },
-                    "current_turn": turn,
-                })
+            try:
+                if hasattr(client, "minigame_end"):
+                    state = client.minigame_end(current_turn=turn)
+                else:
+                    state = client.call("single_mode_free/minigame_end", {
+                        "result": {
+                            "result_state": 1,
+                            "result_value": 0,
+                            "result_detail_array": None,
+                        },
+                        "current_turn": turn,
+                    })
+            except Exception as exc:
+                if "205" in str(exc):
+                    self._log("minigame_skip", turn, "205 on minigame_end, ignoring")
+                    return state
+                raise
             data = state.get("data") or {}
             if data.get("unchecked_event_array"):
                 state = self._drain_events(client, strategy, state)
@@ -721,9 +742,11 @@ class CareerRunner:
                         else:
                             raise
                 if hasattr(client, "load_career"):
-                    state = client.load_career()
+                    state = client.load_career(scenario_id=self.status.get("scenario_id", 4))
                 else:
-                    state = client.call("single_mode_free/load", {})
+                    sc_id = self.status.get("scenario_id", 4)
+                    ep = 'single_mode/load' if sc_id == 1 else 'single_mode_free/load'
+                    state = client.call(ep, {})
                 if strategy and (state.get("data") or {}).get("unchecked_event_array"):
                     state = self._drain_events(client, strategy, state)
                 self.skill_buyer.reset_scoped_failures()
@@ -899,8 +922,16 @@ class CareerRunner:
             if not any(err in str(exc) for err in ("205", "208")):
                 raise
             self.race_planner.reject(current_turn, program_id)
+            # Notify strategy so it skips this race next time
+            if strategy and hasattr(strategy, 'reject_race'):
+                strategy.reject_race(program_id)
             self._log("race_reject", current_turn, program_id)
-            return self._fresh_career_state(client, strategy)
+            fresh = self._fresh_career_state(client, strategy)
+            # Check if this race is already in history — if so, skip it permanently
+            fresh_race_history = (fresh.get("data") or {}).get("race_history") or []
+            if any(int(r.get("program_id", 0)) == program_id for r in fresh_race_history):
+                self._log("race_skipped_history", current_turn, f"race {program_id} already completed")
+            return fresh
         self._log("race_entry", current_turn, program_id)
         entry_data = entry.get("data") or {}
         chara_info = entry_data.get("chara_info") or {}
@@ -922,9 +953,30 @@ class CareerRunner:
                 retry_208=0,
                 retry_205=0,
             )
+            entry_data = entry.get("data") or {}
+            if strategy and entry_data.get("unchecked_event_array"):
+                entry = self._drain_events(client, strategy, entry)
+                entry_data = entry.get("data") or {}
+                chara_info = entry_data.get("chara_info") or {}
         race_start_info = (entry.get("data") or {}).get("race_start_info") or {}
         is_short = 1
-        res = client.race_start(is_short=is_short, current_turn=current_turn)
+        try:
+            res = client.race_start(is_short=is_short, current_turn=current_turn)
+        except Exception as e:
+            # 2502 = pending event/state transition before race start.
+            if '2502' in str(e):
+                self._log("race_start_defer", current_turn, "2502, drain events then retry")
+                fresh = self._fresh_career_state(client, strategy)
+                if strategy and (fresh.get("data") or {}).get("unchecked_event_array"):
+                    fresh = self._drain_events(client, strategy, fresh)
+                try:
+                    res = client.race_start(is_short=is_short, current_turn=current_turn)
+                except Exception as retry_exc:
+                    if '2502' in str(retry_exc):
+                        return fresh
+                    raise
+            else:
+                raise
         self._log("race_start", current_turn, f"short {is_short}")
 
         rank = self._parse_race_rank(res)
@@ -1003,21 +1055,29 @@ class CareerRunner:
         advanced server-side but `payload` is stale. Reload the real career state
         so the loop continues from where the server actually is."""
         try:
-            fresh = client.load_career()
+            fresh = client.load_career(scenario_id=self.status.get("scenario_id", 4))
             if (fresh.get("data") or {}).get("chara_info"):
                 self._log("race_reconcile_reload", current_turn, "reloaded post-race state")
                 return fresh
+            # Career finished — return empty state so next_decision detects completion
+            self._log("race_reconcile_done", current_turn, "career complete")
+            return {"data": {}}
         except Exception as e:
             self._log("race_reconcile_reload_failed", current_turn, str(e))
         return payload
 
-    def _race_progress(self, client, payload, preset=None):
+    def _race_progress(self, client, payload, preset=None, strategy=None):
         current_turn = payload["current_turn"]
         phase = payload.get("phase")
         chara = (payload.get("chara_info") or {})
         playing_state = chara.get("playing_state") or 0
         if playing_state not in {2, 3, 4, 5}:
             self._log("race_skip", current_turn, f"not in race (state={playing_state})")
+            return payload
+
+        # Post-race results screen (playing_state=3) — race already done, skip
+        if playing_state == 3:
+            self._log("race_results", current_turn, "post-race screen, skipping race_end/out")
             return payload
         
         if phase == "end":
@@ -1037,7 +1097,20 @@ class CareerRunner:
             except Exception as e:
                 if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
                     self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
-                    return self._reload_after_reconcile(client, payload, current_turn)
+                    # Reload to see if career is actually finished or still has more steps
+                    fresh = self._reload_after_reconcile(client, payload, current_turn)
+                    fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
+                    # If chara_info is missing or state=3/is_goal, career is done
+                    if not fresh_chara or fresh_chara.get("state") == 3 or fresh.get("data", {}).get("is_goal"):
+                        self._log("race_complete_done", current_turn, "career finished")
+                        return {"data": {}}
+                    # Race results screen (playing_state=3): server already handled end/out,
+                    # skip the race payload and return fresh state for normal decision flow
+                    if fresh_chara.get("playing_state") == 3:
+                        self._log("race_results_skip", current_turn, "post-race screen, continuing")
+                        return fresh
+                    # Career still active — return the reloaded state
+                    return fresh
                 raise
         if phase == "out":
             self._log("race_out", current_turn, "resume")
@@ -1046,7 +1119,20 @@ class CareerRunner:
             except Exception as e:
                 if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
                     self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
-                    return self._reload_after_reconcile(client, payload, current_turn)
+                    # Reload to see if career is actually finished or still has more steps
+                    fresh = self._reload_after_reconcile(client, payload, current_turn)
+                    fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
+                    # If chara_info is missing or state=3/is_goal, career is done
+                    if not fresh_chara or fresh_chara.get("state") == 3 or fresh.get("data", {}).get("is_goal"):
+                        self._log("race_complete_done", current_turn, "career finished")
+                        return {"data": {}}
+                    # Race results screen (playing_state=3): server already handled end/out,
+                    # skip the race payload and return fresh state for normal decision flow
+                    if fresh_chara.get("playing_state") == 3:
+                        self._log("race_results_skip", current_turn, "post-race screen, continuing")
+                        return fresh
+                    # Career still active — return the reloaded state
+                    return fresh
                 raise
         race_start_info = payload.get("race_start_info") or {}
         program_id = race_start_info.get("program_id")
@@ -1061,15 +1147,39 @@ class CareerRunner:
         except (TypeError, ValueError):
             current_running_style = 0
         if playing_state in {2, 4} and program_id and running_style in (1, 2, 3, 4) and current_running_style != running_style:
-            client.race_entry(
+            entry = client.race_entry(
                 program_id=program_id,
                 current_turn=current_turn,
                 running_style=running_style,
                 retry_208=0,
                 retry_205=0,
             )
-        client.race_start(is_short=1, current_turn=current_turn)
-        self._log("race_start", current_turn, "resume")
+            if strategy and (entry.get("data") or {}).get("unchecked_event_array"):
+                entry = self._drain_events(client, strategy, entry)
+                payload = entry.get("data") or payload
+        if playing_state == 2:
+            # Race entered but not started — start it
+            try:
+                client.race_start(is_short=1, current_turn=current_turn)
+                self._log("race_start", current_turn, "resume")
+            except Exception as e:
+                if '2502' in str(e):
+                    self._log("race_start_defer", current_turn, "2502 in race_progress, drain events")
+                    fresh = self._fresh_career_state(client, strategy)
+                    if strategy and (fresh.get("data") or {}).get("unchecked_event_array"):
+                        fresh = self._drain_events(client, strategy, fresh)
+                    try:
+                        client.race_start(is_short=1, current_turn=current_turn)
+                        self._log("race_start", current_turn, "resume retry")
+                    except Exception as retry_exc:
+                        if '2502' in str(retry_exc):
+                            return fresh
+                        raise
+                else:
+                    raise
+        elif playing_state in (4, 5):
+            # Race already in progress or finishing — skip start
+            self._log("race_skip_start", current_turn, f"state={playing_state}")
         if playing_state in {1}:
             self._log("race_end_skip", current_turn, "resume already home")
         else:

@@ -80,15 +80,43 @@ const els = {
     presetDelayMin: document.getElementById('preset-delay-min'),
     presetDelayMax: document.getElementById('preset-delay-max'),
     presetTpMode: document.getElementById('preset-tp-mode'),
+    presetScenario: document.getElementById('preset-scenario'),
+    presetPalRecreation: document.getElementById('preset-pal-recreation'),
     presetEditSkillsBtn: document.getElementById('preset-edit-skills-btn'),
+    presetExpectSpeed: document.getElementById('preset-expect-speed'),
+    presetExpectStamina: document.getElementById('preset-expect-stamina'),
+    presetExpectPower: document.getElementById('preset-expect-power'),
+    presetExpectGuts: document.getElementById('preset-expect-guts'),
+    presetExpectWit: document.getElementById('preset-expect-wit'),
     skillModal: document.getElementById('skill-modal'),
     skillSearch: document.getElementById('skill-search'),
     skillList: document.getElementById('skill-list'),
     skillTiersContainer: document.getElementById('skill-tiers-container'),
     skillBlacklistContainer: document.getElementById('skill-blacklist-container'),
     skillAddTierBtn: document.getElementById('skill-add-tier-btn'),
-    skillModalClose: document.getElementById('skill-modal-close')
-};
+    skillModalClose: document.getElementById('skill-modal-close'),
+    friendVetGrid: document.getElementById('friend-vet-grid'),
+    friendVetCount: document.getElementById('friend-vet-count'),
+    friendVetStatus: document.getElementById('friend-vet-status'),
+    friendVetRefreshBtn: document.getElementById('friend-vet-refresh-btn'),
+    friendVetSearch: document.getElementById('friend-vet-search-input'),
+    friendVetRank: document.getElementById('friend-vet-rank-select'),
+    friendVetSparkToggle: document.getElementById('friend-vet-spark-toggle'),
+    friendVetSparkDrawer: document.getElementById('friend-vet-spark-drawer'),
+    friendVetsToggle: document.getElementById('friend-vets-toggle'),
+    friendVetsChevron: document.getElementById('friend-vets-chevron'),
+    friendVetsBody: document.getElementById('friend-vets-body'),
+    friendIdInput: document.getElementById('friend-id-input'),
+    friendPreviewBtn: document.getElementById('friend-preview-btn'),
+    friendFollowBtn: document.getElementById('friend-follow-btn'),
+    friendPreviewPanel: document.getElementById('friend-preview-panel'),
+    friendManageStatus: document.getElementById('friend-manage-status'),
+    friendManageList: document.getElementById('friend-manage-list'),
+    advisorPanel: document.getElementById('advisor-panel'),
+    aptitudePanel: document.getElementById('aptitude-panel'),
+    aptitudeBars: document.getElementById('aptitude-bars'),
+    traineeAptPanel: document.getElementById('trainee-aptitude-panel'),
+    traineeAptTable: document.getElementById('trainee-aptitude-table'),};
         const delaySettingsStorageKey = 'uma_turn_delay_settings';
         const burnClocksStorageKey = 'uma_burn_clocks';
         const devStorageKey = 'uma_dev_career';
@@ -554,6 +582,7 @@ const els = {
             img.onerror = null;
             img.style.display = 'none';
         }
+        function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
         const loginForm = document.getElementById('login-form');
         loginForm.addEventListener('submit', async event => {
             event.preventDefault();
@@ -696,7 +725,10 @@ const els = {
             els.accountStrip.innerHTML = `
                 <div class="account-pill pill-tp">
                     <span class="label">TP</span>
-                    <strong>${tp.current || 0}/${tp.max || 0}</strong>
+                    <div class="pill-value-row">
+                        <strong>${tp.current || 0}/${tp.max || 0}</strong>
+                        <button id="pill-tp-refill" class="pill-btn pill-tp-refill" title="Refill TP">+</button>
+                    </div>
                 </div>
                 <div class="account-pill pill-carrots">
                     <span class="label">CARROTS</span>
@@ -711,10 +743,72 @@ const els = {
                     <strong>${formatNumber(account.clocks)}</strong>
                 </div>
                 ${careerHtml}
+                <button id="account-refresh-btn" class="pill-btn account-refresh-btn" title="Refresh account data">&#x21bb;</button>
             `;
             els.accountStrip.style.display = 'flex';
             const careerPill = document.getElementById('career-pill');
             if (careerPill) careerPill.addEventListener('click', openCareerModal);
+            const refreshBtn = document.getElementById('account-refresh-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', async () => {
+                    refreshBtn.disabled = true;
+                    refreshBtn.textContent = '...';
+                    try {
+                        const data = await apiJson('/api/account/refresh', { method: 'POST' });
+                        if (data.success && data.account) {
+                            state.account = data.account;
+                            if (dashData) {
+                                dashData.account = data.account;
+                                if (data.parents) {
+                                    dashData.parents = data.parents;
+                                    const selectedIds = new Set(selection.veterans.map(v => String(v.instance_id)));
+                                    selection.veterans = dashData.parents
+                                        .map((p, i) => selectedIds.has(String(p.instance_id)) ? { ...p, _gridIdx: i } : null)
+                                        .filter(Boolean);
+                                    renderParents(dashData.parents);
+                                }
+                            }
+                            renderAccountStrip(state.account);
+                        }
+                    } catch (e) {
+                        console.error('Refresh error:', e);
+                    } finally {
+                        const newBtn = document.getElementById('account-refresh-btn');
+                        if (newBtn) { newBtn.disabled = false; newBtn.textContent = '\u21bb'; }
+                    }
+                });
+            }
+            const tpRefillBtn = document.getElementById('pill-tp-refill');
+            if (tpRefillBtn) {
+                tpRefillBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    tpRefillBtn.disabled = true;
+                    tpRefillBtn.textContent = '...';
+                    try {
+                        const data = await apiJson('/api/tp/refill', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ count: 1 })
+                        });
+                        if (data.success) {
+                            if (data.account) {
+                                state.account = data.account;
+                            } else {
+                                const current = state.account && state.account.tp;
+                                if (current) current.current = (data.tp || {}).current || current.current;
+                            }
+                            renderAccountStrip(state.account);
+                        } else {
+                            console.error('TP refill failed:', data.detail);
+                        }
+                    } catch (e) {
+                        console.error('TP refill error:', e);
+                    } finally {
+                        const newBtn = document.getElementById('pill-tp-refill');
+                        if (newBtn) { newBtn.disabled = false; newBtn.textContent = '+'; }
+                    }
+                });
+            }
             loadStoredBurnClocks();
             syncBurnClocksControls();
         }
@@ -749,12 +843,14 @@ const els = {
         const selection = { deck: null, friend: null, trainee: null, veterans: [] };
 
         async function syncSelectionToServer() {
+            selection.preset = state.selectedPreset || '';
             try {
                 const payload = {
                     deck: selection.deck,
                     friend: selection.friend,
                     trainee: selection.trainee,
-                    veterans: selection.veterans
+                    veterans: selection.veterans,
+                    preset: state.selectedPreset || ''
                 };
                 await apiJson('/api/selection', {
                     method: 'POST',
@@ -805,6 +901,8 @@ const els = {
                 .forEach(el => el.classList.remove('selected'));
 
             applyServerSelection(current.team_selection);
+            selection.preset = state.selectedPreset || '';
+            syncSelectionToServer();
             renderFriends();
             renderTeamPanel();
         }
@@ -947,6 +1045,7 @@ const els = {
                 }
             });
             syncStartButton();
+            updateAptitudePreview();
         }
                 function updateVetSelectability() {
             const full = selection.veterans.length >= 2;
@@ -1650,9 +1749,25 @@ const els = {
 
             current.learn_skill_threshold = parseInt(els.presetSkillThreshold.value) || 888;
             current.running_style = parseInt(els.presetRunningStyle?.value) || 1;
+            current.scenario_id = parseInt(els.presetScenario?.value) || 4;
+            current.scenario = current.scenario_id;
             current.run_delay_min_min = parseInt(els.presetDelayMin?.value) || 0;
             current.run_delay_max_min = parseInt(els.presetDelayMax?.value) || 0;
             current.tp_mode = (els.presetTpMode?.value === 'wait') ? 'wait' : 'carat';
+            current.pal_recreation_required = !!(els.presetPalRecreation?.checked);
+
+            // Expect attribute: [speed, stamina, power, guts, wit]
+            const speed = parseInt(els.presetExpectSpeed?.value);
+            const stamina = parseInt(els.presetExpectStamina?.value);
+            const power = parseInt(els.presetExpectPower?.value);
+            const guts = parseInt(els.presetExpectGuts?.value);
+            const wit = parseInt(els.presetExpectWit?.value);
+            const attr = [speed, stamina, power, guts, wit];
+            if (attr.some(v => Number.isFinite(v))) {
+                current.expect_attribute = attr.map(v => Number.isFinite(v) ? v : 0);
+            } else {
+                delete current.expect_attribute;
+            }
 
             // Persist current turn delay sliders into preset
             const delayMin = parseFloat(els.turnDelayMin?.value);
@@ -1682,6 +1797,16 @@ const els = {
             if (els.presetDelayMin) els.presetDelayMin.value = current.run_delay_min_min ?? 0;
             if (els.presetDelayMax) els.presetDelayMax.value = current.run_delay_max_min ?? 0;
             if (els.presetTpMode) els.presetTpMode.value = (current.tp_mode === 'wait') ? 'wait' : 'carat';
+            if (els.presetScenario) els.presetScenario.value = String(current.scenario_id || current.scenario || 4);
+            if (els.presetPalRecreation) els.presetPalRecreation.checked = !!current.pal_recreation_required;
+
+    // Expect attribute
+    const attr = current.expect_attribute || [];
+    if (els.presetExpectSpeed) els.presetExpectSpeed.value = attr[0] ?? '';
+    if (els.presetExpectStamina) els.presetExpectStamina.value = attr[1] ?? '';
+    if (els.presetExpectPower) els.presetExpectPower.value = attr[2] ?? '';
+    if (els.presetExpectGuts) els.presetExpectGuts.value = attr[3] ?? '';
+    if (els.presetExpectWit) els.presetExpectWit.value = attr[4] ?? '';
 
             // Apply preset turn delay to the global delay module
             if (current.turn_delay_min_sec != null && current.turn_delay_max_sec != null) {
@@ -1715,6 +1840,13 @@ const els = {
             els.presetDelayMin?.addEventListener('change', saveHandler);
             els.presetDelayMax?.addEventListener('change', saveHandler);
             els.presetTpMode?.addEventListener('change', saveHandler);
+            els.presetScenario?.addEventListener('change', saveHandler);
+            els.presetPalRecreation?.addEventListener('change', saveHandler);
+            els.presetExpectSpeed?.addEventListener('change', saveHandler);
+            els.presetExpectStamina?.addEventListener('change', saveHandler);
+            els.presetExpectPower?.addEventListener('change', saveHandler);
+            els.presetExpectGuts?.addEventListener('change', saveHandler);
+            els.presetExpectWit?.addEventListener('change', saveHandler);
 
             els.presetEditSkillsBtn?.addEventListener('click', () => {
                 if (!state.selectedPreset) return;
@@ -2080,6 +2212,8 @@ const els = {
                 });
                 if (!data.success) throw new Error(data.detail || 'Friend load failed');
                 dashData.friends = data.friends || [];
+                if (data.veterans) dashData.friendVeterans = data.veterans;
+                if (data.veterans_source) dashData.friendVeteransSource = data.veterans_source;
                 appendSeenFriendIds(data.exclude_viewer_ids || []);
                 renderFriends();
                 if (data.source === 'Active Career (Skip)') {
@@ -2136,10 +2270,14 @@ const els = {
                 support_card_ids: selection.deck.cards.map(card => Number(card.id)),
                 friend_viewer_id: Number(selection.friend.viewer_id),
                 friend_card_id: Number(selection.friend.support_card_id),
-                parent_id_1: Number(selection.veterans[0].instance_id),
-                parent_id_2: Number(selection.veterans[1].instance_id),
+                // Own veterans (no viewer_id) → parent_id_1/2
+                // Rental veterans (from friends, have viewer_id) → rental_viewer_id + rental_trained_chara_id
+                parent_id_1: Number((selection.veterans.filter(v => !v.viewer_id)[0]?.instance_id) || 0),
+                parent_id_2: Number((selection.veterans.filter(v => !v.viewer_id)[1]?.instance_id) || 0),
+                rental_viewer_id: Number((selection.veterans.filter(v => v.viewer_id)[0]?.viewer_id) || 0),
+                rental_trained_chara_id: Number((selection.veterans.filter(v => v.viewer_id)[0]?.trained_chara_id) || 0),
                 deck_id: Number(selection.deck.id),
-                scenario_id: 4,
+                scenario_id: Number(getCurrentPreset()?.scenario_id ?? getCurrentPreset()?.scenario ?? 4),
                 use_tp: 30,
                 difficulty_id: 0,
                 difficulty: 0,
@@ -2213,6 +2351,12 @@ const els = {
                 if (!data.success || !data.runner) return;
                 const runner = data.runner;
                 applyRunnerSnapshot(runner);
+
+                // Sync career active flag when runner finishes
+                if (runner.finished && state.account && state.account.career && state.account.career.active) {
+                    state.account.career.active = false;
+                    renderAccountStrip(state.account);
+                }
 
                 const rows = (runner.action_history && runner.action_history.length) ? runner.action_history : deriveActionHistory(runner.log || []);
                 if (rows.length) renderActionHistory(rows);
@@ -2428,13 +2572,6 @@ const els = {
                 element.classList.add('selectable');
                 element.addEventListener('click', () => selectTrainee(index, element));
             });
-            document.querySelectorAll('#parent-grid .grid-card').forEach((element) => {
-                element.classList.add('selectable');
-                element.addEventListener('click', () => {
-                    const pidx = parseInt(element.dataset.pidx, 10);
-                    if (!isNaN(pidx)) selectParent(pidx, element);
-                });
-            });
         }
         function isValidDeck(deck) {
             return deck.cards.every(card => {
@@ -2571,6 +2708,11 @@ const els = {
                     if (!isNaN(pidx)) selectParent(pidx, element);
                 });
             });
+            // Restore selected state for already-chosen parents (DOM was re-created)
+            selection.veterans.forEach(vet => {
+                const el = document.querySelector(`#parent-grid .grid-card[data-pidx="${vet._gridIdx}"]`);
+                if (el) el.classList.add('selected');
+            });
             updateVetSelectability();
             syncFriendSelection();
             renderTeamPanel();
@@ -2680,6 +2822,7 @@ const els = {
                     }
                 });
                 updateVetSelectability();
+                updateAptitudePreview();
             }
             if (serverSelection.friend) {
                 state.pendingFriendSelection = {
@@ -2772,9 +2915,22 @@ const els = {
                 playBrandIntro();
                 if (options.waitForIntro) await sleep(780);
             }
-        }
 
-        async function restoreSession() {
+            // --- Advisor Panel ---
+            renderAdvisorPanel();
+            // --- Friend Manage ---
+            bindFriendManage();
+            // --- Friend Veterans ---
+            makeSectionToggle('friend-vets-toggle', 'friend-vets-chevron', 'friend-vets-body', true);
+            loadFriendVeterans(false);
+            els.friendVetRefreshBtn?.addEventListener('click', () => loadFriendVeterans(true));
+            els.friendVetSearch?.addEventListener('input', () => renderFriendVeterans());
+            els.friendVetRank?.addEventListener('change', () => renderFriendVeterans());
+            els.friendVetSparkToggle?.addEventListener('change', () => renderFriendVeterans());
+            bindVetHandlers();
+            }
+
+            async function restoreSession() {
             try {
                 const data = await apiJson('/api/session?t=' + Date.now());
                 if (data && data.success) await renderDashboard(data, { animateIntro: true, waitForIntro: false });
@@ -2791,4 +2947,490 @@ const els = {
         bindMasterDataControls();
         setLoadingScreen(true);
         restoreSession();
-})();
+
+        // ==== ADVISOR PANEL ============================================
+        function renderAdvisorPanel() {
+            const panel = els.advisorPanel;
+            if (!panel) return;
+            if (!dashData) {
+                panel.innerHTML = '<div class="advisor-header">PARENT ADVISOR <span style="font-weight:400;color:var(--text-muted);text-transform:none">— login to load</span></div>';
+                return;
+            }
+            if (!dashData.friendVeterans || !dashData.friendVeterans.length) {
+                panel.innerHTML = '<div class="advisor-header">PARENT ADVISOR <span style="font-weight:400;color:var(--text-muted);text-transform:none">— refresh friends to load veteran data</span></div>';
+                return;
+            }
+            const sel = selection || {};
+            const cardId = (sel.trainee || {}).id || (sel.trainee || {}).card_id || '';
+            const presetName = el => el && el.value || '';
+            const style = (sel.preset) ? '' : 'opacity:0.5;pointer-events:none';
+            panel.innerHTML = `
+                <div class="advisor-header">PARENT ADVISOR</div>
+                <div class="advisor-row">
+                    <button id="advisor-refresh-btn" class="btn btn-sm" type="button" style="${style}">REFRESH</button>
+                    <span id="advisor-status" class="advisor-status"></span>
+                </div>
+                <div id="advisor-results" class="advisor-results"></div>
+            `;
+            const refreshBtn = document.getElementById('advisor-refresh-btn');
+            if (refreshBtn) refreshBtn.addEventListener('click', () => updateAdvisorRecommendations());
+        }
+
+        async function updateAdvisorRecommendations() {
+            const status = document.getElementById('advisor-status');
+            const results = document.getElementById('advisor-results');
+            if (!results) return;
+            const sel = selection || {};
+            const traineeCardId = (sel.trainee || {}).id || (sel.trainee || {}).card_id || 0;
+            const presetName = (sel.preset || '');
+            let runningStyle = 0;
+            try {
+                const presetData = await apiJson('/api/presets?t=' + Date.now());
+                if (presetData && presetData.success) {
+                    const p = (presetData.presets || []).find(x => x.name === presetName);
+                    if (p) runningStyle = p.running_style || 0;
+                }
+            } catch (e) {}
+            if (!traineeCardId) {
+                if (status) status.textContent = 'Select a trainee first';
+                return;
+            }
+            if (status) status.textContent = 'Loading...';
+            try {
+                const data = await apiJson('/api/advisor/recommendations', {
+                    method: 'POST',
+                    body: JSON.stringify({ trainee_card_id: Number(traineeCardId), running_style: Number(runningStyle) }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (data && data.success) {
+                    const recs = (data.recommendations || []).slice(0, 24);
+                    if (status) status.textContent = `${recs.length} recommendations`;
+                    results.innerHTML = recs.map(r => `
+                        <div class="advisor-card">
+                            <img src="/api/images/${r.card_id || '10001'}.png" onerror="hideBrokenImage(this)" style="width:2.2rem;height:2.2rem;object-fit:cover;border-radius:0.3rem;">
+                            <div>
+                                <div style="font-weight:800;color:var(--text-main)">${r.chara_name || r.name || 'Unknown'}</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted)">${r.trainer_name || r.source || ''} · ${r.viewer_id || r.instance_id || ''}</div>
+                            </div>
+                            <div class="advisor-card-score">${Math.round((r.advisor || {}).score || 0)}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    if (status) status.textContent = data?.detail || 'Failed';
+                }
+            } catch (e) {
+                if (status) status.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function updateAptitudePreview() {
+            const parentPanel = els.aptitudePanel;
+            const parentBars = els.aptitudeBars;
+            const traineePanel = els.traineeAptPanel;
+            const traineeTable = els.traineeAptTable;
+            const vets = (selection.veterans || []).filter(v => v);
+            const traineeCardId = selection.trainee ? (selection.trainee.id || selection.trainee.card_id) : null;
+
+            // Hide trainee panel if no trainee selected
+            if (!traineeCardId) {
+                if (traineePanel) traineePanel.style.display = 'none';
+                if (parentPanel) parentPanel.style.display = 'none';
+                return;
+            }
+            // Hide parent bar chart if no parents selected
+            if (vets.length === 0) {
+                if (parentPanel) parentPanel.style.display = 'none';
+            }
+            try {
+                const body = { parents: vets };
+                if (traineeCardId) body.trainee_card_id = traineeCardId;
+                const data = await apiJson('/api/advisor/aptitude-preview', {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!data || !data.success) {
+                    if (parentPanel) parentPanel.style.display = 'none';
+                    if (traineePanel) traineePanel.style.display = 'none';
+                    return;
+                }
+                const cats = (data.prediction || {}).categories || [];
+                if (!cats.length) {
+                    if (parentPanel) parentPanel.style.display = 'none';
+                    if (traineePanel) traineePanel.style.display = 'none';
+                    return;
+                }
+
+                // --- parent-section panel: keep bar chart (only when parents selected) ---
+                if (parentPanel && parentBars && vets.length > 0) {
+                    parentPanel.style.display = '';
+                    const maxStars = 18;
+                    parentBars.innerHTML = cats.map(c => {
+                        const pct = Math.min(100, (c.stars / maxStars) * 100);
+                        let cls = 'low';
+                        if (c.stars >= 9) cls = 'high';
+                        else if (c.stars >= 5) cls = 'mid';
+                        const grade = c.grade || c.base_grade || '';
+                        const gradeCls = grade && grade >= 'A' ? 'good' : 'bad';
+                        return `<div class="aptitude-bar-row">
+                            <span class="aptitude-bar-label">${escHtml(c.label)}</span>
+                            <div class="aptitude-bar-track">
+                                <div class="aptitude-bar-fill ${cls}" style="width:${pct}%"></div>
+                            </div>
+                            <span class="aptitude-bar-grade ${gradeCls}">${grade}</span>
+                            <span class="aptitude-bar-stars">${c.stars}★</span>
+                        </div>`;
+                    }).join('');
+                }
+
+                // --- trainee panel: grade table (always when trainee is selected) ---
+                if (traineePanel && traineeTable) {
+                    traineePanel.style.display = '';
+                    const order = data.prediction.category_order || [];
+                    let html = '';
+                    for (const [groupLabel, keys] of order) {
+                        html += '<tr>';
+                        html += `<td class="ag-row-label">${escHtml(groupLabel)}</td>`;
+                        for (const key of keys) {
+                            const c = cats.find(x => x.key === key);
+                            if (!c) { html += '<td class="ag-cell">-</td>'; continue; }
+                            const grade = c.grade || c.base_grade || '?';
+                            const starStr = c.stars > 0 ? `+${c.stars}★` : '';
+                            html += `<td class="ag-cell ag-grade-${grade}">${grade}<span class="ag-stars">${starStr}</span></td>`;
+                        }
+                        html += '</tr>';
+                    }
+                    traineeTable.innerHTML = html;
+                }
+            } catch (e) {
+                if (parentPanel) parentPanel.style.display = 'none';
+                if (traineePanel) traineePanel.style.display = 'none';
+            }
+        }
+
+        // ==== FRIEND MANAGE (FOLLOW/UNFOLLOW) ===========================
+        function bindFriendManage() {
+            if (!els.friendIdInput || !els.friendPreviewBtn || !els.friendFollowBtn) return;
+            els.friendPreviewBtn.addEventListener('click', previewFriendId);
+            els.friendIdInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') previewFriendId();
+            });
+            els.friendFollowBtn.addEventListener('click', async () => {
+                const vid = els.friendIdInput.value.trim();
+                if (!vid) return;
+                const action = els.friendFollowBtn.getAttribute('data-action') || 'follow';
+                if (action === 'follow') await followFriendId(Number(vid));
+                else await unfollowFriendId(Number(vid));
+            });
+        }
+
+        let previewedFriendId = null;
+
+        async function previewFriendId() {
+            const vid = els.friendIdInput.value.trim();
+            if (!vid || !Number(vid)) return;
+            previewedFriendId = Number(vid);
+            els.friendPreviewPanel.innerHTML = '<div class="friend-preview-loading">Loading...</div>';
+            els.friendFollowBtn.disabled = true;
+            try {
+                const data = await apiJson('/api/friends/raw');
+                if (data && data.success) {
+                    const isFollowing = (dashData?.friends || []).some(f => Number(f.viewer_id) === Number(vid));
+                    els.friendFollowBtn.disabled = false;
+                    els.friendFollowBtn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+                    els.friendFollowBtn.setAttribute('data-action', isFollowing ? 'unfollow' : 'follow');
+                    els.friendPreviewPanel.innerHTML = `
+                        <div class="friend-preview-card">
+                            <img src="/api/images/10001.png" onerror="hideBrokenImage(this)">
+                            <div>
+                                <div class="friend-preview-title">User #${vid}</div>
+                                <div class="friend-preview-meta">Click Follow to add</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                els.friendPreviewPanel.innerHTML = `<div class="friend-preview-error">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function followFriendId(viewerId) {
+            if (!viewerId) return;
+            els.friendManageStatus.textContent = 'Following...';
+            try {
+                const data = await apiJson('/api/friends/follow', {
+                    method: 'POST',
+                    body: JSON.stringify({ viewer_id: viewerId }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (data && data.success) {
+                    els.friendManageStatus.textContent = 'Followed successfully';
+                    els.friendIdInput.value = '';
+                    els.friendPreviewPanel.innerHTML = '';
+                    els.friendFollowBtn.disabled = true;
+                    loadFriends(true);
+                    renderFriendManageList();
+                } else {
+                    els.friendManageStatus.textContent = 'Failed: ' + (data?.detail || 'unknown');
+                }
+            } catch (e) {
+                els.friendManageStatus.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function unfollowFriendId(viewerId) {
+            if (!viewerId) return;
+            els.friendManageStatus.textContent = 'Unfollowing...';
+            try {
+                const data = await apiJson('/api/friends/unfollow', {
+                    method: 'POST',
+                    body: JSON.stringify({ viewer_id: viewerId }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (data && data.success) {
+                    els.friendManageStatus.textContent = 'Unfollowed successfully';
+                    els.friendIdInput.value = '';
+                    els.friendPreviewPanel.innerHTML = '';
+                    els.friendFollowBtn.disabled = true;
+                    loadFriends(true);
+                    renderFriendManageList();
+                } else {
+                    els.friendManageStatus.textContent = 'Failed: ' + (data?.detail || 'unknown');
+                }
+            } catch (e) {
+                els.friendManageStatus.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        function renderFriendManageList() {
+            const container = els.friendManageList;
+            if (!container) return;
+            const friends = (dashData?.friends || []).filter(f => Number(f.friend_state || 0) >= 2);
+            if (!friends.length) {
+                container.innerHTML = '';
+                return;
+            }
+            let html = '<div class="friend-follow-list-title">FOLLOWING (' + friends.length + ')</div>';
+            friends.forEach(f => {
+                const state = Number(f.friend_state || 0);
+                const stateLabel = state >= 3 ? 'Mutual' : 'Following';
+                const stateClass = 'friend-follow-label';
+                html += `<div class="friend-follow-entry">
+                    <img src="/api/images/${f.support_card_id || '10001'}.png" onerror="hideBrokenImage(this)">
+                    <div>
+                        <div style="font-weight:800;color:var(--text-main)">${f.support_name || 'Unknown'}</div>
+                        <div style="font-size:0.65rem;color:var(--text-muted)">${f.name || ''} · ${f.viewer_id || ''}</div>
+                        <span class="${stateClass}" data-state="${f.friend_state}">${stateLabel}</span>
+                    </div>
+                    <button class="btn btn-sm friend-manage-unfollow" data-viewer-id="${f.viewer_id}" type="button">Unfollow</button>
+                </div>`;
+            });
+            container.innerHTML = html;
+            container.querySelectorAll('.friend-manage-unfollow').forEach(btn => {
+                btn.addEventListener('click', () => unfollowFriendId(Number(btn.getAttribute('data-viewer-id'))));
+            });
+        }
+
+        // ==== FRIEND VETERANS ===========================================
+        const VET_RANK_LABELS = {
+            1:'G',2:'G+',3:'F',4:'F+',5:'E',6:'E+',7:'D',8:'D+',
+            9:'C',10:'C+',11:'B',12:'B+',13:'A',14:'A+',15:'S',16:'S+',
+            17:'SS',18:'SS+',19:'UG',20:'UG+',21:'UF',22:'UF+',23:'UE',24:'UE+',
+            25:'UD',26:'UD+',27:'UC',28:'UC+',29:'UB',30:'UB+',31:'UA',32:'UA+',33:'US',34:'US+',
+        };
+        const VET_SCENARIO_NAMES = {1:'URA',2:'Aoharu',3:'MANT',4:'Trailblazer',5:'Grand Live',6:'Grand Masters',7:"L'Arc",8:'UAF',9:'Daily',10:'Pretty Derby',11:'Mecha'};
+
+        function rankLabel(id) { return VET_RANK_LABELS[id] || (id ? 'R' + id : ''); }
+        function rankTier(id) {
+            if (!id) return 'low';
+            if (id <= 8) return 'low';
+            if (id <= 12) return 'mid';
+            if (id <= 18) return 'high';
+            return 'elite';
+        }
+
+        function renderVetStats(v) {
+            const labels = ['SPD','STA','PWR','GTS','WIT'];
+            const vals = [v.speed||0, v.stamina||0, v.power||0, v.guts||0, v.wiz||0];
+            return '<div class="vet-stats">' + vals.map((val, i) =>
+                '<div class="vet-stat"><div class="vet-stat-label">' + labels[i] + '</div><div class="vet-stat-val">' + val + '</div></div>'
+            ).join('') + '</div>';
+        }
+
+        function renderVetFactors(v) {
+            const factors = v.factors || [];
+            if (!factors.length) return '';
+            return '<div class="vet-factors">' + factors.map(f =>
+                '<span class="vet-factor">' + escapeHtml(f.name || '?') + ' <span class="vet-factor-star">' + '★'.repeat(Math.min(f.stars||1,3)) + '</span></span>'
+            ).join('') + '</div>';
+        }
+
+        function renderVetParents(v) {
+            const ids = v.parent_card_ids || [];
+            if (!ids.length) return '';
+            return '<div class="vet-parents" title="Direct parents">' + ids.map(cid =>
+                '<img class="vet-parent-portrait" src="/api/images/' + cid + '.png" onerror="hideBrokenImage(this)" alt="' + cid + '">'
+            ).join('') + '</div>';
+        }
+
+        function renderSupportDeckStrip(cards) {
+            if (!cards || !cards.length) return '';
+            return '<div class="vet-deck-strip">' + cards.map(c =>
+                '<img class="vet-deck-portrait" src="/api/images/' + (c.card_id || c.support_card_id || '10001') + '.png" onerror="hideBrokenImage(this)" title="' + escapeHtml(c.name || '') + '">'
+            ).join('') + '</div>';
+        }
+
+        function friendCardHtml(v, idx) {
+            const rankId = v.rank || 0;
+            const label = rankLabel(rankId);
+            const tier = rankTier(rankId);
+            const scenarioName = VET_SCENARIO_NAMES[v.scenario_id] || 'Scenario ' + v.scenario_id;
+            const deckCards = v.deck_support_cards || [];
+            const selected = (selection.veterans || []).some(sv => String(sv.viewer_id) === String(v.viewer_id) && String(sv.trained_chara_id) === String(v.trained_chara_id));
+            return '<div class="vet-card selectable' + (selected ? ' selected' : '') + '" data-vet-idx="' + idx + '" data-vet-key="' + (v.viewer_id + ':' + v.trained_chara_id) + '">' +
+                '<img class="vet-portrait" src="/api/images/' + (v.card_id || '10001') + '.png" onerror="hideBrokenImage(this)">' +
+                '<div>' +
+                '<div class="vet-header">' +
+                '<span class="vet-name">' + escapeHtml(v.chara_name || '') + '</span>' +
+                '<span class="vet-rank-badge vet-rank-' + tier + '">' + label + '</span>' +
+                '<span style="font-size:0.6rem;color:var(--text-muted)">' + scenarioName + '</span>' +
+                '</div>' +
+                renderVetStats(v) +
+                '<div class="vet-info-row">' +
+                '<span>' + escapeHtml(v.trainer_name || '') + '</span>' +
+                '<span>#ID ' + v.trained_chara_id + '</span>' +
+                '<span>' + (v.wins || 0) + ' wins</span>' +
+                '</div>' +
+                renderVetParents(v) +
+                renderVetFactors(v) +
+                renderSupportDeckStrip(deckCards) +
+                '</div></div>';
+        }
+
+        async function loadFriendVeterans(refresh = false) {
+            if (!els.friendVetGrid) return;
+            els.friendVetStatus.textContent = 'Loading...';
+            try {
+                let data;
+                if (refresh) {
+                    data = await apiJson('/api/career/friends', {
+                        method: 'POST',
+                        body: JSON.stringify({ exclude_viewer_ids: [], force_refresh: true }),
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (data && data.success) dashData = data;
+                } else {
+                    data = await apiJson('/api/friends/veterans');
+                }
+                if (data && data.success) {
+                    const vets = data.veterans || [];
+                    els.friendVetCount.textContent = '(' + vets.length + ')';
+                    els.friendVetStatus.textContent = vets.length + ' veterans loaded';
+                    state._veterans = vets;
+                    renderFriendVeterans();
+                } else {
+                    els.friendVetStatus.textContent = 'No data — call /api/career/friends first';
+                }
+            } catch (e) {
+                els.friendVetStatus.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        function renderFriendVeterans() {
+            const grid = els.friendVetGrid;
+            if (!grid) return;
+            let vets = state._veterans || [];
+            const q = (els.friendVetSearch?.value || '').toLowerCase();
+            const rankFilter = els.friendVetRank?.value || '';
+            if (q) vets = vets.filter(v =>
+                (v.chara_name || '').toLowerCase().includes(q) ||
+                String(v.card_id || '').includes(q) ||
+                (v.trainer_name || '').toLowerCase().includes(q)
+            );
+            if (rankFilter) {
+                const rankLabels = rankFilter.split(' — ');
+                vets = vets.filter(v => {
+                    const label = rankLabel(v.rank || 0);
+                    return rankLabels.some(r => label.startsWith(r));
+                });
+            }
+            grid.innerHTML = vets.map((v, i) => friendCardHtml(v, i)).join('');
+            if (!vets.length) grid.innerHTML = '<div class="vet-count-msg">No veterans match</div>';
+            bindVetHandlers();
+
+            const sparkToggle = els.friendVetSparkToggle;
+            const sparkDrawer = els.friendVetSparkDrawer;
+            if (sparkToggle && sparkDrawer) {
+                if (sparkToggle.checked) {
+                    const totalRows = new Set(vets.map(v => v.viewer_id + ':' + v.trained_chara_id)).size;
+                    sparkDrawer.style.display = 'block';
+                    sparkDrawer.innerHTML = '<div class="vet-count-msg">Veterans: ' + vets.length + ' total, ' + totalRows + ' unique.</div>';
+                } else {
+                    sparkDrawer.style.display = 'none';
+                }
+            }
+        }
+
+        function syncFriendVeteranSelection() {
+            // Stub — could auto-select a veteran from filtered list if needed
+        }
+
+        function selectVeteran(idx, element) {
+            const vets = state._veterans || [];
+            const vet = vets[idx];
+            if (!vet) return;
+            if (element.classList.contains('selected')) {
+                element.classList.remove('selected');
+                selection.veterans = selection.veterans.filter(sv =>
+                    !(String(sv.viewer_id) === String(vet.viewer_id) && String(sv.trained_chara_id) === String(vet.trained_chara_id))
+                );
+            } else if (selection.veterans.length < 2) {
+                // Check not already selected
+                const already = selection.veterans.some(sv =>
+                    String(sv.viewer_id) === String(vet.viewer_id) && String(sv.trained_chara_id) === String(vet.trained_chara_id)
+                );
+                if (!already) {
+                    const vetFull = vet.viewer_id ? {
+                        viewer_id: Number(vet.viewer_id),
+                        trained_chara_id: Number(vet.trained_chara_id),
+                        card_id: Number(vet.card_id || 0),
+                    } : null;
+                    if (vetFull) {
+                        selection.veterans.push(vetFull);
+                        element.classList.add('selected');
+                    }
+                }
+            }
+            updateVetSelectability();
+            renderTeamPanel();
+            syncSelectionToServer();
+        }
+
+        function bindVetHandlers() {
+            document.querySelectorAll('#friend-vet-grid .vet-card').forEach(el => {
+                el.addEventListener('click', () => {
+                    const idx = parseInt(el.dataset.vetIdx, 10);
+                    if (!isNaN(idx)) selectVeteran(idx, el);
+                });
+            });
+        }
+
+        // Refresh veterans also when friends are refreshed
+        const origLoadFriends = loadFriends;
+        loadFriends = async function loadFriendsPatched(refresh) {
+            await origLoadFriends(refresh);
+            if (dashData && dashData.friendVeterans) {
+                state._veterans = dashData.friendVeterans;
+                renderFriendVeterans();
+                renderAdvisorPanel();
+                updateAdvisorRecommendations();
+            }
+        };
+
+        // Patch renderFriends to also refresh manage list
+        const origRenderFriends = renderFriends;
+        renderFriends = function renderFriendsPatched() {
+            origRenderFriends();
+            renderFriendManageList();
+        };
+    })();

@@ -234,10 +234,33 @@ def pack(sid, udid_raw, auth, payload, udid):
     return base64.b64encode(struct.pack('<I', len(h)) + h + body)
 
 def unpack(text, udid):
+    if isinstance(text, str):
+        text = text.strip().encode('latin-1')
+    text += b'=' * (-len(text) % 4)
     raw = base64.b64decode(text)
     key, cipher = raw[-32:], raw[:-32]
     p = unpad(AES.new(key, AES.MODE_CBC, get_iv(udid)).decrypt(cipher), 16)
-    return msgpack.unpackb(p[4:4+struct.unpack('<I', p[:4])[0]], raw=False, strict_map_key=False)
+
+    # Old/server variants: uint32 length prefix before msgpack.
+    if len(p) >= 4:
+        n = struct.unpack('<I', p[:4])[0]
+        if 0 < n <= len(p) - 4:
+            try:
+                return msgpack.unpackb(p[4:4+n], raw=False, strict_map_key=False)
+            except msgpack.ExtraData:
+                pass
+
+    # Current game response: small plaintext prefix, then msgpack key/value stream:
+    # "data_headers", {...}, "data", {...}
+    i = p.find(b'data_headers')
+    if i > 0:
+        u = msgpack.Unpacker(raw=False, strict_map_key=False)
+        u.feed(p[i - 1:])
+        vals = []
+        for _ in range(4):  # data_headers, {...}, data, {...}; ignore trailing stream data
+            vals.append(next(u))
+        return dict(zip(vals[0::2], vals[1::2]))
+    return msgpack.unpackb(p, raw=False, strict_map_key=False)
 
 def unpack_request(text, udid, _debug=False):
     """Decode an outgoing request body (pack() format: headerLen + header + cipher + key)."""
@@ -629,6 +652,15 @@ class UmaClient:
         })
 
     def call(self, ep, args=None, retry_208=6, retry_205=3):
+        # URA (scenario 1) uses single_mode/* instead of single_mode_free/* for core endpoints
+        if self.current_scenario_id == 1 and ep.startswith('single_mode_free/'):
+            rest = ep[len('single_mode_free/'):]
+            if rest in ('load', 'start', 'exec_command', 'check_event',
+                        'race_entry', 'race_start', 'race_end', 'race_out',
+                        'finish', 'continue', 'change_running_style',
+                        'gain_skills', 'multi_item_use', 'multi_item_exchange',
+                        'minigame_end'):
+                ep = 'single_mode/' + rest
         if not hasattr(self, '_last_raw_call_ts'):
             self._last_raw_call_ts = 0
 
@@ -819,10 +851,10 @@ class UmaClient:
             self.read_info()
             
             try:
-                sm_res = self.call('single_mode_free/load', {})
+                sm_res = self.call('single_mode/load', {})
                 chara = sm_res.get('data', {}).get('chara_info')
                 if not chara:
-                    raise StateRecoveryError("No chara_info returned in single_mode_free/load after hard reset.")
+                    raise StateRecoveryError("No chara_info returned in single_mode/load after hard reset.")
             except Exception as e:
                 if isinstance(e, StateRecoveryError):
                     raise
@@ -885,8 +917,59 @@ class UmaClient:
                     dna_sleep(0.83, 0.83)
                     continue
                 if '1055' in err and attempt < max_retries:
-                    dna_sleep(0.83, 0.83)
-                    continue
+                    try:
+                        cache_path = runtime_output_root() / 'auth_cache.json'
+                        if cache_path.exists():
+                            cache = json.loads(cache_path.read_text(encoding='utf-8'))
+                        else:
+                            cache = {}
+                        pw_hash = cache.get('uma_password_hash', '')
+                        if pw_hash:
+                            import time
+                            dev_args = {
+                                'password': pw_hash,
+                                'input_viewer_id': str(self.viewer_id),
+                                'viewer_id': self.viewer_id,
+                                'device': 4, 'device_id': self.device_id,
+                                'device_name': self.device_name, 'graphics_device_name': self.graphics_device,
+                                'ip_address': self.ip_address, 'platform_os_version': self.platform_os,
+                                'carrier': '', 'keychain': 0, 'locale': self.locale,
+                                'button_info': '', 'dmm_viewer_id': None, 'dmm_onetime_token': None,
+                                'steam_id': self.steam_id,
+                                'steam_session_ticket': self.steam_ticket,
+                            }
+                            print(f"[login] 1055 on start_session, chain_by_transition_code...", flush=True)
+                            chain = self.call('account/chain_by_transition_code', dev_args)
+                            chain_data = chain.get('data', {})
+                            print(f"[login] chain OK", flush=True)
+                            dna_sleep(0.5, 1.0, 0.75, 0.1)
+                            print(f"[login] get_by_transition_code...", flush=True)
+                            get_res = self.call('account/get_by_transition_code', dev_args)
+                            get_data = get_res.get('data', {})
+                            # Update viewer_id and auth from response
+                            new_vid = get_data.get('viewer_id') or chain_data.get('viewer_id')
+                            if new_vid:
+                                self.viewer_id = int(new_vid)
+                            ak = get_data.get('auth_key') or chain_data.get('auth_key')
+                            if ak:
+                                self.auth_key_hex = base64.b64decode(ak).hex()
+                            self.regen_sid()
+                            # Re-save auth cache with new creds
+                            if new_vid or ak:
+                                old = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
+                                if new_vid: old['viewer_id'] = int(new_vid)
+                                if ak: old['auth_key'] = ak
+                                cache_path.write_text(json.dumps(old, ensure_ascii=False), encoding='utf-8')
+                            print(f"[login] re-auth via transition OK, viewer_id={self.viewer_id}", flush=True)
+                            continue
+                        else:
+                            print(f"[login] 1055 but no uma_password_hash in auth_cache, retrying...", flush=True)
+                            dna_sleep(0.83, 0.83)
+                            continue
+                    except Exception as ae:
+                        print(f"[login] chain_by_transition failed: {ae}", flush=True)
+                        dna_sleep(0.83, 0.83)
+                        continue
                 if '394' in err and attempt < max_retries:
                     dna_sleep(2.5, 2.5)
                     continue
@@ -925,8 +1008,9 @@ class UmaClient:
             'current_turn': current_turn
         })
 
-    def load_career(self):
-        return self.call('single_mode_free/load', {})
+    def load_career(self, scenario_id=4):
+        ep = 'single_mode/load' if scenario_id == 1 else 'single_mode_free/load'
+        return self.call(ep, {})
 
     def minigame_end(self, current_turn, result_state=1, result_value=0, result_detail_array=None):
         return self.call('single_mode_free/minigame_end', {
@@ -961,12 +1045,30 @@ class UmaClient:
             payload['exclude_viewer_id_array'] = exclude_viewer_ids
         return self.call('pre_single_mode/index', payload)
 
+    def follow_user(self, viewer_id):
+        payload = {'target_viewer_id': int(viewer_id)}
+        return self._call_first_supported((
+            'friend/follow',
+            'friend/follow_user',
+            'friend/request',
+        ), payload)
+
+    def unfollow_user(self, viewer_id):
+        payload = {'target_viewer_id': int(viewer_id)}
+        return self._call_first_supported((
+            'friend/unfollow',
+            'friend/delete',
+            'friend/remove',
+        ), payload)
+
     def start_career(self, card_id, support_card_ids, friend_viewer_id, friend_card_id,
                      parent_id_1, parent_id_2, scenario_id, deck_id=1, use_tp=30,
                      tp_info=None, current_money=0, succession_rank_point=0,
                      rental_viewer_id=0, rental_trained_chara_id=0,
                      difficulty_id=0, difficulty=0, is_boost=0,
                      boost_story_event_id=0):
+        # Set scenario before calling so the call() rewrite applies
+        self.current_scenario_id = scenario_id
         if not tp_info:
             tp_info = {'current_tp': 100, 'max_tp': 100, 'max_recovery_time': 0}
         start_payload = {
@@ -1053,13 +1155,18 @@ class UmaClient:
                 'running_style': running_style,
                 'current_turn': current_turn
             }
-            return self.call('single_mode_free/change_running_style', payload, retry_208=retry_208, retry_205=retry_205)
-        else:
-            payload = {
-                'program_id': program_id,
-                'current_turn': current_turn
-            }
-            return self.call('single_mode_free/race_entry', payload, retry_208=retry_208, retry_205=retry_205)
+            try:
+                return self.call('single_mode_free/change_running_style', payload, retry_208=retry_208, retry_205=retry_205)
+            except Exception as e:
+                # 2502 = style change rejected (already set / not needed for this scenario).
+                # Fall through to plain race_entry without style change.
+                if '2502' not in str(e):
+                    raise
+        payload = {
+            'program_id': program_id,
+            'current_turn': current_turn
+        }
+        return self.call('single_mode_free/race_entry', payload, retry_208=retry_208, retry_205=retry_205)
 
     def race_start(self, is_short, current_turn):
         return self.call('single_mode_free/race_start', {

@@ -15,6 +15,8 @@ import threading
 import frida
 from career_bot import master_data
 from career_bot import affinity as affinity_calc
+from career_bot import advisor
+from career_bot import aptitude
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
 from uma_api.client import UmaClient, runtime_output_root
@@ -303,7 +305,7 @@ def update_start_state(data):
     if data.get('tp_info'):
         tp_info = dict(data.get('tp_info'))
         active_start_state['tp_info'] = tp_info
-    item_list = data.get('item_list') or data.get('user_item_array')
+    item_list = data.get('item_list') or data.get('user_item_array') or data.get('user_item')
     if isinstance(item_list, list) and item_list:
         active_start_state['current_money'] = get_item_count(item_list, 59)
         active_start_state['succession_rank_point'] = get_item_count(item_list, 75)
@@ -361,6 +363,160 @@ def normalize_friend_cards(data):
 
 def normalize_card_name(name):
     return re.sub(r'[^a-z0-9]+', '', re.sub(r'\([^)]*\)', '', str(name or '').lower()))
+
+
+def _load_data_file(filename):
+    path = base_dir / 'data' / filename
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+
+def _support_cards_from_ids(card_ids):
+    result = []
+    for cid in card_ids:
+        info = support_map.get(str(cid), {})
+        result.append({
+            'card_id': cid,
+            'name': info.get('name', f'Unknown ({cid})'),
+            'type': info.get('type', 'Unknown'),
+            'rarity': info.get('rarity', '?'),
+        })
+    return result
+
+
+def _deck_meta_from_ids(card_ids):
+    counts = advisor.support_type_counts(card_ids, support_map)
+    return {
+        'deck_support_cards': _support_cards_from_ids(card_ids),
+        'deck_type_counts': counts,
+        'deck_archetype': advisor.deck_archetype(counts),
+    }
+
+
+FRIEND_VETERAN_KEYS = ('succession_trained_chara_array',)
+FRIEND_VETERAN_CONTAINER_KEYS = (
+    'succession_trained_chara_data',
+    'event_succession_trained_chara_data',
+)
+
+
+def _extract_veteran_rows(data):
+    candidates = []
+
+    def absorb(value):
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    candidates.append(item)
+
+    for container_key in FRIEND_VETERAN_CONTAINER_KEYS:
+        container = data.get(container_key) or {}
+        if isinstance(container, dict):
+            for key in FRIEND_VETERAN_KEYS:
+                absorb(container.get(key))
+    for key in FRIEND_VETERAN_KEYS:
+        absorb(data.get(key))
+    return candidates
+
+
+def normalize_friend_veterans(data):
+    global active_parent_rank_points
+    rows = _extract_veteran_rows(data)
+    if not rows:
+        return [], 'no_data'
+
+    summaries_by_viewer = {}
+    for info in data.get('summary_user_info_array', []) or []:
+        vid = info.get('viewer_id')
+        if vid is not None:
+            summaries_by_viewer.setdefault(vid, info)
+    friend_data = data.get('friend_support_card_data') or {}
+    for info in friend_data.get('summary_user_info_array', []) or []:
+        vid = info.get('viewer_id')
+        if vid is not None:
+            summaries_by_viewer.setdefault(vid, info)
+    for ckey in FRIEND_VETERAN_CONTAINER_KEYS:
+        cinfo = data.get(ckey) or {}
+        if isinstance(cinfo, dict):
+            for info in cinfo.get('summary_user_info_array', []) or []:
+                vid = info.get('viewer_id')
+                if vid is not None:
+                    summaries_by_viewer.setdefault(vid, info)
+
+    out = []
+    seen = set()
+    for row in rows:
+        viewer_id = row.get('viewer_id') or row.get('owner_viewer_id') or 0
+        trained_chara_id = row.get('trained_chara_id') or row.get('id') or 0
+        card_id = row.get('card_id') or row.get('chara_id') or 0
+        if not viewer_id or not trained_chara_id:
+            continue
+        key = (int(viewer_id), int(trained_chara_id))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        active_parent_rank_points[int(trained_chara_id)] = {
+            'rank': int(row.get('rank') or 0),
+            'rank_score': int(row.get('rank_score') or 0),
+        }
+
+        summary = summaries_by_viewer.get(viewer_id) or {}
+        chara_name = chara_map.get(str(card_id), f'Unknown ({card_id})')
+
+        factors = []
+        try:
+            factors = get_factors(row.get('factor_id_array') or [], card_id)
+        except Exception:
+            factors = []
+
+        parent_card_ids = []
+        for sc in row.get('succession_chara_array') or []:
+            pos = sc.get('position_id')
+            if pos in (10, 20):
+                pid = int(sc.get('card_id') or 0)
+                if pid:
+                    parent_card_ids.append(pid)
+
+        deck_support_ids = [
+            int(item.get('support_card_id') or 0)
+            for item in (row.get('support_card_list') or [])
+            if int(item.get('support_card_id') or 0)
+        ]
+        deck_meta = _deck_meta_from_ids(deck_support_ids)
+
+        out.append({
+            'viewer_id': int(viewer_id),
+            'trainer_name': summary.get('name', ''),
+            'trained_chara_id': int(trained_chara_id),
+            'card_id': int(card_id),
+            'chara_name': chara_name,
+            'rank': int(row.get('rank') or 0),
+            'rank_score': int(row.get('rank_score') or 0),
+            'scenario_id': int(row.get('scenario_id') or 0),
+            'running_style': int(row.get('running_style') or 0),
+            'talent_level': int(row.get('talent_level') or 0),
+            'speed': int(row.get('speed') or 0),
+            'stamina': int(row.get('stamina') or 0),
+            'power': int(row.get('power') or 0),
+            'guts': int(row.get('guts') or 0),
+            'wiz': int(row.get('wiz') or 0),
+            'wins': len(row.get('win_saddle_id_array') or []),
+            'factors': factors,
+            'parent_card_ids': parent_card_ids,
+            'deck_support_ids': deck_support_ids,
+            'deck_support_cards': deck_meta['deck_support_cards'],
+            'deck_type_counts': deck_meta['deck_type_counts'],
+            'deck_archetype': deck_meta['deck_archetype'],
+            'shared_support_card_id': int(summary.get('support_card_id') or 0),
+        })
+
+    out.sort(key=lambda v: (-v['rank_score'], -v['rank']))
+    return out, 'ok'
 
 
 def validate_start_selection(req):
@@ -601,6 +757,9 @@ def get_account_status(data, career_data=None):
         
         p1 = career.get('succession_trained_chara_id_1')
         p2 = career.get('succession_trained_chara_id_2')
+        rental = career.get('rental_succession_trained_chara') or {}
+        rental_viewer_id = rental.get('viewer_id')
+        rental_trained_chara_id = rental.get('trained_chara_id')
 
         friend_viewer_id = None
         friend_card_id = None
@@ -661,6 +820,8 @@ def get_account_status(data, career_data=None):
             "friend": friend_support,
             "parent_id_1": p1,
             "parent_id_2": p2,
+            "rental_viewer_id": rental_viewer_id,
+            "rental_trained_chara_id": rental_trained_chara_id,
         }
 
     return status
@@ -701,6 +862,8 @@ class RunCareerRequest(BaseModel):
     friend_card_id: int = 0
     parent_id_1: int = 0
     parent_id_2: int = 0
+    rental_viewer_id: int = 0
+    rental_trained_chara_id: int = 0
     scenario_id: int = 0
     deck_id: int = 1
     use_tp: int = 30
@@ -735,8 +898,19 @@ class CareerActionRequest(BaseModel):
     command_group_id: int = 0
     select_id: int = 0
 
+class TpRefillRequest(BaseModel):
+    count: int = 1
+
 class FriendListRequest(BaseModel):
     exclude_viewer_ids: list[int] = []
+    force_refresh: bool = False
+
+class FriendManageRequest(BaseModel):
+    viewer_id: int
+
+class AdvisorRequest(BaseModel):
+    trainee_card_id: int = 0
+    running_style: int = 0
 
 class ApiDelayRequest(BaseModel):
     min: float = 1.6
@@ -835,10 +1009,16 @@ def start_career_from_request(req):
             break
         except Exception as e:
             err_str = str(e)
-            if "201" in err_str and _load_attempt == 0:
-                print(f"[start_career] session expired (201) on load/index, re-authing...", flush=True)
-                if auto_login_from_cache():
-                    print(f"[start_career] re-auth OK, retrying load/index", flush=True)
+            if _load_attempt == 0 and ("201" in err_str or "394" in err_str):
+                if "201" in err_str:
+                    print(f"[start_career] session expired (201) on load/index, re-authing...", flush=True)
+                    if auto_login_from_cache():
+                        print(f"[start_career] re-auth OK, retrying load/index", flush=True)
+                        continue
+                else:
+                    print(f"[start_career] load/index busy (394), retrying...", flush=True)
+                    import time
+                    time.sleep(2.0)
                     continue
             print(f"[start_career] load/index refresh failed: {e}", flush=True)
             break
@@ -884,21 +1064,26 @@ def start_career_from_request(req):
     current_money = active_start_state['current_money']
     p1_rank = active_parent_rank_points.get(int(req.parent_id_1))
     p2_rank = active_parent_rank_points.get(int(req.parent_id_2))
-    # current_succession_rank_point = succession affinity (相性). The server validates it.
-    # Compute it from master.mdb + the two parents' lineage; fall back to item-75 only on failure.
-    succession_rank_point = selected_succession_rank_point(req)
+    # current_succession_rank_point = raw item 75 balance. NOT the affinity score.
+    # The server validates affinity from the parent IDs; we just send what we have.
+    succession_rank_point = selected_succession_rank_point(req)  # fallback
+    computed_affinity = None
+    print(f"[start_career] item75_balance={succession_rank_point} parent_id_1={req.parent_id_1} parent_id_2={req.parent_id_2} rental_viewer_id={req.rental_viewer_id} rental_trained_chara_id={req.rental_trained_chara_id}", flush=True)
     try:
         p1_full = active_parent_full.get(int(req.parent_id_1))
         p2_full = active_parent_full.get(int(req.parent_id_2))
         if p1_full and p2_full:
             mdb = str(master_data.configured_master_mdb_path(base_dir))
             aff = affinity_calc.calculate_affinity(mdb, req.card_id, p1_full, p2_full)
-            print(f"[start_career] affinity={aff['total']} (chara={aff['chara_compat']} race={aff['race_compat']}) item75-fallback-was={succession_rank_point}", flush=True)
-            succession_rank_point = aff['total']
+            computed_affinity = aff['total']
+            print(f"[start_career] affinity={computed_affinity} (chara={aff['chara_compat']} race={aff['race_compat']}) item75={succession_rank_point}", flush=True)
         else:
-            print(f"[start_career] affinity: missing parent data ({req.parent_id_1}={bool(p1_full)} {req.parent_id_2}={bool(p2_full)}); using fallback {succession_rank_point}", flush=True)
+            print(f"[start_career] affinity: missing parent data ({req.parent_id_1}={bool(p1_full)} {req.parent_id_2}={bool(p2_full)}); using item75={succession_rank_point}", flush=True)
     except Exception as e:
-        print(f"[start_career] affinity calc FAILED: {e}; using fallback {succession_rank_point}", flush=True)
+        print(f"[start_career] affinity calc FAILED: {e}; using item75={succession_rank_point}", flush=True)
+
+    if computed_affinity is not None:
+        succession_rank_point = computed_affinity
     print(f"[start_career] parents={req.parent_id_1}(rank={p1_rank.get('rank') if p1_rank else '?'}) {req.parent_id_2}(rank={p2_rank.get('rank') if p2_rank else '?'}) sp={succession_rank_point}", flush=True)
 
     # Fresh session to clear any stuck single_mode state
@@ -912,7 +1097,7 @@ def start_career_from_request(req):
     # force-delete an orphan that the server won't let us finish normally.
     leftover_turn = None
     try:
-        existing = active_client.load_career()
+        existing = active_client.load_career(scenario_id=req.scenario_id)
         chara = (existing.get('data') or {}).get('chara_info') or {}
         if chara:
             leftover_turn = int(chara.get('turn') or 0)
@@ -945,10 +1130,12 @@ def start_career_from_request(req):
         friend_card_id=req.friend_card_id,
         parent_id_1=req.parent_id_1,
         parent_id_2=req.parent_id_2,
+        rental_viewer_id=req.rental_viewer_id,
+        rental_trained_chara_id=req.rental_trained_chara_id,
         scenario_id=req.scenario_id,
         deck_id=req.deck_id,
         use_tp=req.use_tp,
-        tp_info={'current_tp': tp_info.get('current_tp'), 'max_tp': tp_info.get('max_tp')},
+        tp_info={'current_tp': tp_info.get('current_tp'), 'max_tp': tp_info.get('max_tp'), 'max_recovery_time': tp_info.get('max_recovery_time', 0)},
         current_money=current_money,
         succession_rank_point=succession_rank_point,
         difficulty_id=req.difficulty_id,
@@ -964,6 +1151,8 @@ def start_career_from_request(req):
         friend_card_id=req.friend_card_id,
         parent_id_1=req.parent_id_1,
         parent_id_2=req.parent_id_2,
+        rental_viewer_id=req.rental_viewer_id,
+        rental_trained_chara_id=req.rental_trained_chara_id,
         scenario_id=req.scenario_id,
         deck_id=req.deck_id,
         use_tp=req.use_tp,
@@ -1008,7 +1197,17 @@ def _build_dashboard_from_login_response(res):
     career_data = None
     if d.get('single_mode_chara_light') or d.get('single_mode_chara'):
         try:
-            career_res = active_client.load_career()
+            # Extract scenario_id from existing career data
+            sm_scenario = 4
+            sm_light = d.get('single_mode_chara_light') or {}
+            sm_chara = d.get('single_mode_chara') or {}
+            if isinstance(sm_light, dict) and sm_light.get('scenario_id'):
+                sm_scenario = int(sm_light['scenario_id'])
+            elif isinstance(sm_chara, dict) and sm_chara.get('scenario_id'):
+                sm_scenario = int(sm_chara['scenario_id'])
+            elif d.get('chara_info') and isinstance(d['chara_info'], dict) and d['chara_info'].get('scenario_id'):
+                sm_scenario = int(d['chara_info']['scenario_id'])
+            career_res = active_client.load_career(scenario_id=sm_scenario)
             career_data = career_res.get('data')
         except Exception:
             pass
@@ -1074,7 +1273,7 @@ def _build_dashboard_from_login_response(res):
                 tree[key]["name"] = chara_map.get(str(sc_cid), f"Unknown ({sc_cid})")
                 tree[key]["factors"] = get_factors(sc.get('factor_id_array', []), sc_cid)
                 tree[key]["wins"] = get_win_summary(sc.get('win_saddle_id_array', []))
-        parents.append({'instance_id': chara.get('trained_chara_id'), 'card_id': cid, 'name': chara_map.get(cid, f"Unknown ({cid})"), 'rank': chara.get('rank', 0), 'tree': tree})
+        parents.append({'instance_id': chara.get('trained_chara_id'), 'card_id': cid, 'name': chara_map.get(cid, f"Unknown ({cid})"), 'rank': chara.get('rank', 0), 'rank_score': chara.get('rank_score', 0), 'tree': tree})
         lineage_cards = [int(cid)]
         for sc in chara.get('succession_chara_array', []) or []:
             sc_cid = sc.get('card_id', 0)
@@ -1472,7 +1671,8 @@ async def run_career(req: RunCareerRequest):
                 career = account.get("career") or {}
 
         if career.get("active"):
-            career_result = active_client.load_career()
+            load_scenario = int(career.get("scenario_id") or preset.get("scenario_id", 4))
+            career_result = active_client.load_career(scenario_id=load_scenario)
             career_data = career_result.get('data', {})
             
             account = get_account_status(load_data, career_result)
@@ -1485,6 +1685,8 @@ async def run_career(req: RunCareerRequest):
             req.friend_card_id = int(career_status.get("friend_card_id") or 0)
             req.parent_id_1 = int(career_status.get("parent_id_1") or 0)
             req.parent_id_2 = int(career_status.get("parent_id_2") or 0)
+            req.rental_viewer_id = int(career_status.get("rental_viewer_id") or 0)
+            req.rental_trained_chara_id = int(career_status.get("rental_trained_chara_id") or 0)
             req.deck_id = int(career_status.get("deck_id") or 0)
             req.scenario_id = int(career_status.get("scenario_id") or preset.get("scenario_id", 4))
             
@@ -1525,6 +1727,41 @@ async def run_career(req: RunCareerRequest):
 @app.get("/api/career/runner")
 async def career_runner_status():
     return {"success": True, "runner": career_runner.snapshot()}
+
+@app.post("/api/tp/refill")
+async def tp_refill(req: TpRefillRequest):
+    global active_client, active_account, active_dashboard_data
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+    try:
+        result = active_client.recovery_tp(req.count)
+        # Refresh account state
+        res = active_client.call('load/index', {'adid': ''})
+        data = res.get('data', {})
+        active_client.refresh_cached_account_state(data)
+        update_start_state(data)
+        if active_account:
+            active_account = get_account_status(data)
+        if active_dashboard_data:
+            active_dashboard_data["account"] = active_account
+        return {"success": True, "tp": result, "account": active_account}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
+
+@app.post("/api/account/refresh")
+async def account_refresh():
+    global active_client, active_account, active_dashboard_data
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+    try:
+        res = active_client.call('load/index', {'adid': ''})
+        data = res.get('data', {})
+        active_client.refresh_cached_account_state(data)
+        update_start_state(data)
+        dashboard = _build_dashboard_from_login_response(res)
+        return {"success": True, "account": active_account, "parents": dashboard.get("parents", [])}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
 
 # mtime-keyed cache for career history — avoids re-parsing all JSON on every load
 _history_cache: dict = {"data": None, "newest_mtime": 0.0}
@@ -1632,12 +1869,19 @@ async def get_friend_list(req: FriendListRequest):
             "source": "Active Career (Skip)"
         }
 
-    if not req.exclude_viewer_ids and active_dashboard_data is not None and "friends" in active_dashboard_data:
+    if (
+        not req.exclude_viewer_ids
+        and not req.force_refresh
+        and active_dashboard_data is not None
+        and "friends" in active_dashboard_data
+    ):
         return {
             "success": True,
             "friends": active_dashboard_data["friends"],
             "exclude_viewer_ids": active_dashboard_data.get("friendExcludeIds", []),
-            "source": "cache"
+            "source": "cache",
+            "veterans": active_dashboard_data.get("friendVeterans", []),
+            "veterans_source": active_dashboard_data.get("friendVeteransSource", "cache"),
         }
 
     try:
@@ -1645,24 +1889,175 @@ async def get_friend_list(req: FriendListRequest):
         data = result.get('data', {})
         update_start_state(data)
         friends, exclude_viewer_ids, source = normalize_friend_cards(data)
+        veterans, veterans_source = normalize_friend_veterans(data)
 
         if active_dashboard_data is not None:
             active_dashboard_data["friends"] = friends
             active_dashboard_data["friendExcludeIds"] = exclude_viewer_ids
             active_dashboard_data["friendsLoaded"] = True
+            active_dashboard_data["friendVeterans"] = veterans
+            active_dashboard_data["friendVeteransSource"] = veterans_source
+            active_dashboard_data["lastPreSingleModeRaw"] = data
 
         return {
             "success": True,
             "friends": friends,
             "exclude_viewer_ids": exclude_viewer_ids,
-            "source": source
+            "source": source,
+            "veterans": veterans,
+            "veterans_source": veterans_source,
+        }
+    except Exception as e:
+        if active_dashboard_data is not None and active_dashboard_data.get("friends"):
+            return {
+                "success": True,
+                "friends": active_dashboard_data.get("friends", []),
+                "exclude_viewer_ids": active_dashboard_data.get("friendExcludeIds", []),
+                "source": "cache-after-refresh-error",
+                "warning": str(e),
+                "veterans": active_dashboard_data.get("friendVeterans", []),
+                "veterans_source": active_dashboard_data.get("friendVeteransSource", "cache"),
+            }
+        return {"success": False, "detail": str(e)}
+
+
+@app.get("/api/friends/raw")
+async def get_friends_raw():
+    if not active_dashboard_data:
+        return {"success": False, "detail": "No active session yet"}
+    raw = active_dashboard_data.get("lastPreSingleModeRaw")
+    if raw is None:
+        return {"success": False, "detail": "Call /api/career/friends first to populate this cache."}
+
+    def shape(value, depth=0, max_depth=3):
+        if depth > max_depth:
+            return type(value).__name__
+        if isinstance(value, dict):
+            return {k: shape(v, depth + 1, max_depth) for k, v in value.items()}
+        if isinstance(value, list):
+            sample = value[0] if value else None
+            return {"<list len=>": len(value), "<item shape>": shape(sample, depth + 1, max_depth)}
+        return type(value).__name__
+
+    return {
+        "success": True,
+        "top_level_keys": sorted(list(raw.keys())),
+        "shape": shape(raw, max_depth=2),
+        "veterans": len(active_dashboard_data.get("friendVeterans", [])),
+        "veterans_source": active_dashboard_data.get("friendVeteransSource", "unknown"),
+    }
+
+
+@app.get("/api/friends/veterans")
+async def get_friend_veterans():
+    if not active_dashboard_data:
+        return {"success": False, "detail": "No active session yet"}
+    veterans = active_dashboard_data.get("friendVeterans") or []
+    return {
+        "success": True,
+        "veterans": veterans,
+        "source": active_dashboard_data.get("friendVeteransSource", "unknown"),
+    }
+
+
+@app.get("/api/friends/manage")
+async def get_friend_management():
+    if not active_dashboard_data:
+        return {"success": False, "detail": "No active session yet"}
+    friends = active_dashboard_data.get("friends") or []
+    counts = {}
+    for friend in friends:
+        key = str(friend.get("friend_state", 0))
+        counts[key] = counts.get(key, 0) + 1
+    return {
+        "success": True,
+        "friends": friends,
+        "counts": counts,
+        "source": active_dashboard_data.get("friendsLoaded") and "cache" or "session",
+    }
+
+
+@app.post("/api/friends/follow")
+async def follow_friend(req: FriendManageRequest):
+    global active_dashboard_data
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+    try:
+        result = active_client.follow_user(req.viewer_id)
+        if active_dashboard_data:
+            for friend in active_dashboard_data.get("friends", []) or []:
+                if int(friend.get("viewer_id") or 0) == int(req.viewer_id):
+                    friend["friend_state"] = max(1, int(friend.get("friend_state") or 0))
+        return {"success": True, "result": result}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
+
+
+@app.post("/api/friends/unfollow")
+async def unfollow_friend(req: FriendManageRequest):
+    global active_dashboard_data
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+    try:
+        result = active_client.unfollow_user(req.viewer_id)
+        if active_dashboard_data:
+            for friend in active_dashboard_data.get("friends", []) or []:
+                if int(friend.get("viewer_id") or 0) == int(req.viewer_id):
+                    friend["friend_state"] = 0
+        return {"success": True, "result": result}
+    except Exception as e:
+        return {"success": False, "detail": str(e)}
+
+
+@app.post("/api/advisor/recommendations")
+async def advisor_recommendations(req: AdvisorRequest):
+    if not active_dashboard_data:
+        return {"success": False, "detail": "No active session yet"}
+    trainee_card_id = int(req.trainee_card_id or 0)
+    running_style = int(req.running_style or 0)
+    if not trainee_card_id:
+        selection = active_selection or {}
+        trainee = selection.get("trainee") or {}
+        trainee_card_id = int(trainee.get("id") or trainee.get("card_id") or 0)
+    if not running_style:
+        try:
+            running_style = int((preset_store.read_one(active_selection.get("preset") or "") or {}).get("running_style") or 0)
+        except Exception:
+            running_style = 0
+    candidates = advisor.recommend_parent_pool(
+        active_dashboard_data.get("parents") or [],
+        active_dashboard_data.get("friendVeterans") or [],
+        trainee_card_id=trainee_card_id,
+        running_style=running_style,
+    )
+    return {
+        "success": True,
+        "trainee_card_id": trainee_card_id,
+        "running_style": running_style,
+        "recommendations": candidates[:24],
+    }
+
+
+@app.post("/api/advisor/aptitude-preview")
+async def aptitude_preview(req: dict = None):
+    """Predict aptitude grades from selected parent combination + trainee base."""
+    try:
+        body = req or {}
+        parents = body.get("parents") or []
+        trainee_card_id = body.get("trainee_card_id")
+        prediction = aptitude.predict_aptitude(
+            parents, factor_map=factor_map, trainee_card_id=trainee_card_id
+        )
+        return {
+            "success": True,
+            **prediction,
         }
     except Exception as e:
         return {"success": False, "detail": str(e)}
 
+
 @app.post("/api/career/action")
 async def career_action(req: CareerActionRequest):
-    global active_client, active_account
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
     

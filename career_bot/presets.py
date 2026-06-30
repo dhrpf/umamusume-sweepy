@@ -171,38 +171,67 @@ def serialize_preset(raw):
     serialized["turn_delay_min_sec"] = float(data.get("turn_delay_min_sec") or 2.5)
     serialized["turn_delay_max_sec"] = float(data.get("turn_delay_max_sec") or 5.0)
     serialized["turn_delay_disabled"] = bool(data.get("turn_delay_disabled", False))
+    serialized["scenario_id"] = int(data.get("scenario_id") or data.get("scenario") or 4)
+    serialized["scenario"] = serialized["scenario_id"]
+
+    # PAL recreation settings
+    serialized["prioritize_recreation"] = bool(data.get("prioritize_recreation"))
+    serialized["pal_recreation_required"] = bool(data.get("pal_recreation_required"))
+    serialized["pal_thresholds"] = data.get("pal_thresholds") or []
+    serialized["pal_friendship_score"] = data.get("pal_friendship_score") or [0.08, 0.057, 0.018]
+    serialized["pal_card_multiplier"] = float(data.get("pal_card_multiplier") or 0.1)
+    serialized["rest_threshold"] = as_int(data.get("rest_threshold"), 48)
+
+    # Preserve URA training expect_attribute
+    attr = data.get("expect_attribute")
+    if attr and isinstance(attr, list) and len(attr) == 5:
+        serialized["expect_attribute"] = [int(v) for v in attr]
 
     return serialized
 
 def hydrate_preset(raw):
     data = serialize_preset(raw)
 
-    data["scenario_id"] = MANT_SCENARIO_ID
-    data["scenario"] = MANT_SCENARIO_ID
-    data["cure_asap_conditions"] = ["Migraine", "Night Owl", "Skin Outbreak", "Slacker", "Slow Metabolism", "(Practice poor isn't worth a turn to cure)"]
-    data["expect_attribute"] = [9999, 9999, 9999, 9999, 9999]
-    data["score_value"] = [[0.11, 0.1, 0.006, 0.09], [0.11, 0.1, 0.006, 0.09], [0.11, 0.1, 0.006, 0.09], [0.03, 0.05, 0.006, 0.09], [0, 0, 0.006, 0]]
-    data["base_score"] = [0, 0, 0, 0, 0]
-    data["stat_value_multiplier"] = [0.01, 0.01, 0.01, 0.01, 0.01, 0.005]
-    data["extra_weight"] = [[0, 0, 0, 0, 0]] * 4
-    data["npc_score_value"] = [[0.05, 0.05, 0.05], [0.05, 0.05, 0.05], [0.05, 0.05, 0.05], [0.03, 0.05, 0.05], [0, 0, 0.05]]
-    data["special_training"] = [0.095, 0.095, 0.095, 0.095, 0]
-    data["spirit_explosion"] = [[0.16, 0.16, 0.16, 0.06, 0.11]] * 5
-    data["wit_special_multiplier"] = [1.57, 1.37]
-    data["compensate_failure"] = True
-    data["summer_score_threshold"] = 0.34
-    data["motivation_threshold_year1"] = 3
-    data["motivation_threshold_year2"] = 4
-    data["motivation_threshold_year3"] = 4
-    data["prioritize_recreation"] = False
-    data["pal_thresholds"] = []
-    data["pal_friendship_score"] = [0.08, 0.057, 0.018]
-    data["pal_card_multiplier"] = 0.1
-    data["rest_threshold"] = 48
-    data["manual_purchase_at_end"] = False
-    data["mant_config"] = {}
+    sid = int(data.get("scenario_id") or data.get("scenario") or MANT_SCENARIO_ID)
+    data["scenario_id"] = sid
+    data["scenario"] = sid
 
-    return data
+    # Merge serialized data over defaults — saved values win
+    defaults = {
+        "cure_asap_conditions": ["Migraine", "Night Owl", "Skin Outbreak", "Slacker", "Slow Metabolism", "(Practice poor isn't worth a turn to cure)"],
+        "expect_attribute": [600, 600, 600, 400, 400],
+        "score_value": [[0.11, 0.1, 0.006, 0.09], [0.11, 0.1, 0.006, 0.09], [0.11, 0.1, 0.006, 0.09], [0.03, 0.05, 0.006, 0.09], [0, 0, 0.006, 0]],
+        "base_score": [0, 0, 0, 0, 0],
+        "stat_value_multiplier": [0.01, 0.01, 0.01, 0.01, 0.01, 0.005],
+        "extra_weight": [[0, 0, 0, 0, 0]] * 4,
+        "npc_score_value": [[0.05, 0.05, 0.05], [0.05, 0.05, 0.05], [0.05, 0.05, 0.05], [0.03, 0.05, 0.05], [0, 0, 0.05]],
+        "special_training": [0.095, 0.095, 0.095, 0.095, 0],
+        "spirit_explosion": [[0.16, 0.16, 0.16, 0.06, 0.11]] * 5,
+        "wit_special_multiplier": [1.57, 1.37],
+        "compensate_failure": True,
+        "summer_score_threshold": 0.34,
+        "motivation_threshold_year1": 3,
+        "motivation_threshold_year2": 4,
+        "motivation_threshold_year3": 4,
+        "prioritize_recreation": False,
+        "pal_thresholds": [],
+        "pal_friendship_score": [0.08, 0.057, 0.018],
+        "pal_card_multiplier": 0.1,
+        "pal_recreation_required": False,
+        "rest_threshold": 48,
+        "manual_purchase_at_end": False,
+        "mant_config": {},
+    }
+    merged = {**defaults, **data}
+
+    # Restore serialized-only transforms that defaults doesn't know
+    attr = raw.get("expect_attribute") if isinstance(raw, dict) else None
+    if attr and isinstance(attr, list) and len(attr) == 5:
+        merged["expect_attribute"] = [int(v) for v in attr]
+    if data.get("trackblazer"):
+        merged["trackblazer"] = data["trackblazer"]
+
+    return merged
 
 class PresetStore:
     def __init__(self, base_dir):

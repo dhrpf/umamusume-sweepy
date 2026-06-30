@@ -73,7 +73,7 @@ class RacePlanner:
                 available.add(pid)
         return available
 
-    def forced_program(self, state):
+    def forced_program(self, state, preset=None):
         data = state.get("data") or {}
         home = data.get("home_info") or {}
         commands = home.get("command_info_array") or []
@@ -81,12 +81,32 @@ class RacePlanner:
         other_enabled = any(cmd.get("command_type") != 4 and cmd.get("is_enable", 0) for cmd in commands)
         if not race_enabled or other_enabled:
             return 0
+
+        available = []
         for item in data.get("race_condition_array") or []:
             pid = int(item.get("program_id") or 0)
             if pid:
-                return pid
-        race = data.get("race_start_info") or {}
-        return int(race.get("program_id") or 0)
+                available.append(pid)
+
+        if not available:
+            race = data.get("race_start_info") or {}
+            return int(race.get("program_id") or 0)
+
+        # Priority 1: planned/wanted program matching this turn
+        if preset:
+            turn = int((data.get("chara_info") or {}).get("turn") or 0)
+            wanted = self.wanted_programs(preset, turn)
+            for pid in available:
+                if pid in wanted:
+                    return pid
+
+        # Priority 2: prefer G1 (race_instance_id leading 1) over lower grades
+        g1 = [pid for pid in available if str(self.program.get(str(pid), {}).get("race_instance_id", "0"))[0] == "1"]
+        if g1:
+            return g1[0]
+
+        # Fallback: first available
+        return available[0]
 
     def check_aptitude(self, chara, program_id):
         info = self.program.get(int(program_id or 0)) or {}

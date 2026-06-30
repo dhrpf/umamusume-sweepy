@@ -35,6 +35,7 @@ class MantStrategy(ScenarioStrategy):
     def __init__(self, race_planner=None):
         self.race_planner = race_planner
         self.event_manager = None
+        self.pal_recreation_count = 0
         if self.race_planner and self.race_planner.base_dir:
             self.event_manager = EventManager(self.race_planner.base_dir)
 
@@ -62,8 +63,13 @@ class MantStrategy(ScenarioStrategy):
             return Decision("finish", {"current_turn": chara["turn"]}, "goal failed / career end")     
         if race and race.get("program_id") and playing_state in (2, 4):
             return Decision("race_progress", {"current_turn": chara["turn"], "phase": "start", "race_start_info": race, "chara_info": chara}, "race start")
+
+        # --- Finish check (early: before race fallback) ---
+        if chara.get("playing_state") in (3, 5):
+            return Decision("finish", {"current_turn": chara["turn"]}, "career finished (ps=%s)" % chara.get("playing_state"))
+
         if self.race_planner:
-            forced_program_id = self.race_planner.forced_program(state)
+            forced_program_id = self.race_planner.forced_program(state, preset)
             if forced_program_id:
                 return Decision("race", {"program_id": forced_program_id, "current_turn": chara["turn"], "_strategy": self}, self.race_planner.label(forced_program_id))
             program_id = self.race_planner.choose(state, preset)
@@ -78,11 +84,27 @@ class MantStrategy(ScenarioStrategy):
             if command_type == 3:
                 command_group_id = command_id
                 command_id = 0
+                select_id = command.get("select_id", 0)
+                # PAL recreation: find outing chara from evaluation_info_array
+                if command_group_id >= 390:
+                    for e in (chara.get("evaluation_info_array") or []):
+                        if e.get("group_outing_info_array") and e.get("target_id") is not None:
+                            outing = e["group_outing_info_array"]
+                            # first 3 = group outing; last 2 = single with main chara
+                            if self.pal_recreation_count >= 3:
+                                pick = 1017  # main chara
+                            else:
+                                pick = outing[0]["chara_id"]
+                            select_id = pick
+                            break
+                    self.pal_recreation_count += 1
+            else:
+                select_id = command.get("select_id", 0)
             return Decision("command", {
                 "command_type": command_type,
                 "command_id": command_id,
                 "command_group_id": command_group_id,
-                "select_id": command.get("select_id", 0),
+                "select_id": select_id,
                 "current_turn": chara["turn"],
                 "current_vital": chara.get("vital", 0),
             }, reason)
@@ -131,13 +153,20 @@ class MantStrategy(ScenarioStrategy):
         commands = (data.get("home_info") or {}).get("command_info_array") or []
         enabled = [cmd for cmd in commands if cmd.get("is_enable", 1)]
         rest = self._rest_command(enabled)
-        recreation = self._recreation_command(enabled)
+        recreation = self._recreation_command(enabled, chara, preset)
         medic = self._medic_command(enabled)
         training = [cmd for cmd in enabled if cmd.get("command_type") == 1 and cmd.get("command_id") in TRAINING_COMMANDS]
         turn = int(chara.get("turn") or 0)
         vital = int(chara.get("vital") or 0)
         motivation = int(chara.get("motivation") or 3)
         bad_status = self._has_curable_bad_status(chara, preset)
+
+        # PAL recreation priority when required and count < 5
+        pal_active = preset.get("pal_recreation_required") and self.pal_recreation_count < 5
+        pal_precamp = pal_active and turn in (34, 35, 58, 59)
+        pal_late = pal_active and turn >= 70 and self.pal_recreation_count < 5
+        pal_dead = pal_active and (vital < 30 or (not training))
+
         if not training:
             if medic and bad_status and vital <= ENERGY_MEDIC_GENERAL:
                 return medic
@@ -154,6 +183,12 @@ class MantStrategy(ScenarioStrategy):
             return medic
         if medic and bad_status and vital <= ENERGY_MEDIC_GENERAL:
             return medic
+        if pal_precamp and recreation:
+            return recreation
+        if pal_dead and recreation:
+            return recreation
+        if pal_late and recreation:
+            return recreation
         if turn in SUMMER_CAMP_TURNS and recreation and (vital <= rest_threshold or failure >= 35 or best_score < 0):
             return recreation
         if self._should_recreate(recreation, preset, turn, motivation, vital, best_score):
@@ -171,11 +206,18 @@ class MantStrategy(ScenarioStrategy):
                 return cmd
         return None
 
-    def _recreation_command(self, commands):
+    def _recreation_command(self, commands, chara=None, preset=None):
+        pal_wanted = preset and preset.get("pal_recreation_required") and self.pal_recreation_count < 5
+        best = None
         for cmd in commands:
-            if cmd.get("command_type") == 3:
-                return cmd
-        return None
+            if cmd.get("command_type") != 3:
+                continue
+            cid = cmd.get("command_id") or 0
+            if pal_wanted and cid >= 390:
+                return cmd  # prefer PAL recreation
+            if best is None:
+                best = cmd
+        return best
 
     def _medic_command(self, commands):
         for cmd in commands:
