@@ -463,11 +463,12 @@ def _steam_keyfile_path(username):
     safe = ''.join(c for c in username if c.isalnum() or c in '-_.')
     return runtime_output_root() / 'steam_refresh_tokens' / f'{safe}.jwt'
 
-def _run_ticket_cmd(u, p, c, keyfile):
+def _run_ticket_cmd(u, p, c, keyfile, proxy_url=""):
     global LAST_TICKET_GEN_RESULT
     cmd = ['node', '-e', TICKET_GEN_JS, '--', '--dummy', '--username', u, '--password', p,
            '--keyfile', str(keyfile)]
     if c: cmd += ['--code', c]
+    if proxy_url: cmd += ['--proxy', proxy_url]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=DIR)
     LAST_TICKET_GEN_RESULT = {'stdout': proc.stdout, 'stderr': proc.stderr, 'returncode': proc.returncode}
     for line in proc.stderr.splitlines():
@@ -475,15 +476,15 @@ def _run_ticket_cmd(u, p, c, keyfile):
             print(f'[steam] {line}', flush=True)
     return proc
 
-def get_ticket(u, p, c=''):
+def get_ticket(u, p, c='', proxy_url=''):
     check_deps()
     keyfile = _steam_keyfile_path(u)
 
-    proc = _run_ticket_cmd(u, p, c, keyfile)
+    proc = _run_ticket_cmd(u, p, c, keyfile, proxy_url)
 
     if proc.returncode == 3:
         # refresh token expired — retry without token (password only)
-        proc = _run_ticket_cmd(u, p, c, keyfile)
+        proc = _run_ticket_cmd(u, p, c, keyfile, proxy_url)
 
     if proc.returncode == 2:
         raise Exception('STEAM_GUARD_REQUIRED')
@@ -509,6 +510,7 @@ class UmaClient:
         self.auth_key_hex = cfg.get('auth_key', '')
         self.steam_id = str(cfg.get('steam_id', ''))
         self.steam_ticket = cfg.get('steam_session_ticket', '')
+        self.proxy_url = cfg.get('proxy_url', '')
         
         self.device_id = cfg.get('device_id') or profile['device_id']
         self.device_name = cfg.get('device_name') or profile['device_name']
@@ -532,6 +534,7 @@ class UmaClient:
         self.current_scenario_id = None
         self.session = requests.Session()
         self.update_headers()
+        self._apply_proxy()
         self.api_jitter = dna_uniform(-0.02, 0.02)
 
         self.on_api_log = None
@@ -646,6 +649,8 @@ class UmaClient:
         return bytes.fromhex(self.auth_key_hex)
 
     def has_captured_auth(self):
+        if self.udid_str and self.steam_id and self.steam_ticket:
+            return True
         try:
             int(self.viewer_id)
             bytes.fromhex(str(self.auth_key_hex))
@@ -695,6 +700,10 @@ class UmaClient:
             'Accept': '*/*', 'Accept-Encoding': 'deflate, gzip',
             'Content-Type': 'application/x-msgpack', 'X-Unity-Version': self.unity_ver
         })
+
+    def _apply_proxy(self):
+        if self.proxy_url:
+            self.session.proxies.update({'http': self.proxy_url, 'https': self.proxy_url})
 
     def call(self, ep, args=None, retry_208=6, retry_205=3):
         # Aoharu/Team scenario uses single_mode_team/* for core endpoints.
@@ -823,6 +832,9 @@ class UmaClient:
         self.api_log("RES", ep, res, req_id)
         
         data = res.get('data', {})
+        new_vid = dh.get('viewer_id') or data.get('viewer_id')
+        if new_vid and int(new_vid) != int(self.viewer_id or 0):
+            self.viewer_id = int(new_vid)
         if isinstance(data, dict):
             if data.get('tp_info'):
                 self.tp_info = data['tp_info']
@@ -873,7 +885,7 @@ class UmaClient:
             if rc == 214:
                 new_res_ver = str(dh.get('resource_version') or '').strip()
                 if new_res_ver and new_res_ver != self.res_ver:
-                    print(f"[res_ver] updated {self.res_ver} -> {new_res_ver}, retrying {ep}")
+                    print(f"[res_ver] updated {self.res_ver} -> {new_res_ver}, hard-resetting session then retrying {ep}")
                     self.res_ver = new_res_ver
                     self.save_config()
                     try:
@@ -884,7 +896,13 @@ class UmaClient:
                             cache_path.write_text(json.dumps(cache, ensure_ascii=False), encoding='utf-8')
                     except Exception:
                         pass
-                    headers['RES-VER'] = new_res_ver
+                    self.session.close()
+                    self.session = requests.Session()
+                    self.update_headers()
+                    self._apply_proxy()
+                    self.sid = bytes(16)
+                    self.regen_sid()
+                    self.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
                     return self.call(ep, args, retry_208=retry_208, retry_205=retry_205)
                 raise Exception(f'API error 214 on {ep}: res_ver already current ({self.res_ver})')
 
@@ -904,6 +922,7 @@ class UmaClient:
         self.session.close()
         self.session = requests.Session()
         self.update_headers()
+        self._apply_proxy()
         try:
             self.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
             res = self.call('load/index', {
@@ -964,6 +983,7 @@ class UmaClient:
         self.session.close()
         self.session = requests.Session()
         self.session.headers.update(old_h)
+        self._apply_proxy()
 
         for attempt in range(max_retries + 1):
             try:
@@ -1067,14 +1087,7 @@ class UmaClient:
         return tp
 
     def read_info(self):
-        return
-        # return self.call('read_info/index', {
-        #     'add_home_story_data_array': [],
-        #     'add_short_episode_data_array': [],
-        #     'add_home_poster_data_array': [],
-        #     'add_tutorial_guide_data_array': [],
-        #     'add_released_episode_data_array': [],
-        # })
+        return None
 
     def factor_select(self, current_turn, factor_lottery_id=1):
         """Required before single_mode/finish post-update."""

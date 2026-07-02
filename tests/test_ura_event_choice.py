@@ -30,6 +30,19 @@ class TestUraEventChoice(unittest.TestCase):
 
         self.assertEqual(strategy._choice(event), 7)
 
+    def test_choice_with_stat_gain_returns_select_index_not_gain_index(self):
+        strategy = UraStrategy({})
+        event = {
+            "event_contents_info": {
+                "choice_array": [
+                    {"select_index": 1, "gain_select_id_index": 5, "event_effect_array": []},
+                    {"select_index": 2, "gain_select_id_index": 9, "event_effect_array": [{"effect_type": 1}]},
+                ]
+            }
+        }
+
+        self.assertEqual(strategy._choice(event), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

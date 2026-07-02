@@ -440,14 +440,14 @@ class UraStrategy(ScenarioStrategy):
     def _choice(self, event):
         """Pick event choice. Returns None if ambiguous (let user decide).
 
-        Server expects gain_select_id_index, not position index."""
+        Prefer explicit server choice_number, then select_index."""
         choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
         if not choices:
             return 0
         if len(choices) > 1:
             # Multiple choices — pick the one with stat gains
             return self._choose_from_event(event, 0)
-        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
+        return choices[0].get("choice_number", choices[0].get("select_index", 0))
 
     def _choose_from_event(self, event, current_turn):
         """Pick event choice that gives stat/skill gains."""
@@ -458,8 +458,8 @@ class UraStrategy(ScenarioStrategy):
             effects = choice.get("event_effect_array") or []
             # effect_type 1-5 = speed/stamina/power/guts/wiz, 11 = skill
             if any(e.get("effect_type") in (1, 2, 3, 4, 5, 11) for e in effects):
-                return choice.get("gain_select_id_index", choice.get("select_index", 0))
-        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
+                return choice.get("choice_number", choice.get("select_index", 0))
+        return choices[0].get("choice_number", choices[0].get("select_index", 0))
 
     # ------------------------------------------------------------------
     # Race planning helpers

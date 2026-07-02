@@ -2621,6 +2621,20 @@ def refresh_auth_before_serving(timeout_sec=None):
     return False
 
 
+def refresh_index_state(client, max_retries=1):
+    for attempt in range(max_retries + 1):
+        try:
+            client.regen_sid()
+            client.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
+            res = client.call('load/index', {'adid': ''})
+            client.refresh_cached_account_state(res.get('data') or {})
+            return res
+        except Exception as exc:
+            if '202' in str(exc) and attempt < max_retries:
+                continue
+            raise
+
+
 def auto_login_from_cache():
     global active_client, active_account, active_dashboard_data, active_start_state
     global active_parent_cards, active_parent_rank_points, raw_load_index_response, active_selection

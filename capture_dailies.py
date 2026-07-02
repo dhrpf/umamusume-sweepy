@@ -20,6 +20,7 @@ import threading
 import time
 
 import frida
+from uma_api.client import unpack_request
 
 TARGET = "UmamusumePrettyDerby"
 
@@ -519,10 +520,10 @@ _pending_events = []  # thread-safe queue for JS→Python data
 _queue_lock = threading.Lock()
 
 # Seed udid from CLI arg, or auth cache
-if CLI_UDID:
+if __name__ == "__main__" and CLI_UDID:
     known_udid = CLI_UDID
     print(f"[udid] from CLI: {known_udid}")
-else:
+elif __name__ == "__main__":
     try:
         from uma_api.client import runtime_output_root
         _cache = runtime_output_root() / 'auth_cache.json'
@@ -783,7 +784,6 @@ def on_message(message, data):
         decoded = None
         if udid and body:
             try:
-                from uma_api.client import unpack_request
                 decoded = unpack_request(body, udid)
             except Exception as e:
                 decoded = f"ERR:{e}"
@@ -874,50 +874,60 @@ def cleanup(*_):
     os._exit(0)
 
 
-remote = os.environ.get('FRIDA_REMOTE', '')
-device = frida.get_device_manager().add_remote_device(remote) if remote else frida.get_local_device()
+device = None
+
 
 def find_game_process():
     procs = device.enumerate_processes()
     match = [(p.pid, p.name) for p in procs if TARGET.lower() in p.name.lower()]
     return match[0] if match else None
 
-start_wait = time.time()
-found = find_game_process()
-if not found and WAIT_FOR_GAME:
-    print(f"[wait] waiting for {TARGET}...", flush=True)
-    while not found:
-        time.sleep(0.1)
-        try:
-            found = find_game_process()
-        except Exception as e:
-            # frida-server may still be starting; keep polling.
-            if int((time.time() - start_wait) * 10) % 20 == 0:
-                print(f"[wait] device/process not ready: {e}", flush=True)
 
-if not found:
-    print(f"Game not running. Launch it first, or use --wait.")
-    sys.exit(1)
+def main():
+    global device, session
+    remote = os.environ.get('FRIDA_REMOTE', '')
+    device = frida.get_device_manager().add_remote_device(remote) if remote else frida.get_local_device()
 
-pid, name = found
-print(f"Attaching to {name} (pid {pid}) after {time.time() - start_wait:.2f}s...")
-session = device.attach(pid)
-load_frida_script()
-mode = "requests only (--no-response)" if NO_RESPONSE else "requests + responses"
-print(f"Hooked ({mode}). DO your dailies in-game. Ctrl+C to stop.\n")
-print("Format: >>> REQ endpoint = request payload, <<< RES endpoint = response payload\n")
+    start_wait = time.time()
+    found = find_game_process()
+    if not found and WAIT_FOR_GAME:
+        print(f"[wait] waiting for {TARGET}...", flush=True)
+        while not found:
+            time.sleep(0.1)
+            try:
+                found = find_game_process()
+            except Exception as e:
+                # frida-server may still be starting; keep polling.
+                if int((time.time() - start_wait) * 10) % 20 == 0:
+                    print(f"[wait] device/process not ready: {e}", flush=True)
 
-# Auto-save every 30s + Python liveness heartbeat
-threading.Thread(target=auto_save_loop, daemon=True).start()
-threading.Thread(target=python_heartbeat_loop, daemon=True).start()
-# Watchdog disabled: without JS heartbeat, silence is normal between network events.
-# threading.Thread(target=js_watchdog_loop, daemon=True).start()
+    if not found:
+        print(f"Game not running. Launch it first, or use --wait.")
+        sys.exit(1)
 
-signal.signal(signal.SIGINT, cleanup)
-signal.signal(signal.SIGTERM, cleanup)
+    pid, name = found
+    print(f"Attaching to {name} (pid {pid}) after {time.time() - start_wait:.2f}s...")
+    session = device.attach(pid)
+    load_frida_script()
+    mode = "requests only (--no-response)" if NO_RESPONSE else "requests + responses"
+    print(f"Hooked ({mode}). DO your dailies in-game. Ctrl+C to stop.\n")
+    print("Format: >>> REQ endpoint = request payload, <<< RES endpoint = response payload\n")
 
-# Also save if Frida session detaches (game closes)
-session.on('detached', lambda *_: cleanup())
+    # Auto-save every 30s + Python liveness heartbeat
+    threading.Thread(target=auto_save_loop, daemon=True).start()
+    threading.Thread(target=python_heartbeat_loop, daemon=True).start()
+    # Watchdog disabled: without JS heartbeat, silence is normal between network events.
+    # threading.Thread(target=js_watchdog_loop, daemon=True).start()
 
-while True:
-    time.sleep(1)
+    signal.signal(signal.SIGINT, cleanup)
+    signal.signal(signal.SIGTERM, cleanup)
+
+    # Also save if Frida session detaches (game closes)
+    session.on('detached', lambda *_: cleanup())
+
+    while True:
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    main()

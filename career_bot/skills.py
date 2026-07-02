@@ -491,7 +491,7 @@ class SkillBuyer:
                     self.recover_after_error = True
                 failed_ids.update(item["skill_id"] for item in chunk)
 
-        bought_count = len(payload_ids) - len(failed_ids)
+        bought_count = sum(1 for item in valid_candidates if int(item["skill_id"]) not in failed_ids)
         if bought_count > 0:
             merged = state
             for res in results:
@@ -539,4 +539,3 @@ class SkillBuyer:
             if not base:
                 base = 200 if self.skill_rarities.get(skill_id, 0) >= 2 else 160
         return max(1, int(base * (100 - min(level, 5) * 10) / 100))
-

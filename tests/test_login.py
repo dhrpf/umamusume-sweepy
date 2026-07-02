@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import sys
 import pytest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 pytest.importorskip("msgpack")
 pytest.importorskip("frida")
@@ -56,7 +57,7 @@ class TestUmaLogin(unittest.TestCase):
         # Define mock responses sequentially:
         # 1. tool/start_session
         # 2. load/index
-        # 3. read_info/index
+        # read_info/index is no longer called by the client.
         unpack_responses = [
             {
                 "data_headers": {
@@ -105,8 +106,44 @@ class TestUmaLogin(unittest.TestCase):
         self.assertEqual(client.viewer_id, 5390138731907)
         
         # Verify that start_session and load/index post requests were made
-        self.assertEqual(mock_session.post.call_count, 3)
+        self.assertEqual(mock_session.post.call_count, 2)
         print("Integration login test passed successfully!")
+
+    def test_read_info_is_noop(self):
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client.call = MagicMock(side_effect=AssertionError("read_info/index must not be called"))
+
+        self.assertIsNone(client.read_info())
+        client.call.assert_not_called()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.unpack')
+    @patch('uma_api.client.requests.Session')
+    def test_res_ver_update_resets_session_before_retrying_load_index(self, mock_session_cls, mock_unpack, _mock_pack):
+        first_session = MagicMock()
+        second_session = MagicMock()
+        response = MagicMock()
+        response.status_code = 200
+        response.text = "packed"
+        first_session.post.return_value = response
+        second_session.post.return_value = response
+        mock_session_cls.side_effect = [first_session, second_session]
+        mock_unpack.side_effect = [
+            {"data_headers": {"result_code": 214, "resource_version": "10006820"}, "data": {}},
+            {"data_headers": {"result_code": 1}, "data": {}},
+            {"data_headers": {"result_code": 1}, "data": {"tp_info": {"current_tp": 30}}},
+        ]
+        client = UmaClient(self.cfg | {"res_ver": "10006810"}, trace_enabled=False)
+
+        with TemporaryDirectory() as tmp_dir, patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+            result = client.call("load/index", {"adid": ""})
+
+        assert result["data"]["tp_info"]["current_tp"] == 30
+        self.assertTrue(first_session.close.called)
+        posted_urls = [call.args[0] for call in second_session.post.call_args_list]
+        self.assertTrue(any(url.endswith("tool/start_session") for url in posted_urls))
+        self.assertTrue(any(url.endswith("load/index") for url in posted_urls))
+        self.assertEqual(client.res_ver, "10006820")
 
     @patch('uma_api.client.requests.Session')
     @patch('uma_api.client.unpack')
@@ -257,6 +294,35 @@ class TestUmaLogin(unittest.TestCase):
         mock_get_ticket.assert_not_called()
         self.assertEqual(client.steam_ticket, "MOCK_STEAM_TICKET_HEX")
         print("Refresh index state ticket reuse test passed!")
+
+    def test_refresh_index_state_only_refreshes_start_and_load(self):
+        import main
+
+        class Client:
+            def __init__(self):
+                self.calls = []
+                self.refreshed = None
+
+            def regen_sid(self):
+                self.calls.append(("regen_sid", None))
+
+            def call(self, endpoint, payload):
+                self.calls.append((endpoint, payload))
+                if endpoint == "load/index":
+                    return {"data": {"tp_info": {"current_tp": 30}}}
+                return {"data": {}}
+
+            def refresh_cached_account_state(self, data):
+                self.refreshed = data
+
+            def read_info(self):
+                raise AssertionError("refresh_index_state must not call read_info")
+
+        client = Client()
+
+        assert main.refresh_index_state(client) == {"data": {"tp_info": {"current_tp": 30}}}
+        assert [call[0] for call in client.calls] == ["regen_sid", "tool/start_session", "load/index"]
+        assert client.refreshed == {"tp_info": {"current_tp": 30}}
 
     def test_client_proxy_applied(self):
         self.cfg["proxy_url"] = "socks5://127.0.0.1:1080"
