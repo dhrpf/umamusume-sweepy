@@ -1034,10 +1034,20 @@ class UmaClient:
 
     def recovery_tp(self, count=1):
         total_jewels = self.coin_info.get("fcoin", 0) + self.coin_info.get("coin", 0)
-        result = self.call("user/recovery_trainer_point", {
-            "count": count,
-            "client_own_num": total_jewels,
-        })
+        for attempt in range(2):
+            try:
+                result = self.call("user/recovery_trainer_point", {
+                    "count": count,
+                    "client_own_num": total_jewels,
+                })
+                break
+            except Exception as e:
+                if ("217" in str(e) or "201" in str(e)) and attempt == 0:
+                    print(f"[recovery_tp] session stale ({e}), relogin...", flush=True)
+                    self.login()
+                    total_jewels = self.coin_info.get("fcoin", 0) + self.coin_info.get("coin", 0)
+                    continue
+                raise
         data = result.get("data", {})
         tp = data.get("tp_info", {})
         if tp:

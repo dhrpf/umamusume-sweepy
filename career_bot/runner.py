@@ -375,10 +375,22 @@ class CareerRunner:
             err_str = str(exc)
             # Re-raise programming errors (not API errors) so they're visible,
             # not silently absorbed by the career loop.
-            if not any(tag in err_str for tag in ("Network error", "API error", "StateRecoveryError",
+            recoverable = any(tag in err_str for tag in ("Network error", "API error", "StateRecoveryError",
                                                     "102", "201", "205", "208", "213", "214",
-                                                    "709", "1055", "1503")):
+                                                    "217", "2502",
+                                                    "709", "1055", "1503"))
+            # HTTP 5xx (502/504 gateway errors) are recoverable
+            if not recoverable:
+                if err_str.startswith("HTTP 5") or err_str.startswith("HTTP 429"):
+                    recoverable = True
+            if not recoverable:
                 raise
+
+            # Session refresh on network-blip crashes: try to keep going
+            try:
+                state = self._fresh_career_state(client, strategy)
+            except Exception:
+                pass
 
             crash_log_path = runtime_output_root(self.base_dir) / "crash_trace.txt"
             try:
@@ -831,6 +843,16 @@ class CareerRunner:
                 current = self._event(client, strategy, payload)
             except Exception as exc:
                 if "API error 217" not in str(exc):
+                    err_s = str(exc)
+                    # HTTP 5xx / network errors — refresh state and continue, don't crash the thread
+                    is_http5 = err_s.startswith("HTTP 5") or err_s.startswith("HTTP 429")
+                    is_net = "Network error" in err_s or "ConnectionError" in err_s
+                    if is_http5 or is_net:
+                        self._log("recover", turn, f"check_event network error ({err_s[:80]}); refreshing career state")
+                        try:
+                            return self._fresh_career_state(client, strategy)
+                        except Exception:
+                            raise exc
                     raise
                 choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
                 if len(choices) > 1:

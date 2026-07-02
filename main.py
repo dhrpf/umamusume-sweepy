@@ -1228,7 +1228,23 @@ def start_career_from_request(req):
     # Calling single_mode/load with no career → 102 error → cascades to 217 on
     # the next pre_single_mode/index. Real client: start_session → load/index →
     # pre_single_mode/index (no single_mode/load probe).
+    #
+    # Retry the load once after a 217/201-flap — leftover detection must run
+    # against a freshly-anchored session, otherwise career_light reflects a
+    # stale server-side state and finish_career returns 217.
     career_light = data.get('single_mode_chara_light') or None
+    if not career_light:
+        for _extra in range(1):
+            try:
+                res2 = active_client.call('load/index', {'adid': ''})
+                data = res2.get('data', {})
+                active_client.refresh_cached_account_state(data)
+                update_start_state(data)
+                career_light = data.get('single_mode_chara_light') or None
+                if career_light:
+                    break
+            except Exception:
+                break
     leftover_turn = None
     if career_light:
         # Career already visible from load/index — probe for exact turn,
