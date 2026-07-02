@@ -44,6 +44,7 @@ Trigger | File
 "rename" / "extract" / "move" / "inline" | `.context/prompts/refactor-symbol.md`
 "patched" / "new skill ids" / "master.mdb" | `.context/prompts/regen-master-data.md`
 Runner chain / event drain / skill buy / `_advance` | `.context/decisions/007-runner-chain.md`
+Runner control flow / race resume / recovery / 102 relogin / dispatch actions | `.context/runner-workflow.md`
 Error code / absorb vs retry | `.context/errors.md`
 Env vars (UMA_MASTER_MDB, FRIDA_REMOTE, PORT) | `.context/env.md`
 Why msgpack+aes / rule-based default | `.context/decisions/001-msgpack-aes.md` + `002-sid-regeneration.md` + `005-rulebased-vs-mcts.md`

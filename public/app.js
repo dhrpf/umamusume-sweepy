@@ -100,6 +100,7 @@ const els = {
     presetDelayMax: document.getElementById('preset-delay-max'),
     presetTpMode: document.getElementById('preset-tp-mode'),
     presetScenario: document.getElementById('preset-scenario'),
+    presetUseMcts: document.getElementById('preset-use-mcts'),
     presetPalRecreation: document.getElementById('preset-pal-recreation'),
     presetParentRun: document.getElementById('preset-parent-run'),
     presetEditSkillsBtn: document.getElementById('preset-edit-skills-btn'),
@@ -1813,6 +1814,7 @@ const els = {
             current.run_delay_min_min = parseInt(els.presetDelayMin?.value) || 0;
             current.run_delay_max_min = parseInt(els.presetDelayMax?.value) || 0;
             current.tp_mode = (els.presetTpMode?.value === 'wait') ? 'wait' : 'carat';
+            current.use_mcts = !!(els.presetUseMcts?.checked);
             current.pal_recreation_required = !!(els.presetPalRecreation?.checked);
             current.parent_run = !!(els.presetParentRun?.checked);
 
@@ -1858,6 +1860,7 @@ const els = {
             if (els.presetDelayMax) els.presetDelayMax.value = current.run_delay_max_min ?? 0;
             if (els.presetTpMode) els.presetTpMode.value = (current.tp_mode === 'wait') ? 'wait' : 'carat';
             if (els.presetScenario) els.presetScenario.value = String(current.scenario_id || current.scenario || 4);
+            if (els.presetUseMcts) els.presetUseMcts.checked = !!current.use_mcts;
             if (els.presetPalRecreation) els.presetPalRecreation.checked = !!current.pal_recreation_required;
             if (els.presetParentRun) els.presetParentRun.checked = !!current.parent_run;
 
@@ -1902,6 +1905,7 @@ const els = {
             els.presetDelayMax?.addEventListener('change', saveHandler);
             els.presetTpMode?.addEventListener('change', saveHandler);
             els.presetScenario?.addEventListener('change', saveHandler);
+            els.presetUseMcts?.addEventListener('change', saveHandler);
             els.presetPalRecreation?.addEventListener('change', saveHandler);
             els.presetParentRun?.addEventListener('change', saveHandler);
             els.presetExpectSpeed?.addEventListener('change', saveHandler);

@@ -1,7 +1,18 @@
 """URA Finale scenario strategy — guide-informed training selection."""
 
+import os
+
 from career_bot.scenarios.base import ScenarioStrategy, Decision
 from uma_api.client import StateRecoveryError
+
+try:
+    from career_bot.mcts.core.config import MCTSConfig
+    from career_bot.mcts.core.planner import MCTSPlanner
+    from career_bot.mcts.core.state import GameState
+    from career_bot.mcts.sim.ura import UraSimulator
+    _MCTS_AVAILABLE = True
+except Exception:
+    _MCTS_AVAILABLE = False
 
 TRAINING_COMMANDS = {
     101: ("Speed", 0),
@@ -76,7 +87,64 @@ class UraStrategy(ScenarioStrategy):
         self.race_planner = race_planner
         self._training_counts = {}  # command_id -> use count
         self._rejected_race_ids = set()  # program_ids that got 205 on entry
+        self._mcts_planner = None  # lazy-built below
         _load_support_map()
+
+    def _ensure_mcts(self, preset):
+        if self._mcts_planner is not None:
+            return self._mcts_planner
+        if preset.get("use_mcts") and _MCTS_AVAILABLE:
+            cfg = MCTSConfig.from_preset(preset)
+            sim = UraSimulator(scenario_id=1, params_path=None, config=cfg)
+            if sim.enabled:
+                self._mcts_planner = MCTSPlanner(sim, cfg, preset)
+        return self._mcts_planner
+
+    def _mcts_action_to_decision(self, action, commands, turn, vital, result=None):
+        if action.action_type == "train":
+            for cmd in commands:
+                if (int(cmd.get("command_type") or 0) == action.command_type
+                        and int(cmd.get("command_id") or 0) == action.command_id):
+                    return self._command_decision(cmd, turn, vital,
+                                                  f"MCTS[train] idx={action.index} sim={self._mcts_planner.config.max_simulations}",
+                                                  self._mcts_detail(action, cmd, vital, result))
+        if action.action_type == "rest":
+            rest = self._find_rest(commands)
+            if rest:
+                return self._command_decision(rest, turn, vital, "MCTS[rest]",
+                                              self._mcts_detail(action, rest, vital, result))
+        if action.action_type == "outing":
+            rec = self._find_recreation(commands)
+            if rec:
+                return self._command_decision(rec, turn, vital, "MCTS[outing]",
+                                              self._mcts_detail(action, rec, vital, result))
+        return None
+
+    def _mcts_detail(self, action, cmd, vital, result):
+        if result is None:
+            return None
+        return {
+            "mcts": {
+                "score": round(float(result.score), 4),
+                "simulations": int(result.simulations),
+                "visits": dict(result.visits),
+                "selected_command_id": int(action.command_id),
+                "selected_failure_rate": cmd.get("failure_rate", 0),
+                "selected_vital": vital,
+            }
+        }
+
+    def _mcts_training_counts(self):
+        counts = [0, 0, 0, 0, 0]
+        for cid, n in self._training_counts.items():
+            info = TRAINING_COMMANDS.get(int(cid))
+            if info:
+                counts[info[1]] += int(n)
+        return tuple(counts)
+
+    def _record_mcts_action(self, action):
+        if action.action_type == "train":
+            self._training_counts[action.command_id] = self._training_counts.get(action.command_id, 0) + 1
 
     def reject_race(self, program_id):
         """Called by runner when race_entry fails with 205/208."""
@@ -305,6 +373,19 @@ class UraStrategy(ScenarioStrategy):
         is_camp = any(s <= turn <= e for s, e in SUMMER_CAMP_TURNS)
         pre_camp = any(turn >= s - 5 and turn < s for s, e in SUMMER_CAMP_TURNS)
 
+        planner = self._ensure_mcts(preset)
+        if planner:
+            try:
+                gs = GameState.from_api(state, training_counts=self._mcts_training_counts())
+                result = planner.search(gs)
+                if result.action:
+                    choice = self._mcts_action_to_decision(result.action, commands, turn, vital, result)
+                    if choice is not None:
+                        self._record_mcts_action(result.action)
+                        return choice
+            except Exception as exc:
+                pass  # avoid losing career run on MCTS impl bug
+
         best, chosen_idx = self._best_training(commands, preset, chara, turn, is_camp, pre_camp)
         if best:
             if chosen_idx is not None:
@@ -507,21 +588,20 @@ class UraStrategy(ScenarioStrategy):
     # Rest / recreation
     # ------------------------------------------------------------------
     @staticmethod
-    def _command_decision(cmd, turn, vital, reason):
+    def _command_decision(cmd, turn, vital, reason, detail=None):
         ct = int(cmd["command_type"])
         cid = int(cmd.get("command_id", 0))
-        return Decision(
-            "command",
-            {
-                "command_type": ct,
-                "command_id": 0 if ct == 3 else cid,
-                "command_group_id": cid if ct == 3 else int(cmd.get("command_group_id") or 0),
-                "select_id": 0,
-                "current_turn": turn,
-                "current_vital": vital,
-            },
-            reason,
-        )
+        payload = {
+            "command_type": ct,
+            "command_id": 0 if ct == 3 else cid,
+            "command_group_id": cid if ct == 3 else int(cmd.get("command_group_id") or 0),
+            "select_id": 0,
+            "current_turn": turn,
+            "current_vital": vital,
+        }
+        if detail:
+            payload["decision_detail"] = detail
+        return Decision("command", payload, reason)
 
     @staticmethod
     def _find_rest(commands):
@@ -610,6 +690,10 @@ class UraStrategy(ScenarioStrategy):
 
             # --- Fail chance gate (guide rule) ---
             fail_pct = int(cmd.get("failure_rate") or 0)
+            # Absolute cutoff: high fail + low vital → rest dominates. Prevents e.g.
+            # Lv4 training + 4 partners scoring above threshold even at 80%+ fail rate.
+            if fail_pct >= 40 and vital < 35:
+                continue
             if fail_pct > 0 and gain < fail_pct * 2:
                 continue  # rest would be strictly better
 

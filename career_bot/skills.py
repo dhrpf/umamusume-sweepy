@@ -435,17 +435,21 @@ class SkillBuyer:
 
         for item in candidates:
             skill_id = item["skill_id"]
-            cost = int(item.get("cost") or 0)
             if skill_id <= 0 or item.get("skip_reason"):
                 item["preflight_error"] = "invalid_skill"
                 continue
             if skill_id not in valid_tips:
                 item["preflight_error"] = "not_in_tips"
                 continue
+            bundled = [int(s or 0) for s in (item.get("bundled_skill_ids") or [])]
+            cost = int(item.get("cost") or 0) + sum(self.skill_costs.get(sid, 0) for sid in bundled)
+            if not cost:
+                cost = int(item.get("cost") or 0)
             if selected_total_cost + cost > points:
                 item["preflight_error"] = "unaffordable"
                 continue
             item["preflight_passed"] = True
+            item["total_cost"] = cost
             selected_total_cost += cost
             valid_candidates.append(item)
 
@@ -453,6 +457,8 @@ class SkillBuyer:
             self.last_result = {"skip": "preflight_failed", "turn": turn, "points": points}
             return state, 0
 
+        # ponytail: expose in SkillBuyerConfig when per-scenario tuning needed
+        MAX_BATCH = 4  # >4 skills in one gain_skills call → API 217 (resource busy)
         payload = []
         payload_ids = set()
         for item in valid_candidates:
@@ -471,18 +477,32 @@ class SkillBuyer:
         }
         self.attempt_events.append(event)
 
-        try:
-            result = client.gain_skills(payload, turn)
-            self.last_result = {"result": "ok", "turn": turn, "count": len(valid_candidates), "payload": payload}
+        results = []
+        failed_ids = set()
+        for i in range(0, len(payload), MAX_BATCH):
+            chunk = payload[i:i + MAX_BATCH]
+            try:
+                res = client.gain_skills(chunk, turn)
+                if res and isinstance(res, dict) and "data" in res:
+                    results.append(res)
+            except Exception as exc:
+                print(f"Skill Purchase Error at turn {turn}: {exc}")
+                if any(code in str(exc) for code in ("201", "205", "208")):
+                    self.recover_after_error = True
+                failed_ids.update(item["skill_id"] for item in chunk)
+
+        bought_count = len(payload_ids) - len(failed_ids)
+        if bought_count > 0:
+            merged = state
+            for res in results:
+                merged = self._merge_state(merged, res)
+            self.last_result = {"result": "ok", "turn": turn, "count": bought_count, "payload": payload}
             event["result"] = self.last_result
             self._failed_for_turn(turn).clear()
-            return self._merge_state(state, result), len(valid_candidates)
-        except Exception as exc:
-            print(f"Skill Purchase Error at turn {turn}: {exc}")
-            if any(code in str(exc) for code in ("201", "205", "208")):
-                self.recover_after_error = True
-            self._failed_for_turn(turn).update(int(item["skill_id"]) for item in valid_candidates)
-            self.last_result = {"result": "failed", "turn": turn, "error": str(exc), "payload": payload}
+            return merged, bought_count
+        else:
+            self._failed_for_turn(turn).update(failed_ids)
+            self.last_result = {"result": "failed", "turn": turn, "error": "all chunks failed", "payload": payload}
             event["result"] = self.last_result
             return state, 0
 

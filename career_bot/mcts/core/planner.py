@@ -12,6 +12,13 @@ from career_bot.mcts.core.config import MCTSConfig
 from career_bot.mcts.core.state import Action, GameState
 from career_bot.mcts.sim.base import SimulatorBase
 
+# ponytail: promote to MCTSConfig fields when multiple scenarios need different thresholds
+FAIL_CUTOFF = 0.40       # any action at ≥40% fail is dominated → force rest
+FAIL_PENALTY = 5000.0    # EV floor for high-fail actions
+VITAL_CUTOFF = 0.35      # vital ratio below which FAIL_CUTOFF triggers
+ROOT_FAIL_CUTOFF = 0.30
+ROOT_VITAL_CUTOFF = 0.40
+
 
 @dataclass
 class SearchResult:
@@ -30,6 +37,7 @@ class MCTSPlanner:
 
     def search(self, root: GameState) -> SearchResult:
         actions = root.available_actions or self.sim.generate_actions(root)
+        actions = self._root_actions(root, tuple(actions))
         if not actions:
             return SearchResult(None, self.sim.evaluate(root, self.preset), 0)
 
@@ -49,6 +57,20 @@ class MCTSPlanner:
         best_idx = max(range(len(actions)), key=lambda i: (totals[i] / visits[i]) if visits[i] else float("-inf"))
         best_score = (totals[best_idx] / visits[best_idx]) if visits[best_idx] else float("-inf")
         return SearchResult(actions[best_idx], best_score, sims, {i: v for i, v in enumerate(visits) if v})
+
+    def _root_actions(self, state: GameState, actions: tuple[Action, ...]) -> tuple[Action, ...]:
+        safe = tuple(a for a in actions if not self._unsafe_root_training(state, a))
+        return safe or actions
+
+    @staticmethod
+    def _unsafe_root_training(state: GameState, action: Action) -> bool:
+        if action.action_type != "train":
+            return False
+        ratio = state.vital / state.max_vital if state.max_vital else 1.0
+        return (
+            (action.failure_rate >= ROOT_FAIL_CUTOFF and ratio <= ROOT_VITAL_CUTOFF)
+            or state.vital + action.vital_delta <= 0
+        )
 
     def _select(self, visits: list[int], totals: list[float]) -> int:
         for i, v in enumerate(visits):
@@ -79,7 +101,14 @@ class MCTSPlanner:
             for action in actions:
                 if action.action_type == "rest":
                     return action
-        return max(actions, key=lambda action: self._action_value(state, action))
+        scored = [(a, self._action_value(state, a)) for a in actions]
+        # If the best action is a high-fail training (cutoff sentinel), prefer rest
+        best_action, best_value = max(scored, key=lambda x: x[1])
+        if best_action.action_type == "train" and best_value < -100.0:
+            for action in actions:
+                if action.action_type == "rest":
+                    return action
+        return best_action
 
     def _action_value(self, state: GameState, action: Action) -> float:
         if action.action_type == "rest":
@@ -98,7 +127,13 @@ class MCTSPlanner:
             value += gain * (1.0 + deficit / max(targets[i], 1.0))
         value += action.stat_gains[5] * 0.2
         value += action.partner_count * 2.0
+        # Hard cutoff: any training at ≥40% fail with low vital → return sentinel so
+        # _rollout_policy never picks it over rest (~3-9 EV). Dominates even large
+        # deficit-weighted gains with season bonuses.
+        vital_ratio = state.vital / state.max_vital if state.max_vital else 1.0
+        if action.failure_rate >= FAIL_CUTOFF and vital_ratio < VITAL_CUTOFF:
+            return -FAIL_PENALTY
         value -= action.failure_rate * 100.0
         if state.vital + action.vital_delta < 0:
-            value -= 1000.0
+            value -= FAIL_PENALTY
         return value

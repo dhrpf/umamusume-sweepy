@@ -153,13 +153,7 @@ class UraSimulator(SimulatorBase):
         return pts[-1][1]
 
     def _level_for(self, command_id: int, idx: int, state: GameState) -> int:
-        thresholds = (self.params.get("level_up_counts") or {}).get(str(command_id)) or []
-        count = state.training_counts[idx] if idx < len(state.training_counts) else 0
-        level = 1
-        for threshold in thresholds:
-            if count >= int(threshold):
-                level += 1
-        return max(level, state.training_levels[idx] if idx < len(state.training_levels) else 1)
+        return state.training_levels[idx] if idx < len(state.training_levels) else 1
 
     def _training_gains(self, command_id: int, level: int) -> tuple[float, float, float, float, float, float]:
         table = self.params.get("training_gains") or {}

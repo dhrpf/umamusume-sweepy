@@ -215,21 +215,24 @@ def analyze(log_path):
     print("=" * 60)
     risky_count = 0
     for turn in turns:
-        cmd_info = None
+        snapshot = turn.get("decision_state") or {}
+        cmd_info = snapshot.get("command_info_array")
         chosen_cmd = None
-        vital = None
-        max_vital = None
+        snap_chara = snapshot.get("chara_info") or {}
+        vital = snap_chara.get("vital")
+        max_vital = snap_chara.get("max_vital")
 
         for call in turn["api_calls"]:
-            c = get_chara(call)
-            if c:
-                vital = c.get("vital")
-                max_vital = c.get("max_vital")
+            if not cmd_info:
+                c = get_chara(call)
+                if c:
+                    vital = c.get("vital")
+                    max_vital = c.get("max_vital")
 
-            inner = get_inner(call)
-            hi = inner.get("home_info", {})
-            if "command_info_array" in hi:
-                cmd_info = hi["command_info_array"]
+                inner = get_inner(call)
+                hi = inner.get("home_info", {})
+                if "command_info_array" in hi:
+                    cmd_info = hi["command_info_array"]
 
             if call["direction"] == "REQ" and "exec_command" in call.get("endpoint", ""):
                 d = call.get("data", {})

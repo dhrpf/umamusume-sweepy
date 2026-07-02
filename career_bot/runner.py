@@ -296,13 +296,15 @@ class CareerRunner:
                         if data.get("unchecked_event_array"):
                             state = self._drain_events(client, strategy, state)
                     except Exception as exc:
-                        if "Network error" in str(exc) or "201" in str(exc) or "205" in str(exc) or "208" in str(exc):
+                        err_str = str(exc)
+                        transient_codes = ("Network error", "201", "205", "208", "213", "214", "217", "709", "1055", "1503", "StateRecoveryError")
+                        if any(code in err_str for code in transient_codes):
                             if os.environ.get('SWEEPY_DEBUG'):
                                 print(f"[cmd_payload] {json.dumps({k: v for k, v in cmd_payload.items() if k not in ('viewer_id', 'device', 'device_id', 'device_name', 'graphics_device_name', 'ip_address', 'platform_os_version', 'carrier', 'keychain', 'locale', 'button_info', 'dmm_viewer_id', 'dmm_onetime_token', 'steam_id', 'steam_session_ticket')})}", flush=True)
                             state = self._fresh_career_state(client, strategy)
                             continue
-                        if not any(err in str(exc) for err in ("102", "1503")):
-                            raise
+                        if "102" in err_str or "1503" in err_str:
+                            raise  # logic errors never absorbed
                         state = self._recover_blocked_state(client, strategy, state)
                         data = state.get("data") or {}
                         chara = data.get("chara_info") or {}
@@ -377,7 +379,7 @@ class CareerRunner:
             # not silently absorbed by the career loop.
             recoverable = any(tag in err_str for tag in ("Network error", "API error", "StateRecoveryError",
                                                     "102", "201", "205", "208", "213", "214",
-                                                    "217", "2502",
+                                                    "217", "2502", "917",
                                                     "709", "1055", "1503"))
             # HTTP 5xx (502/504 gateway errors) are recoverable
             if not recoverable:
@@ -1134,13 +1136,32 @@ class CareerRunner:
 
         out = res
         try:
-            client.race_end(current_turn=current_turn)
+            end_res = client.race_end(current_turn=current_turn)
+            out = end_res
             self._log("race_end", current_turn, "")
+        except StateRecoveryError:
+            # race_end 5xx — server committed race, reload state and move on.
+            self._log("race_end_transient", current_turn, "reloading after 5xx")
+            return self._fresh_career_state(client, strategy) or out
         except Exception as e:
             if any(err in str(e) for err in ("102", "1503")):
-                self._log("race_end_reconciled", current_turn, "server already done (102)")
-            else:
-                raise
+                # 102 on race_end = server already past race results → relogin → load → race_out
+                self._log("race_end_reconciled", current_turn, f"race already done ({err}), relogin→race_out")
+                print(f"[DBG race_end 102] entering reconcile, calling _fresh_career_state", flush=True)
+                fresh = self._fresh_career_state(client, strategy)
+                print(f"[DBG race_end 102] fresh_returned={bool(fresh)} has_chara={bool((fresh.get('data') or {}).get('chara_info'))}", flush=True)
+                if not fresh:
+                    return out
+                fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
+                fresh_turn = int(fresh_chara.get("turn", current_turn))
+                try:
+                    return client.race_out(current_turn=fresh_turn)
+                except Exception as e2:
+                    if any(err in str(e2) for err in ("102", "1503", "217", "201", "StateRecoveryError")):
+                        self._log("race_out_after_reconcile", fresh_turn, f"graceful: {e2}")
+                        return fresh
+                    raise
+            raise
 
         try:
             out_res = client.race_out(current_turn=current_turn)
@@ -1150,8 +1171,8 @@ class CareerRunner:
                 if out_data.get("unchecked_event_array"):
                     out = self._drain_events(client, strategy, out)
         except Exception as e:
-            if any(err in str(e) for err in ("102", "1503")):
-                self._log("race_out_reconciled", current_turn, "server already done (102)")
+            if any(err in str(e) for err in ("102", "1503", "217")):
+                self._log("race_out_reconciled", current_turn, f"race_out already done ({err})")
             else:
                 raise
 
@@ -1186,6 +1207,18 @@ class CareerRunner:
         if playing_state == 3:
             self._log("race_results", current_turn, "post-race screen, skipping race_end/out")
             return payload
+
+        # playing_state=5 + state=0 = still in career, reward card pick — need race_out to return home
+        if playing_state == 5 and int(chara.get("state") or 0) == 0:
+            self._log("race_out_pickup", current_turn, "playing_state=5 state=0, race_out to return home")
+            try:
+                return client.race_out(current_turn=current_turn)
+            except Exception as e:
+                if any(err in str(e) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
+                    self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
+                    fresh = self._reload_after_reconcile(client, payload, current_turn)
+                    return fresh
+                raise
         
         if phase == "end":
             if playing_state in {1}:
@@ -1196,7 +1229,21 @@ class CareerRunner:
                     self._log("race_end", current_turn, "resume")
                 except Exception as e:
                     if any(err in str(e) for err in ("102", "1503")):
-                        self._log("race_end_reconciled", current_turn, "resume already done (102)")
+                        # 102 = server already past race results → relogin before race_out,
+                        # else race_out returns 217 (resource busy). Mirror _run_race path.
+                        self._log("race_end_reconciled", current_turn, "resume already done (102), relogin→race_out")
+                        fresh = self._fresh_career_state(client, strategy)
+                        if not fresh:
+                            return payload
+                        fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
+                        fresh_turn = int(fresh_chara.get("turn", current_turn))
+                        try:
+                            return client.race_out(current_turn=fresh_turn)
+                        except Exception as e2:
+                            if any(err in str(e2) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
+                                self._log("race_out_after_reconcile", fresh_turn, f"graceful: {e2}")
+                                return fresh
+                            raise
                     else:
                         raise
             try:
@@ -1295,7 +1342,21 @@ class CareerRunner:
                 self._log("race_end", current_turn, "resume")
             except Exception as e:
                 if any(err in str(e) for err in ("102", "1503")):
-                    self._log("race_end_reconciled", current_turn, "resume already done (102)")
+                    # 102 = server already past race results → relogin before race_out,
+                    # else race_out returns 217 (resource busy). Mirror _run_race path.
+                    self._log("race_end_reconciled", current_turn, "resume already done (102), relogin→race_out")
+                    fresh = self._fresh_career_state(client, strategy)
+                    if not fresh:
+                        return payload
+                    fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
+                    fresh_turn = int(fresh_chara.get("turn", current_turn))
+                    try:
+                        return client.race_out(current_turn=fresh_turn)
+                    except Exception as e2:
+                        if any(err in str(e2) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
+                            self._log("race_out_after_reconcile", fresh_turn, f"graceful: {e2}")
+                            return fresh
+                        raise
                 else:
                     raise
         try:

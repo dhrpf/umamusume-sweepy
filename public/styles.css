@@ -1867,7 +1867,7 @@ body.veteran-mode .main-container {
   z-index: -1;
 }
 .sparks-tooltip-scroll {
-  max-height: min(68vh, 500px, calc(100vh - 4rem));
+  max-height: min(68vh, 700px, calc(100vh - 4rem));
   overflow-y: auto;
   padding-right: 0.35rem;
   scrollbar-width: thin;

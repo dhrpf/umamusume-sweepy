@@ -101,7 +101,7 @@ class RacePlanner:
                     return pid
 
         # Priority 2: prefer G1 (race_instance_id leading 1) over lower grades
-        g1 = [pid for pid in available if str(self.program.get(str(pid), {}).get("race_instance_id", "0"))[0] == "1"]
+        g1 = [pid for pid in available if str(self.program.get(pid, {}).get("race_instance_id", "0"))[0] == "1"]
         if g1:
             return g1[0]
 

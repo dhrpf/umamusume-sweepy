@@ -189,6 +189,16 @@ def serialize_preset(raw):
     if attr and isinstance(attr, list) and len(attr) == 5:
         serialized["expect_attribute"] = [int(v) for v in attr]
 
+    # MCTS planner toggle + config overrides
+    serialized["use_mcts"] = bool(data.get("use_mcts"))
+    mcts_cfg = data.get("mcts_config")
+    if isinstance(mcts_cfg, dict):
+        serialized["mcts_config"] = {k: v for k, v in mcts_cfg.items()
+                                     if k in {"time_budget_sec", "max_simulations", "explore_weight",
+                                              "widening_alpha", "rollout_depth", "rest_vital_ratio",
+                                              "overshoot_penalty", "shortfall_exponent", "rng_seed",
+                                              "use_expected_value"}}
+
     return serialized
 
 def hydrate_preset(raw):

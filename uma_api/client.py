@@ -810,6 +810,10 @@ class UmaClient:
             body_preview = resp.text[:500] if resp.text else ""
             self.api_log("ERR", ep, {"http_status": resp.status_code, "body": body_preview}, req_id)
             print(f"HTTP error on {ep}: status={resp.status_code} body={body_preview}")
+            # 5xx = server-side transient → escalate to StateRecoveryError so runner re-fetches
+            # career state instead of crashing. Covers 504 gateway timeout, 502/503 maintenance.
+            if resp.status_code >= 500:
+                raise StateRecoveryError(f'HTTP {resp.status_code} on {ep}')
             raise Exception(f'HTTP {resp.status_code} on {ep}: {body_preview}')
             
         res = unpack(resp.text.strip(), self.udid_str)
@@ -851,6 +855,11 @@ class UmaClient:
                 print(f"205 on {ep}, retrying... ({retry_205} left)")
                 dna_sleep(0.14, 0.19, 0.166, 0.0083)
                 return self.call(ep, args, retry_208=retry_208, retry_205=retry_205 - 1)
+
+            if rc == 917 and retry_208 > 0:
+                print(f"API error 917 on {ep}, escalating to StateRecoveryError")
+                from uma_api.client import StateRecoveryError as _SRE
+                raise _SRE(f"API error 917 on {ep}")
 
             if rc == 208 and retry_208 > 0:
                 if ep in {"single_mode_free/gain_skills", "single_mode_free/multi_item_exchange", "single_mode_free/multi_item_use"}:

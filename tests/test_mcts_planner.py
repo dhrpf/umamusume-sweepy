@@ -81,6 +81,16 @@ class TestMCTSPlanner(unittest.TestCase):
         action = planner._rollout_policy(make_state(vital=10), TinySim().actions)
         self.assertEqual(action.action_type, "rest")
 
+    def test_search_filters_unsafe_root_training(self):
+        sim = TinySim()
+        sim.actions = (
+            Action("train", 0, (1000, 0, 0, 0, 0, 0), -20, 0.30, 0, 1, 101, 0),
+            Action("rest", 0, (0, 0, 0, 0, 0, 0), 50, 0.0, 0, 7, 701, 0),
+        )
+        planner = MCTSPlanner(sim, MCTSConfig(max_simulations=10, time_budget_sec=0, rollout_depth=1, rng_seed=1))
+        result = planner.search(make_state(vital=40))
+        self.assertEqual(result.action.action_type, "rest")
+
 
 if __name__ == "__main__":
     unittest.main()

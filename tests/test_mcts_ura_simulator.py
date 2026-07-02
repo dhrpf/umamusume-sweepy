@@ -142,9 +142,15 @@ class TestUraSimulator(unittest.TestCase):
         self.assertEqual(sim.failure_rate_for_vital_ratio(0.1), 0.50)
         self.assertGreater(sim.failure_rate_for_vital_ratio(0.3), 0.15)
 
-    def test_level_up_counts_drive_training_level(self):
+    def test_calibrated_level_up_counts_do_not_drive_training_level(self):
         sim = UraSimulator(params_path=write_params(PARAMS), scenario_id=1)
         state = make_state(training_counts=(1, 0, 0, 0, 0), training_levels=(1, 1, 1, 1, 1))
+        actions = sim.generate_actions(state)
+        self.assertEqual(actions[0].stat_gains[0], 10.0)
+
+    def test_api_training_level_still_drives_training_level(self):
+        sim = UraSimulator(params_path=write_params(PARAMS), scenario_id=1)
+        state = make_state(training_counts=(0, 0, 0, 0, 0), training_levels=(2, 1, 1, 1, 1))
         actions = sim.generate_actions(state)
         self.assertEqual(actions[0].stat_gains[0], 20.0)
 

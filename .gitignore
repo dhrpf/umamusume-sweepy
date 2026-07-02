@@ -13,3 +13,6 @@ accounts.json
 docs/
 data/presets/
 stuck_career*
+ds-bundle/
+.design-sync/
+.playwright-mcp/
