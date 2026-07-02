@@ -105,7 +105,27 @@ def add_decision(report, state, decision):
     turn["current_command"] = payload
     turn["selected_action"] = getattr(decision, "action", "")
     turn["decision_reason"] = getattr(decision, "reason", "")
+    snapshot = _decision_state_snapshot(state)
+    if snapshot:
+        turn["decision_state"] = snapshot
+    if payload.get("decision_detail"):
+        turn["decision_detail"] = payload.get("decision_detail")
+    if payload.get("decision_options"):
+        turn["decision_options"] = payload.get("decision_options")
     turn["current_action_taken"] = getattr(decision, "action", "")
+
+
+def _decision_state_snapshot(state):
+    data = (state or {}).get("data") or {}
+    chara = data.get("chara_info") or {}
+    home = data.get("home_info") or {}
+    commands = home.get("command_info_array") or []
+    if not chara and not commands:
+        return {}
+    return {
+        "chara_info": chara,
+        "command_info_array": commands,
+    }
 
 
 def set_error(report, exc):

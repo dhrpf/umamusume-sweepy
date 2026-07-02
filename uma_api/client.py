@@ -233,10 +233,57 @@ def pack(sid, udid_raw, auth, payload, udid):
     if auth: h += auth
     return base64.b64encode(struct.pack('<I', len(h)) + h + body)
 
-def unpack(text, udid):
+def _normalize_api_body(text):
     if isinstance(text, str):
         text = text.strip().encode('latin-1')
+    else:
+        text = text.strip()
+
+    # Some Unity/TLS captures include HTTP chunk framing in the body:
+    # b"00006000\r\n<base64>\r\n0\r\n\r\n". Strip it before base64 decode.
+    if b'\r\n' in text:
+        out = bytearray()
+        pos = 0
+        incomplete_chunk = False
+        while True:
+            eol = text.find(b'\r\n', pos)
+            if eol < 0:
+                if out:
+                    break
+                out = bytearray()
+                break
+            line = text[pos:eol].split(b';', 1)[0]
+            try:
+                size = int(line, 16)
+            except ValueError:
+                out = bytearray()
+                break
+            pos = eol + 2
+            if size == 0:
+                if out:
+                    text = bytes(out).strip()
+                break
+            if pos + size > len(text):
+                incomplete_chunk = True
+                break
+            out += text[pos:pos + size]
+            pos += size
+            if pos >= len(text):
+                break
+            if text[pos:pos + 2] == b'\r\n':
+                pos += 2
+        if out:
+            text = bytes(out).strip()
+        elif incomplete_chunk:
+            # Best effort for older broken captures emitted before full chunk arrived.
+            text = text.split(b'\r\n', 1)[1].strip()
+
     text += b'=' * (-len(text) % 4)
+    return text
+
+
+def unpack(text, udid):
+    text = _normalize_api_body(text)
     raw = base64.b64decode(text)
     key, cipher = raw[-32:], raw[:-32]
     p = unpad(AES.new(key, AES.MODE_CBC, get_iv(udid)).decrypt(cipher), 16)
@@ -264,9 +311,7 @@ def unpack(text, udid):
 
 def unpack_request(text, udid, _debug=False):
     """Decode an outgoing request body (pack() format: headerLen + header + cipher + key)."""
-    if isinstance(text, str):
-        text = text.encode('latin-1')
-    raw = base64.b64decode(text)
+    raw = base64.b64decode(_normalize_api_body(text))
     if len(raw) < 4:
         if _debug: print(f"[unpack_request] too short: {len(raw)}")
         return None
@@ -652,12 +697,21 @@ class UmaClient:
         })
 
     def call(self, ep, args=None, retry_208=6, retry_205=3):
+        # Aoharu/Team scenario uses single_mode_team/* for core endpoints.
+        if self.current_scenario_id == 2 and ep.startswith('single_mode_free/'):
+            rest = ep[len('single_mode_free/'):]
+            if rest in ('load', 'start', 'exec_command', 'check_event',
+                        'race_entry', 'race_start', 'race_end', 'race_out',
+                        'finish', 'factor_select', 'continue', 'change_running_style',
+                        'gain_skills', 'multi_item_use', 'multi_item_exchange',
+                        'minigame_end'):
+                ep = 'single_mode_team/' + rest
         # URA (scenario 1) uses single_mode/* instead of single_mode_free/* for core endpoints
         if self.current_scenario_id == 1 and ep.startswith('single_mode_free/'):
             rest = ep[len('single_mode_free/'):]
             if rest in ('load', 'start', 'exec_command', 'check_event',
                         'race_entry', 'race_start', 'race_end', 'race_out',
-                        'finish', 'continue', 'change_running_style',
+                        'finish', 'factor_select', 'continue', 'change_running_style',
                         'gain_skills', 'multi_item_use', 'multi_item_exchange',
                         'minigame_end'):
                 ep = 'single_mode/' + rest
@@ -994,23 +1048,42 @@ class UmaClient:
         return tp
 
     def read_info(self):
-        return self.call('read_info/index', {
-            'add_home_story_data_array': [],
-            'add_short_episode_data_array': [],
-            'add_home_poster_data_array': [],
-            'add_tutorial_guide_data_array': [],
-            'add_released_episode_data_array': [],
+        return
+        # return self.call('read_info/index', {
+        #     'add_home_story_data_array': [],
+        #     'add_short_episode_data_array': [],
+        #     'add_home_poster_data_array': [],
+        #     'add_tutorial_guide_data_array': [],
+        #     'add_released_episode_data_array': [],
+        # })
+
+    def factor_select(self, current_turn, factor_lottery_id=1):
+        """Required before single_mode/finish post-update."""
+        return self.call('single_mode_free/factor_select', {
+            'current_turn': current_turn,
+            'factor_lottery_id': factor_lottery_id,
+            'skill_id_array': None,
         })
 
-    def finish_career(self, current_turn, is_force_delete=False):
+    def finish_career(self, current_turn, is_force_delete=False, do_factor_select=True, factor_lottery_id=1):
+        if do_factor_select:
+            self.factor_select(current_turn, factor_lottery_id=factor_lottery_id)
         return self.call('single_mode_free/finish', {
             'is_force_delete': is_force_delete,
-            'current_turn': current_turn
+            'current_turn': current_turn,
+            'factor_lottery_id': factor_lottery_id
         })
 
     def load_career(self, scenario_id=4):
         ep = 'single_mode/load' if scenario_id == 1 else 'single_mode_free/load'
         return self.call(ep, {})
+
+    def change_support_card_deck_party(self, support_card_deck_array):
+        if not support_card_deck_array:
+            return None
+        return self.call('support_card_deck/change_party', {
+            'support_card_deck_array': support_card_deck_array
+        })
 
     def minigame_end(self, current_turn, result_state=1, result_value=0, result_detail_array=None):
         return self.call('single_mode_free/minigame_end', {

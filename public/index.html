@@ -50,6 +50,8 @@
             </div>
 
             <div class="navbar-meta">
+                <button id="dashboard-nav-btn" class="btn btn-sm" type="button" style="display:none">DASHBOARD</button>
+                <button id="veteran-nav-btn" class="btn btn-sm" type="button" style="display:none">VETERANS</button>
                 <button id="logout-btn" class="btn btn-sm logout-btn" style="display:none">LOGOUT</button>
             </div>
         </header>
@@ -143,6 +145,13 @@
                                           <label for="preset-pal-recreation">Use Throne PAL Recreation (5x max)</label>
                                         </div>
                                         </div>
+                                        <div class="preset-field">
+                                        <label class="form-label" for="preset-parent-run">PARENT RUN</label>
+                                        <div class="preset-checkbox-wrap">
+                                          <input id="preset-parent-run" class="preset-input preset-checkbox" type="checkbox">
+                                          <label for="preset-parent-run">Skip optional planned race if best training gain &gt; 30</label>
+                                        </div>
+                                        </div>
                                     <div class="preset-field">
                                         <label class="form-label" for="preset-skill-threshold">MIN SKILL PT</label>
                                         <input id="preset-skill-threshold" class="form-input master-data-input preset-input" type="number">
@@ -188,6 +197,37 @@
                                     </div>
                                 </div>
                                 <button id="preset-edit-skills-btn" class="btn btn-sm preset-wide-btn" type="button">CONFIGURE SKILLS (PRIORITIES & BLACKLIST)</button>
+                            </div>
+                        </section>
+
+                        <section class="dashboard-section" id="inheritance-planner-section">
+                            <h2 class="dashboard-section-title">INHERITANCE PLANNER</h2>
+                            <div class="inheritance-planner-panel">
+                                <div class="inheritance-controls">
+                                    <label class="form-label">POOL</label>
+                                    <select id="inheritance-pool" class="form-input master-data-input">
+                                        <option value="owned">Owned</option>
+                                        <option value="veteran">Veteran</option>
+                                        <option value="both" selected>Both</option>
+                                    </select>
+                                    <label class="form-label">DISTANCE</label>
+                                    <select id="inheritance-distance" class="form-input master-data-input">
+                                        <option value="">Any</option>
+                                        <option value="Sprint">Sprint</option>
+                                        <option value="Mile">Mile</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Long">Long</option>
+                                    </select>
+                                    <label class="form-label">SURFACE</label>
+                                    <select id="inheritance-surface" class="form-input master-data-input">
+                                        <option value="">Any</option>
+                                        <option value="Turf">Turf</option>
+                                        <option value="Dirt">Dirt</option>
+                                    </select>
+                                    <button id="inheritance-recommend-btn" class="btn btn-sm btn-primary" type="button">RECOMMEND</button>
+                                </div>
+                                <div id="inheritance-status" class="friend-status">Select trainee, then recommend.</div>
+                                <div id="inheritance-results" class="inheritance-results"></div>
                             </div>
                         </section>
 
@@ -374,6 +414,36 @@
                     <button class="panel-collapse-btn panel-collapse-btn-right" id="content-collapse-btn" type="button" data-panel-label="Library" title="Collapse library" aria-label="Collapse library"></button>
                 </div>
             </div>
+            <div id="veteran-view" class="veteran-page" style="display:none">
+                <section class="dashboard-section veteran-shell">
+                    <div class="veteran-page-header">
+                        <div>
+                            <h2 class="dashboard-section-title">VETERAN / TRAINED UMAMUSUME <span id="veteran-page-count"></span></h2>
+                            <div id="veteran-page-status" class="friend-status"></div>
+                        </div>
+                        <div class="veteran-actions">
+                            <input id="veteran-page-search" class="filter-input" type="text" placeholder="Filter by name, ID, skill...">
+                            <select id="veteran-sort-select" class="filter-select">
+                                <option value="date_desc">Date acquired ↓</option>
+                                <option value="date_asc">Date acquired ↑</option>
+                                <option value="point_desc">Point ↓</option>
+                                <option value="point_asc">Point ↑</option>
+                                <option value="rank_desc">Rank ↓</option>
+                                <option value="rank_asc">Rank ↑</option>
+                            </select>
+                            <button id="veteran-select-all-btn" class="btn btn-sm" type="button">SELECT ALL</button>
+                            <button id="veteran-clear-btn" class="btn btn-sm" type="button">CLEAR</button>
+                            <button id="veteran-remove-btn" class="btn btn-sm btn-danger" type="button" disabled>REMOVE SELECTED</button>
+                        </div>
+                    </div>
+                    <div id="veteran-page-grid" class="veteran-list-grid"></div>
+                </section>
+                <div id="veteran-detail-backdrop" class="veteran-detail-backdrop" style="display:none"></div>
+                <aside id="veteran-detail-drawer" class="veteran-detail-drawer" aria-hidden="true">
+                    <button id="veteran-detail-close" class="btn btn-sm veteran-detail-close" type="button">CLOSE</button>
+                    <div id="veteran-detail-content" class="veteran-detail-content"></div>
+                </aside>
+            </div>
         </main>
         <div id="career-modal" class="modal-backdrop">
             <div class="modal-panel">
@@ -426,7 +496,7 @@
             </div>
         </div>
     </div>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=17"></script>
 </body>
 </html>
 

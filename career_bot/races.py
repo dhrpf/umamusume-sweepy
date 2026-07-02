@@ -129,6 +129,21 @@ class RacePlanner:
             
         return g_apt >= 6 and d_apt >= 6
 
+    def wanted_available(self, state, preset):
+        data = state.get("data") or {}
+        turn = int((data.get("chara_info") or {}).get("turn") or 0)
+        available = self.available_programs(state)
+        mandatory = set(self.wanted_programs({"extra_race_list": (preset or {}).get("mandatory_race_list") or []}, turn))
+        wanted = self.wanted_programs(preset or {}, turn)
+        return [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected and pid not in mandatory]
+
+    def mandatory_available(self, state, preset):
+        data = state.get("data") or {}
+        turn = int((data.get("chara_info") or {}).get("turn") or 0)
+        available = self.available_programs(state)
+        wanted = self.wanted_programs({"extra_race_list": (preset or {}).get("mandatory_race_list") or []}, turn)
+        return [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
+
     def choose(self, state, preset):
         data = state.get("data") or {}
         turn = int((data.get("chara_info") or {}).get("turn") or 0)
@@ -138,13 +153,12 @@ class RacePlanner:
         race_enabled = any(cmd.get("command_type") == 4 and cmd.get("command_id") == 401 and cmd.get("is_enable", 0) for cmd in commands)
         if not race_enabled:
             return 0
-
+    
         available = self.available_programs(state)
         if not available:
             return 0
     
-        wanted = self.wanted_programs(preset, turn)
-        valid_wanted = [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
+        valid_wanted = self.wanted_available(state, preset)
         
         if not valid_wanted:
             chara = data.get("chara_info") or {}

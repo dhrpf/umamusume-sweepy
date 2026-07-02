@@ -456,7 +456,7 @@ class SkillBuyer:
         payload = []
         payload_ids = set()
         for item in valid_candidates:
-            for skill_id in [item["skill_id"], *(item.get("bundled_skill_ids") or [])]:
+            for skill_id in [*(item.get("bundled_skill_ids") or []), item["skill_id"]]:
                 skill_id = int(skill_id or 0)
                 if skill_id > 0 and skill_id not in payload_ids:
                     payload.append({"skill_id": skill_id, "level": 1})

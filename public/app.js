@@ -20,6 +20,10 @@ const state = {
     friendTypeFilter: "",
     parentNameFilter: "",
     parentSparkFilters: {},
+    veteranPageSelected: new Set(),
+    veteranPageQuery: '',
+    veteranSort: 'date_desc',
+    isRemovingVeterans: false,
 };
 const els = {
     loadingScreen: document.getElementById('loading-screen'),
@@ -28,6 +32,21 @@ const els = {
     brandMark: document.querySelector('.title span'),
     loginBtn: document.getElementById('login-btn'),
     logoutBtn: document.getElementById('logout-btn'),
+    dashboardNavBtn: document.getElementById('dashboard-nav-btn'),
+    veteranNavBtn: document.getElementById('veteran-nav-btn'),
+    veteranView: document.getElementById('veteran-view'),
+    veteranPageGrid: document.getElementById('veteran-page-grid'),
+    veteranPageCount: document.getElementById('veteran-page-count'),
+    veteranPageStatus: document.getElementById('veteran-page-status'),
+    veteranPageSearch: document.getElementById('veteran-page-search'),
+    veteranSortSelect: document.getElementById('veteran-sort-select'),
+    veteranSelectAllBtn: document.getElementById('veteran-select-all-btn'),
+    veteranClearBtn: document.getElementById('veteran-clear-btn'),
+    veteranRemoveBtn: document.getElementById('veteran-remove-btn'),
+    veteranDetailBackdrop: document.getElementById('veteran-detail-backdrop'),
+    veteranDetailDrawer: document.getElementById('veteran-detail-drawer'),
+    veteranDetailClose: document.getElementById('veteran-detail-close'),
+    veteranDetailContent: document.getElementById('veteran-detail-content'),
     turnDelayMin: document.getElementById('turn-delay-min'),
     turnDelayMax: document.getElementById('turn-delay-max'),
     temptFateBtn: document.getElementById('tempt-fate-btn'),
@@ -82,6 +101,7 @@ const els = {
     presetTpMode: document.getElementById('preset-tp-mode'),
     presetScenario: document.getElementById('preset-scenario'),
     presetPalRecreation: document.getElementById('preset-pal-recreation'),
+    presetParentRun: document.getElementById('preset-parent-run'),
     presetEditSkillsBtn: document.getElementById('preset-edit-skills-btn'),
     presetExpectSpeed: document.getElementById('preset-expect-speed'),
     presetExpectStamina: document.getElementById('preset-expect-stamina'),
@@ -95,6 +115,12 @@ const els = {
     skillBlacklistContainer: document.getElementById('skill-blacklist-container'),
     skillAddTierBtn: document.getElementById('skill-add-tier-btn'),
     skillModalClose: document.getElementById('skill-modal-close'),
+    inheritancePool: document.getElementById('inheritance-pool'),
+    inheritanceDistance: document.getElementById('inheritance-distance'),
+    inheritanceSurface: document.getElementById('inheritance-surface'),
+    inheritanceRecommendBtn: document.getElementById('inheritance-recommend-btn'),
+    inheritanceStatus: document.getElementById('inheritance-status'),
+    inheritanceResults: document.getElementById('inheritance-results'),
     friendVetGrid: document.getElementById('friend-vet-grid'),
     friendVetCount: document.getElementById('friend-vet-count'),
     friendVetStatus: document.getElementById('friend-vet-status'),
@@ -141,6 +167,8 @@ const els = {
         const storedDev = localStorage.getItem(devStorageKey);
         if (storedDev !== null) setDevEnabled(storedDev === 'true', { persist: false });
         else setDevEnabled(true, { persist: true });
+
+        if (els.inheritanceRecommendBtn) els.inheritanceRecommendBtn.addEventListener('click', recommendInheritance);
 
         if (els.devBtn) {
             els.devBtn.addEventListener('click', () => {
@@ -623,7 +651,11 @@ const els = {
             els.loginView.style.display = 'flex';
             els.dashboardView.style.display = 'none';
             els.dashboardView.classList.remove('active');
+            if (els.veteranView) els.veteranView.style.display = 'none';
+            document.body.classList.remove('veteran-mode');
             els.logoutBtn.style.display = 'none';
+            if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'none';
+            if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'none';
             els.standardFields.style.display = 'block';
             els.faFields.style.display = 'none';
             els.loginBtn.innerText = 'LOGIN';
@@ -1223,6 +1255,9 @@ const els = {
             state.selectedRaces = (current?.extra_race_list || [])
                 .map(id => parseInt(id, 10))
                 .filter(id => Number.isFinite(id));
+            state.mandatoryRaces = (current?.mandatory_race_list || [])
+                .map(id => parseInt(id, 10))
+                .filter(id => Number.isFinite(id));
         }
 
         function renderTrackblazer(preset) {
@@ -1345,6 +1380,7 @@ const els = {
 
                     let html = `<div class="race-time-label">${slot.period}</div>`;
                     if (selected) {
+                        const mandatory = state.mandatoryRaces?.includes(mainRaceId);
                         html += `
                             <div class="race-cell-selected-img">
                                 <img src="/races/${encodeURIComponent(selected.name)}.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
@@ -1352,6 +1388,7 @@ const els = {
                                 <span class="race-cell-selected-grade badge-${selected.type.toLowerCase().replace('-', '')}">${selected.type}</span>
                             </div>
                             <div class="race-cell-selected-name">${escapeHtml(selected.name)}</div>
+                            <div class="race-cell-selected-mode">${mandatory ? 'MANDATORY' : 'OPTIONAL'}</div>
                         `;
                     } else {
                         html += `<div class="race-time-plus">+</div>`;
@@ -1385,8 +1422,9 @@ const els = {
                     const selectedInSlot = state.selectedRaces.filter(id => slotIds.includes(id));
                     const selIndex = selectedInSlot.findIndex(id => myIds.includes(id));
                     const isSelected = selIndex !== -1;
+                    const isMandatory = myIds.some(id => state.mandatoryRaces?.includes(id));
 
-                    let badgeHtml = '<div class="race-slot-popup-check">✓</div>';
+                    let badgeHtml = isMandatory ? '<div class="race-slot-popup-check main-race" style="font-size: 0.7rem; font-weight: bold; width: auto; padding: 0 8px; border-radius: 12px; background: rgba(255,255,255,0.25);">MANDATORY</div>' : '<div class="race-slot-popup-check">OPTIONAL</div>';
                     if (isSelected && state.scenarioType === "Mant" && selectedInSlot.length > 0) {
                         if (selIndex === 0) {
                             badgeHtml = '<div class="race-slot-popup-check main-race" style="font-size: 0.7rem; font-weight: bold; width: auto; padding: 0 8px; border-radius: 12px; background: rgba(255,255,255,0.2);">MAIN</div>';
@@ -1417,14 +1455,31 @@ const els = {
                         const isMant = state.scenarioType === "Mant";
 
                         if (isSelected) {
-                            state.selectedRaces = state.selectedRaces.filter(id => !myIds.includes(id));
+                            if (isMandatory) {
+                                state.mandatoryRaces = (state.mandatoryRaces || []).filter(id => !myIds.includes(id));
+                            } else {
+                                state.selectedRaces = state.selectedRaces.filter(id => !myIds.includes(id));
+                                state.mandatoryRaces = (state.mandatoryRaces || []).filter(id => !myIds.includes(id));
+                            }
                         } else {
                             if (!isMant) {
                                 state.selectedRaces = state.selectedRaces.filter(id => !slotIds.includes(id));
+                                state.mandatoryRaces = (state.mandatoryRaces || []).filter(id => !slotIds.includes(id));
                             }
                             state.selectedRaces.push(parseInt(race.id));
                         }
 
+                        openSlotPopup(slot, yearIdx);
+                        renderRaces();
+                        await autoSaveRaces();
+                    };
+                    item.oncontextmenu = async (e) => {
+                        e.preventDefault();
+                        if (!isSelected) return;
+                        const id = parseInt(race.id);
+                        state.mandatoryRaces = isMandatory
+                            ? (state.mandatoryRaces || []).filter(x => !myIds.includes(x))
+                            : [...(state.mandatoryRaces || []).filter(x => !slotIds.includes(x)), id];
                         openSlotPopup(slot, yearIdx);
                         renderRaces();
                         await autoSaveRaces();
@@ -1439,13 +1494,17 @@ const els = {
         async function autoSaveRaces() {
             try {
                 const current = getCurrentPreset();
-                if (current) current.extra_race_list = [...state.selectedRaces];
+                if (current) {
+                    current.extra_race_list = [...state.selectedRaces];
+                    current.mandatory_race_list = [...(state.mandatoryRaces || [])];
+                }
                 await apiJson('/api/presets/save_races', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         preset_name: state.selectedPreset,
-                        races: state.selectedRaces
+                        races: state.selectedRaces,
+                        mandatory_races: state.mandatoryRaces || []
                     })
                 });
             } catch (e) {}
@@ -1755,6 +1814,7 @@ const els = {
             current.run_delay_max_min = parseInt(els.presetDelayMax?.value) || 0;
             current.tp_mode = (els.presetTpMode?.value === 'wait') ? 'wait' : 'carat';
             current.pal_recreation_required = !!(els.presetPalRecreation?.checked);
+            current.parent_run = !!(els.presetParentRun?.checked);
 
             // Expect attribute: [speed, stamina, power, guts, wit]
             const speed = parseInt(els.presetExpectSpeed?.value);
@@ -1799,6 +1859,7 @@ const els = {
             if (els.presetTpMode) els.presetTpMode.value = (current.tp_mode === 'wait') ? 'wait' : 'carat';
             if (els.presetScenario) els.presetScenario.value = String(current.scenario_id || current.scenario || 4);
             if (els.presetPalRecreation) els.presetPalRecreation.checked = !!current.pal_recreation_required;
+            if (els.presetParentRun) els.presetParentRun.checked = !!current.parent_run;
 
     // Expect attribute
     const attr = current.expect_attribute || [];
@@ -1842,6 +1903,7 @@ const els = {
             els.presetTpMode?.addEventListener('change', saveHandler);
             els.presetScenario?.addEventListener('change', saveHandler);
             els.presetPalRecreation?.addEventListener('change', saveHandler);
+            els.presetParentRun?.addEventListener('change', saveHandler);
             els.presetExpectSpeed?.addEventListener('change', saveHandler);
             els.presetExpectStamina?.addEventListener('change', saveHandler);
             els.presetExpectPower?.addEventListener('change', saveHandler);
@@ -2321,6 +2383,64 @@ const els = {
                 }
             }
         }
+
+        function inheritanceGoal() {
+            return {
+                distance: els.inheritanceDistance ? els.inheritanceDistance.value : '',
+                surface: els.inheritanceSurface ? els.inheritanceSurface.value : ''
+            };
+        }
+        function sourceBadge(source) { return source === 'veteran' ? 'Veteran' : 'Owned'; }
+        function renderInheritanceSetup(setup) {
+            const raceHtml = (setup.races || []).slice(0, 5).map(r => `<span class="inherit-race-chip">${escapeHtml(r.name)} ×${r.count}</span>`).join('') || '<span class="muted">No shared races</span>';
+            const sparkHtml = (setup.spark_hits || []).slice(0, 8).map(s => `<span class="inherit-spark-chip">${escapeHtml(s.name)} ${escapeHtml(s.stars)}★</span>`).join('') || '<span class="muted">No goal sparks</span>';
+            return `<div class="inheritance-card">
+                <div class="inheritance-card-head">
+                    <strong>#${setup.rank} ${escapeHtml(setup.parent1.name)} + ${escapeHtml(setup.parent2.name)}</strong>
+                    <span class="inheritance-score">${Math.round(setup.score)}</span>
+                </div>
+                <div class="inheritance-meta">
+                    <span>${escapeHtml(sourceBadge(setup.parent1.source))}</span>
+                    <span>${escapeHtml(sourceBadge(setup.parent2.source))}</span>
+                    <span>Compat ${escapeHtml(setup.compat_tier)} ${escapeHtml(setup.compat_total)}</span>
+                    <span>Race +${escapeHtml(setup.race_score)}</span>
+                </div>
+                <div class="inheritance-line"><b>Sparks</b> ${sparkHtml}</div>
+                <div class="inheritance-line"><b>Run</b> ${raceHtml}</div>
+            </div>`;
+        }
+        async function recommendInheritance() {
+            if (!selection.trainee) {
+                if (els.inheritanceStatus) els.inheritanceStatus.innerText = 'Select trainee first.';
+                return;
+            }
+            if (!els.inheritanceResults) return;
+            els.inheritanceRecommendBtn.disabled = true;
+            els.inheritanceStatus.classList.remove('error');
+            els.inheritanceStatus.innerText = 'Calculating...';
+            els.inheritanceResults.innerHTML = '';
+            try {
+                const data = await apiJson('/api/inheritance/recommend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        target_card_id: Number(selection.trainee.id),
+                        pool: els.inheritancePool ? els.inheritancePool.value : 'both',
+                        goal: inheritanceGoal(),
+                        limit: 10
+                    })
+                });
+                if (!data.success) throw new Error(data.detail || 'Recommend failed');
+                els.inheritanceStatus.innerText = `${data.results.length} setups · ${data.parent_count} parents scanned`;
+                els.inheritanceResults.innerHTML = data.results.map(renderInheritanceSetup).join('') || '<div class="friend-status">No setup found.</div>';
+            } catch (e) {
+                els.inheritanceStatus.innerText = e.message || 'Recommend failed';
+                els.inheritanceStatus.classList.add('error');
+            } finally {
+                els.inheritanceRecommendBtn.disabled = false;
+            }
+        }
+
         function applyRunnerSettings(runner) {
             if (runner.running && runner.burn_clocks !== undefined && state.burnClocks !== runner.burn_clocks) {
                 setBurnClocks(runner.burn_clocks, { persist: true });
@@ -2624,16 +2744,18 @@ const els = {
         }
         function renderParentSparks(parent, fallbackImgId) {
             const tree = parent.tree || {};
-            return ['self', 'p1', 'p2'].map(key => {
+            return ['self', 'p1', 'p2', 'gp1', 'gp2', 'gp3', 'gp4'].map(key => {
                 const node = tree[key];
                 if (!node || !node.factors || node.factors.length === 0) return '';
                 const nodeImg = node.card_id || fallbackImgId;
-                const nodeClass = key === 'self' ? 'spark-node spark-node-self' : 'spark-node';
+                const nodeClass = key === 'self' ? 'spark-node spark-node-self'
+                    : key.startsWith('gp') ? 'spark-node spark-node-gp'
+                    : 'spark-node';
                 return `<div class="${nodeClass}" style="--node-bg: url('/api/images/${nodeImg}.png')">
                     <div class="spark-node-header">
                         <img class="spark-node-portrait" src="/api/images/${nodeImg}.png" onerror="hideBrokenImage(this)">
                         <div class="spark-node-meta">
-                            <div class="spark-node-title">${node.name || `Card ${node.card_id || '?'}`}</div>
+                            <div class="spark-node-title">${escapeHtml(node.name || `Card ${node.card_id || '?'}`)}</div>
                             <div class="spark-win-row">${renderWins(node.wins)}</div>
                         </div>
                     </div>
@@ -2642,6 +2764,183 @@ const els = {
                     </div>
                 </div>`;
             }).join('');
+        }
+        function renderParentStats(parent) {
+            const stats = parent.stats || {};
+            return [
+                ['SPD', stats.speed],
+                ['STA', stats.stamina],
+                ['PWR', stats.power],
+                ['GUT', stats.guts],
+                ['WIT', stats.wit],
+            ].map(([label, value]) => `<span class="vet-stat"><b>${label}</b>${Number(value || 0)}</span>`).join('');
+        }
+        function renderParentFactorChips(parent, limit = 5) {
+            const factors = parent.factors || (((parent.tree || {}).self || {}).factors) || [];
+            const star = String.fromCharCode(9733);
+            return factors.slice(0, limit).map(f => `<span class="vet-mini-factor f-${escapeAttr(f.category || 'other')}">${escapeHtml(f.name || '?')} ${star.repeat(Number(f.stars || 0))}</span>`).join('');
+        }
+        function renderParentSkillList(parent, limit = 12) {
+            const skills = parent.skills || [];
+            if (!skills.length) return '<span class="vet-empty">No skills</span>';
+            return skills.slice(0, limit).map(s => `<span class="vet-skill-chip">${escapeHtml(s.name || s.id || '?')}</span>`).join('');
+        }
+        function renderParentDetail(parent) {
+            return `<div class="vet-card-detail">
+                <div class="vet-stat-row">${renderParentStats(parent)}</div>
+                <div class="vet-factor-row">${renderParentFactorChips(parent)}</div>
+            </div>`;
+        }
+        function getFilteredVeteranPageParents() {
+            const q = (state.veteranPageQuery || '').toLowerCase().trim();
+            let parents = (dashData && dashData.parents) || [];
+            let out = parents;
+            if (q) {
+                out = parents.filter(p => {
+                    const skillText = (p.skills || []).map(s => s.name || s.id || '').join(' ').toLowerCase();
+                    const factorText = (p.factors || []).map(f => f.name || '').join(' ').toLowerCase();
+                    return (p.name || '').toLowerCase().includes(q)
+                        || String(p.instance_id || '').includes(q)
+                        || String(p.card_id || '').includes(q)
+                        || skillText.includes(q)
+                        || factorText.includes(q);
+                });
+            }
+            const sort = state.veteranSort || 'date_desc';
+            const numericValue = value => {
+                if (value == null || value === '') return 0;
+                const n = Number(value);
+                if (Number.isFinite(n)) return n;
+                const parsed = Date.parse(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+            };
+            const value = p => {
+                if (sort.startsWith('point')) return numericValue(p.rank_score);
+                if (sort.startsWith('rank')) return numericValue(p.rank);
+                // API often lacks explicit acquired timestamp; trained_chara_id tracks creation order reliably.
+                return numericValue(p.acquired_at) || numericValue(p.instance_id);
+            };
+            const dir = sort.endsWith('asc') ? 1 : -1;
+            return [...out].sort((a, b) => {
+                const diff = value(a) - value(b);
+                if (diff) return diff * dir;
+                return (numericValue(a.instance_id) - numericValue(b.instance_id)) * dir;
+            });
+        }
+        function syncVeteranRemoveButton() {
+            const count = state.veteranPageSelected.size;
+            if (els.veteranRemoveBtn) {
+                els.veteranRemoveBtn.disabled = count === 0 || state.isRemovingVeterans;
+                els.veteranRemoveBtn.textContent = state.isRemovingVeterans ? 'REMOVING...' : `REMOVE SELECTED${count ? ' (' + count + ')' : ''}`;
+            }
+            if (els.veteranPageStatus) {
+                els.veteranPageStatus.textContent = count ? `${count} selected` : '';
+            }
+        }
+        function veteranPageCard(parent) {
+            const id = Number(parent.instance_id || 0);
+            const checked = state.veteranPageSelected.has(id) ? ' checked' : '';
+            const imgId = parent.card_id || '100101';
+            return `<div class="veteran-page-card${checked ? ' selected' : ''}" data-veteran-id="${id}">
+                <label class="veteran-check"><input type="checkbox" data-veteran-check="${id}"${checked}> REMOVE</label>
+                <img class="veteran-page-img" src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
+                <div class="veteran-page-main">
+                    <div class="veteran-page-top">
+                        <span class="veteran-page-name">${escapeHtml(parent.name || 'Unknown')}</span>
+                        <span class="rank-badge veteran-rank-inline">${rankMap[parent.rank] || '??'}</span>
+                        <span class="veteran-page-id">ID ${escapeHtml(parent.instance_id || '?')} · ${escapeHtml(parent.rank_score || 0)}</span>
+                    </div>
+                    <div class="vet-stat-row veteran-page-stats">${renderParentStats(parent)}</div>
+                    <div class="vet-factor-row veteran-page-factors">${renderParentFactorChips(parent, 12)}</div>
+                    <div class="vet-skill-list veteran-page-skills">${renderParentSkillList(parent, 60)}</div>
+                </div>
+            </div>`;
+        }
+        function renderVeteranDetail(parent) {
+            if (!parent) return '';
+            const imgId = parent.card_id || '100101';
+            return `<div class="veteran-detail-head">
+                <img class="veteran-detail-img" src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
+                <div>
+                    <div class="veteran-detail-name">${escapeHtml(parent.name || 'Unknown')}</div>
+                    <div class="veteran-page-id">ID ${escapeHtml(parent.instance_id || '?')} · ${escapeHtml(parent.rank_score || 0)} · ${rankMap[parent.rank] || '??'}</div>
+                    <div class="vet-stat-row veteran-page-stats">${renderParentStats(parent)}</div>
+                </div>
+            </div>
+            <div class="vet-tooltip-section">
+                <div class="vet-tooltip-label">SKILLS</div>
+                <div class="vet-skill-list">${renderParentSkillList(parent, 999)}</div>
+            </div>
+            <div class="vet-tooltip-section">
+                <div class="vet-tooltip-label">SELF / PARENT / GRANDPARENT FACTORS</div>
+                <div class="sparks-lineage-grid veteran-detail-lineage">${renderParentSparks(parent, imgId)}</div>
+            </div>`;
+        }
+        function openVeteranDetail(id) {
+            const parent = ((dashData && dashData.parents) || []).find(p => Number(p.instance_id || 0) === Number(id));
+            if (!parent || !els.veteranDetailDrawer || !els.veteranDetailContent) return;
+            els.veteranDetailContent.innerHTML = renderVeteranDetail(parent);
+            els.veteranDetailDrawer.classList.add('open');
+            els.veteranDetailDrawer.setAttribute('aria-hidden', 'false');
+            if (els.veteranDetailBackdrop) els.veteranDetailBackdrop.style.display = 'block';
+        }
+        function closeVeteranDetail() {
+            if (els.veteranDetailDrawer) {
+                els.veteranDetailDrawer.classList.remove('open');
+                els.veteranDetailDrawer.setAttribute('aria-hidden', 'true');
+            }
+            if (els.veteranDetailBackdrop) els.veteranDetailBackdrop.style.display = 'none';
+        }
+        function renderVeteranPage() {
+            if (!els.veteranPageGrid) return;
+            const parents = (dashData && dashData.parents) || [];
+            const visible = getFilteredVeteranPageParents();
+            const liveIds = new Set(parents.map(p => Number(p.instance_id || 0)));
+            [...state.veteranPageSelected].forEach(id => { if (!liveIds.has(id)) state.veteranPageSelected.delete(id); });
+            if (els.veteranPageCount) els.veteranPageCount.textContent = `(${visible.length}/${parents.length})`;
+            els.veteranPageGrid.innerHTML = visible.length ? visible.map(veteranPageCard).join('') : '<div class="vet-count-msg">No veterans match</div>';
+            document.querySelectorAll('[data-veteran-check]').forEach(input => {
+                input.addEventListener('change', event => {
+                    event.stopPropagation();
+                    const id = Number(event.currentTarget.dataset.veteranCheck || 0);
+                    if (!id) return;
+                    if (event.currentTarget.checked) state.veteranPageSelected.add(id);
+                    else state.veteranPageSelected.delete(id);
+                    renderVeteranPage();
+                });
+                input.addEventListener('click', event => event.stopPropagation());
+            });
+            document.querySelectorAll('#veteran-page-grid .veteran-page-card').forEach(card => {
+                card.addEventListener('click', event => {
+                    if (event.target.closest('.veteran-check')) return;
+                    openVeteranDetail(card.dataset.veteranId);
+                });
+            });
+            syncVeteranRemoveButton();
+        }
+        async function removeSelectedVeterans() {
+            const ids = [...state.veteranPageSelected];
+            if (!ids.length || state.isRemovingVeterans) return;
+            if (!window.confirm(`Remove ${ids.length} trained/veteran Umamusume?\n\nIDs: ${ids.join(', ')}\n\nThis cannot be undone.`)) return;
+            state.isRemovingVeterans = true;
+            syncVeteranRemoveButton();
+            try {
+                const data = await apiJson('/api/veteran/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trained_chara_id_array: ids })
+                });
+                if (!data || data.success === false) throw new Error((data && data.detail) || 'Remove failed');
+                state.veteranPageSelected.clear();
+                await renderDashboard(data, { keepRoute: true });
+                if (window.location.pathname === '/veteran') navigateVeteranPage(false);
+                if (els.veteranPageStatus) els.veteranPageStatus.textContent = `Removed ${ids.length}; data reloaded`;
+            } catch (e) {
+                if (els.veteranPageStatus) els.veteranPageStatus.textContent = `Error: ${e.message}`;
+            } finally {
+                state.isRemovingVeterans = false;
+                syncVeteranRemoveButton();
+            }
         }
         function renderParents(parents) {
             const nameQ = (state.parentNameFilter || '').toLowerCase().trim();
@@ -2682,14 +2981,23 @@ const els = {
                     <div class="sparks-tooltip" style="--spark-bg: url('/api/images/${imgId}.png')">
                         <div class="sparks-tooltip-title"></div>
                         <div class="sparks-tooltip-scroll">
+                            <div class="vet-tooltip-section">
+                                <div class="vet-tooltip-label">STATS</div>
+                                <div class="vet-stat-row vet-stat-row-tooltip">${renderParentStats(parent)}</div>
+                            </div>
+                            <div class="vet-tooltip-section">
+                                <div class="vet-tooltip-label">SKILLS</div>
+                                <div class="vet-skill-list">${renderParentSkillList(parent, 40)}</div>
+                            </div>
                             <div class="sparks-lineage-grid">
                                 ${renderParentSparks(parent, imgId)}
                             </div>
                         </div>
                     </div>
-                    <div class="grid-card-overlay">
-                        <span class="grid-card-kicker">ID: ${parent.instance_id || '?'}</span>
-                        <span class="grid-card-name">${parent.name || 'Unknown'}</span>
+                    <div class="grid-card-overlay parent-card-overlay">
+                        <span class="grid-card-kicker">ID: ${escapeHtml(parent.instance_id || '?')} · ${escapeHtml(parent.rank_score || 0)}</span>
+                        <span class="grid-card-name">${escapeHtml(parent.name || 'Unknown')}</span>
+                        ${renderParentDetail(parent)}
                     </div>
                 </div>`;
             }).join('');
@@ -2740,13 +3048,36 @@ const els = {
         }
         function showDashboardView(data) {
             document.body.classList.add('dashboard-mode');
+            document.body.classList.remove('veteran-mode');
             els.loginView.style.display = 'none';
             els.dashboardView.style.display = '';
             els.dashboardView.classList.add('active');
+            if (els.veteranView) els.veteranView.style.display = 'none';
             els.logoutBtn.style.display = 'block';
+            if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'block';
+            if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'block';
             showNavbar();
             renderAccountStrip(data.account);
             syncDashboardHeight();
+        }
+        function navigateVeteranPage(push = true) {
+            if (!dashData) return;
+            if (push) window.history.pushState({}, '', '/veteran');
+            els.loginView.style.display = 'none';
+            els.dashboardView.style.display = 'none';
+            els.dashboardView.classList.remove('active');
+            if (els.veteranView) els.veteranView.style.display = 'block';
+            document.body.classList.add('dashboard-mode');
+            document.body.classList.add('veteran-mode');
+            showNavbar();
+            renderVeteranPage();
+        }
+        function navigateDashboardPage(push = true) {
+            if (!dashData) return;
+            if (push) window.history.pushState({}, '', '/');
+            closeVeteranDetail();
+            showDashboardView(dashData);
+            renderVeteranPage();
         }
 
         function autoLoadCareerSelection() {
@@ -2880,10 +3211,22 @@ const els = {
             dashData.validDecks = data.decks.filter(isValidDeck);
             dashData.friends = data.friends || [];
             dashData.friendExcludeIds = data.friendExcludeIds || [];
-            showDashboardView(data);
+            if (options.keepRoute && window.location.pathname === '/veteran') {
+                els.loginView.style.display = 'none';
+                els.dashboardView.style.display = 'none';
+                if (els.veteranView) els.veteranView.style.display = 'block';
+                document.body.classList.add('veteran-mode');
+                els.logoutBtn.style.display = 'block';
+                if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'block';
+                if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'block';
+                showNavbar();
+            } else {
+                showDashboardView(data);
+            }
             renderCounts(data);
             renderDecks(dashData.validDecks);
             renderParents(data.parents);
+            renderVeteranPage();
             renderTrainees(dashData.umas);
             renderSupports(data.supports);
             resetSelection();
@@ -2933,7 +3276,10 @@ const els = {
             async function restoreSession() {
             try {
                 const data = await apiJson('/api/session?t=' + Date.now());
-                if (data && data.success) await renderDashboard(data, { animateIntro: true, waitForIntro: false });
+                if (data && data.success) {
+                    await renderDashboard(data, { animateIntro: true, waitForIntro: false, keepRoute: window.location.pathname === '/veteran' });
+                    if (window.location.pathname === '/veteran') navigateVeteranPage(false);
+                }
                 else {
                     hideNavbar();
                     setLoadingScreen(false);
@@ -2943,6 +3289,37 @@ const els = {
                 setLoadingScreen(false);
             }
         }
+        els.veteranNavBtn?.addEventListener('click', navigateVeteranPage);
+        els.dashboardNavBtn?.addEventListener('click', navigateDashboardPage);
+        els.veteranPageSearch?.addEventListener('input', () => {
+            state.veteranPageQuery = els.veteranPageSearch.value || '';
+            renderVeteranPage();
+        });
+        els.veteranSortSelect?.addEventListener('change', () => {
+            state.veteranSort = els.veteranSortSelect.value || 'date_desc';
+            renderVeteranPage();
+        });
+        els.veteranSelectAllBtn?.addEventListener('click', () => {
+            getFilteredVeteranPageParents().forEach(p => {
+                const id = Number(p.instance_id || 0);
+                if (id) state.veteranPageSelected.add(id);
+            });
+            renderVeteranPage();
+        });
+        els.veteranClearBtn?.addEventListener('click', () => {
+            state.veteranPageSelected.clear();
+            renderVeteranPage();
+        });
+        els.veteranRemoveBtn?.addEventListener('click', removeSelectedVeterans);
+        els.veteranDetailClose?.addEventListener('click', closeVeteranDetail);
+        els.veteranDetailBackdrop?.addEventListener('click', closeVeteranDetail);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeVeteranDetail();
+        });
+        window.addEventListener('popstate', () => {
+            if (window.location.pathname === '/veteran') navigateVeteranPage(false);
+            else navigateDashboardPage(false);
+        });
         bindDelayControls();
         bindMasterDataControls();
         setLoadingScreen(true);

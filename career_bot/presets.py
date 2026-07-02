@@ -155,6 +155,7 @@ def serialize_preset(raw):
     serialized["learn_skill_blacklist"] = list(dict.fromkeys(blacklist))
 
     serialized["extra_race_list"] = normalize_race_list(data.get("extra_race_list", data.get("race_list", [])))
+    serialized["mandatory_race_list"] = normalize_race_list(data.get("mandatory_race_list", []))
     serialized["learn_skill_threshold"] = as_int(data.get("learn_skill_threshold"), 888)
 
     if data.get("trackblazer"):
@@ -177,6 +178,7 @@ def serialize_preset(raw):
     # PAL recreation settings
     serialized["prioritize_recreation"] = bool(data.get("prioritize_recreation"))
     serialized["pal_recreation_required"] = bool(data.get("pal_recreation_required"))
+    serialized["parent_run"] = bool(data.get("parent_run"))
     serialized["pal_thresholds"] = data.get("pal_thresholds") or []
     serialized["pal_friendship_score"] = data.get("pal_friendship_score") or [0.08, 0.057, 0.018]
     serialized["pal_card_multiplier"] = float(data.get("pal_card_multiplier") or 0.1)

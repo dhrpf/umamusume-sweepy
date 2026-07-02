@@ -19,6 +19,7 @@ from career_bot.items import MantItemManager, ITEM_NAMES, SHOP_ITEM_COSTS, DISPL
 
 from career_bot.report import new_report, add_event, add_api_call, add_decision, finish_report, write_report, set_error
 from career_bot.delay import dna_sleep, dna_gauss
+from uma_api.client import StateRecoveryError
 
 
 STRATEGIES = {
@@ -112,6 +113,7 @@ class CareerRunner:
             self.stop_requested = False
             self.burn_clocks = burn_clocks
             self.dev_mode = dev_mode
+            self._exhausted_events = set()
             self.race_planner = RacePlanner(self.base_dir)
             self.skill_buyer = SkillBuyer(self.base_dir)
             self.item_manager = MantItemManager()
@@ -214,7 +216,16 @@ class CareerRunner:
                         break
                 
                 self._debug_turn(state, preset)
-                decision = strategy.next_decision(state, preset)
+                try:
+                    decision = strategy.next_decision(state, preset)
+                except StateRecoveryError as exc:
+                    self._log("strategy_recover", turn, f"next_decision reload: {exc}")
+                    state = self._fresh_career_state(client, strategy)
+                    data = state.get("data") or {}
+                    chara = data.get("chara_info") or {}
+                    turn = int(chara.get("turn") or 0)
+                    last_turn = turn
+                    continue
 
                 
                 if self.report:
@@ -230,7 +241,16 @@ class CareerRunner:
                     data = state.get("data") or {}
                     chara = data.get("chara_info") or {}
                     self._mark(turn=chara.get("turn", turn))
-                    decision = strategy.next_decision(state, preset)
+                    try:
+                        decision = strategy.next_decision(state, preset)
+                    except StateRecoveryError as exc:
+                        self._log("strategy_recover", turn, f"next_decision reload: {exc}")
+                        state = self._fresh_career_state(client, strategy)
+                        data = state.get("data") or {}
+                        chara = data.get("chara_info") or {}
+                        turn = int(chara.get("turn") or 0)
+                        last_turn = turn
+                        continue
 
                     if self.report:
                         add_decision(self.report, state, decision)
@@ -252,12 +272,24 @@ class CareerRunner:
                         if "Network error" in str(exc) or "201" in str(exc) or "205" in str(exc) or "208" in str(exc):
                             state = self._fresh_career_state(client, strategy)
                             continue
+                        if "API error 217" in str(exc):
+                            state = self._handle_event_217(client, strategy, decision.payload, exc)
+                            if state is None:
+                                # Event is unresolvable server-side; abort career loop
+                                turn = decision.payload.get("current_turn", 0)
+                                self.status["last_error"] = f"event {decision.payload.get('event_id')} exhausted at turn {turn}; aborting"
+                                self._log("recover", turn, self.status["last_error"])
+                                self._mark(turn=turn, last_action="unresolvable_event")
+                                return
+                            continue
                         raise
                 elif decision.action == "command":
                     cmd_payload = dict(decision.payload)
                     self._log("command_exec", cmd_payload.get("current_turn", "?"), 
                               f"type={cmd_payload.get('command_type')} id={cmd_payload.get('command_id')} grp={cmd_payload.get('command_group_id')} sel={cmd_payload.get('select_id')}")
                     self._record_action(decision, chara)
+                    cmd_payload.pop("decision_detail", None)
+                    cmd_payload.pop("decision_options", None)
                     try:
                         state = client.exec_command(**cmd_payload)
                         data = state.get("data") or {}
@@ -309,13 +341,13 @@ class CareerRunner:
                         print(f"SP still high ({chara.get('skill_point')}), retrying final purchase...")
                         state = self._buy_skills(client, state, preset, True)
 
-                    # Retry finish_career on 205/208 (server busy/locked)
+                    # Retry finish_career on 205/208 (server busy/locked); reconcile stale 217.
                     for _retry in range(5):
                         try:
                             state = client.finish_career(current_turn=decision.payload["current_turn"], is_force_delete=False)
                             break
                         except Exception as e:
-                            if any(err in str(e) for err in ("102", "201", "StateRecoveryError")):
+                            if any(err in str(e) for err in ("102", "201", "217", "StateRecoveryError")):
                                 self._log("finish_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
                                 break
                             if any(err in str(e) for err in ("205", "208")):
@@ -780,6 +812,8 @@ class CareerRunner:
         return client.check_event(**data)
 
     def _drain_events(self, client, strategy, state, limit=20):
+        if not hasattr(self, "_exhausted_events"):
+            self._exhausted_events = set()
         current = state
         for _ in range(limit):
             data = current.get("data") or {}
@@ -793,8 +827,59 @@ class CareerRunner:
             payload = {"event_id": event.get("event_id"), "chara_id": event.get("chara_id", 0), "choice_number": choice, "current_turn": turn}
             if choice is None:
                 payload = {"event_id": event.get("event_id"), "_event": event, "_current_turn": turn}
-            current = self._event(client, strategy, payload)
+            try:
+                current = self._event(client, strategy, payload)
+            except Exception as exc:
+                if "API error 217" not in str(exc):
+                    raise
+                choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
+                if len(choices) > 1:
+                    sent = payload.get("choice_number")
+                    for alt in sorted({c.get("gain_select_id_index", c.get("select_index", 0)) for c in choices}):
+                        if alt == sent:
+                            continue
+                        self._log("event_choice_retry", turn, f"{event.get('event_id')} {sent} -> {alt} after 217")
+                        try:
+                            current = client.check_event(
+                                event_id=event.get("event_id"),
+                                chara_id=event.get("chara_id", 0),
+                                choice_number=alt,
+                                current_turn=turn,
+                            )
+                            break
+                        except Exception as retry_exc:
+                            if "API error 217" not in str(retry_exc) and "API error 205" not in str(retry_exc):
+                                raise
+                    else:
+                        ev_key = (event.get("event_id"), turn)
+                        if ev_key in self._exhausted_events:
+                            self._log("recover", turn, f"check_event exhausted all choices for ev={event.get('event_id')} turn={turn}; stop reload loop")
+                            return current
+                        self._exhausted_events.add(ev_key)
+                        self._log("recover", turn, "check_event 217 on all choices; refreshing career state")
+                        return self._fresh_career_state(client, strategy)
+                else:
+                    self._log("recover", turn, "check_event returned 217; refreshing career state")
+                    return self._fresh_career_state(client, strategy)
         return current
+
+    def _handle_event_217(self, client, strategy, payload, exc):
+        """Handle API error 217 from check_event in main _run loop."""
+        event_id = payload.get("event_id")
+        turn = payload.get("current_turn", self.status.get("turn", 0))
+        ev_key = (event_id, turn)
+
+        if ev_key in self._exhausted_events:
+            self._log("recover", turn, f"check_event exhausted ev={event_id} turn={turn}; unresolvable, abort loop")
+            return None
+
+        self._exhausted_events.add(ev_key)
+        self._log("recover", turn, f"check_event 217 on ev={event_id}; refreshing career state")
+        try:
+            return self._fresh_career_state(client, strategy)
+        except RuntimeError:
+            # refresh itself exhausted retries; abort cleanly instead of propagate-crash
+            return None
 
     def _get_clocks_left(self, root, max_clocks=5):
         data = root.get("data") or {}
@@ -1095,7 +1180,7 @@ class CareerRunner:
             try:
                 return client.race_out(current_turn=current_turn)
             except Exception as e:
-                if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
+                if any(err in str(e) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
                     self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
                     # Reload to see if career is actually finished or still has more steps
                     fresh = self._reload_after_reconcile(client, payload, current_turn)
@@ -1117,7 +1202,7 @@ class CareerRunner:
             try:
                 return client.race_out(current_turn=current_turn)
             except Exception as e:
-                if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
+                if any(err in str(e) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
                     self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
                     # Reload to see if career is actually finished or still has more steps
                     fresh = self._reload_after_reconcile(client, payload, current_turn)
@@ -1194,7 +1279,7 @@ class CareerRunner:
         try:
             return client.race_out(current_turn=current_turn)
         except Exception as e:
-            if any(err in str(e) for err in ("102", "1503", "201", "StateRecoveryError")):
+            if any(err in str(e) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
                 self._log("race_out_reconciled", current_turn, f"graceful exit: {e}")
                 return self._reload_after_reconcile(client, payload, current_turn)
             raise

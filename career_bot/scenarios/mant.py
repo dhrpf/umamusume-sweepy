@@ -26,6 +26,7 @@ BAD_EFFECT_NAMES = {
     4: "Slow Metabolism",
     5: "Migraine",
     6: "Practice Poor",
+    19: "Not Ready",
 }
 
 
@@ -506,4 +507,7 @@ class MantStrategy(ScenarioStrategy):
     def choose_from_event(self, event, current_turn):
         if self.event_manager:
             return self.event_manager.choose(event)
+        choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
+        if choices:
+            return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
         return 1

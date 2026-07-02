@@ -3570,6 +3570,12 @@
       "turn": 37,
       "name": "Japan Dirt Derby"
     },
+    "101105": {
+      "program_id": 1105,
+      "race_instance_id": 904197,
+      "turn": 12,
+      "name": "Junior Make Debut"
+    },
     "2001": {
       "program_id": 676,
       "race_instance_id": 901110,
@@ -9824,6 +9830,14 @@
       "ground": 2,
       "distance": 2000
     },
+    "1105": {
+      "race_instance_id": 904197,
+      "month": 6,
+      "half": 2,
+      "name": "Junior Make Debut",
+      "ground": 1,
+      "distance": 1200
+    },
     "2001": {
       "race_instance_id": 910001,
       "month": 1,
@@ -13245,6 +13259,9 @@
     ],
     "904196": [
       1103
+    ],
+    "904197": [
+      1105
     ],
     "910001": [
       2001

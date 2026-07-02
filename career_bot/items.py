@@ -96,6 +96,7 @@ BAD_EFFECT_NAMES = {
     4: "Slow Metabolism",
     5: "Migraine",
     6: "Practice Poor",
+    19: "Not Ready",
 }
 
 AILMENT_CURE_ALL = "Miracle Cure"

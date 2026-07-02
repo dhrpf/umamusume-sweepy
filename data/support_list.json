@@ -1128,5 +1128,20 @@
     "name": "Air Groove",
     "rarity": "SSR",
     "type": "Power"
+  },
+  "30107": {
+    "name": "Maruzensky",
+    "rarity": "SSR",
+    "type": "Speed"
+  },
+  "30108": {
+    "name": "Nakayama Festa",
+    "rarity": "SSR",
+    "type": "Wisdom"
+  },
+  "30109": {
+    "name": "Sakura Chiyono O",
+    "rarity": "SSR",
+    "type": "Guts"
   }
 }

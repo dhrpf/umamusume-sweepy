@@ -76,3 +76,95 @@ The server runs at `http://127.0.0.1:1616` (override with `PORT` env var).
 - `master.mdb` is auto-detected at the Proton compatdata path for app 3224770.
 - `launch_game()` uses `xdg-open steam://rungameid/3224770` on Linux.
 - Game process appears in `frida-ps` as the full Windows path `S:\common\UmamusumePrettyDerby\UmamusumePrettyDerby.exe` — the attach code matches by substring.
+
+## Analyzing Career Runs
+
+Career logs live at `uma_runtime/<account>/bot_logs/career_log_<timestamp>.json`. They are large (10-15MB+, 400K+ lines) — never read raw.
+
+**Quick analysis:** Run `python3 scripts/analyze_career_log.py <path-to-log.json>` for a full formatted report (stats, races, training distribution, failures, progression, skills). Find the latest log with `ls -t uma_runtime/*/bot_logs/career_log_*.json | head -1`.
+
+For custom analysis beyond the script, use `execute_code` with Python `json.load()`.
+
+### Log Structure
+
+```
+{
+  "started_at", "ended_at", "preset_name", "scenario_id",
+  "status": "finished"|"error",
+  "error": null | string,
+  "final_turn": 60,
+  "turns": [{ "turn": N, "api_calls": [...] }]
+}
+```
+
+Each `api_calls` entry: `{ ts, direction: "REQ"|"RES", endpoint, data, turn }`.
+
+### Key Endpoints Per Turn
+
+| Endpoint | Direction | Contains |
+|---|---|---|
+| `single_mode/check_event` | RES | `data.chara_info` (stats/vital/motivation/turn), `data.home_info.command_info_array` (training options), `data.unchecked_event_array` (pending events) |
+| `single_mode/exec_command` | REQ | `payload.command_type` (1=SPD 2=STA 3=POW 4=GUT 5=INT 7=REST 8=OUTING), `payload.command_id` |
+| `single_mode/exec_command` | RES | Post-training `chara_info`, triggered events |
+| `single_mode/race_entry` | REQ | Race entered (no program_id in payload for URA) |
+| `single_mode/race_start` | RES | `data.race_start_info.program_id` |
+| `single_mode/race_end` | RES | `data.race_history[].{program_id, result_rank}`, `data.race_reward_info.{result_rank, gained_fans}` |
+| `single_mode/gain_skills` | REQ | `payload.skill_id_array` (empty = no skills bought) |
+| `single_mode/finish` | REQ | Career end |
+
+### chara_info Fields
+
+Stats: `speed`, `stamina`, `power`, `wiz` (=INT), `guts`, `vital`, `max_vital`.
+State: `motivation` (1=最悪 2=悪い 3=普通 4=好調 5=絶好調), `turn`, `fans`, `state`, `playing_state`.
+Aptitudes: `proper_ground_turf/dirt`, `proper_running_style_*`, `proper_distance_*`.
+Skills: `skill_array[].{skill_id, level}` — level>0 means learned.
+
+### command_info_array (Training Options)
+
+Each entry in `home_info.command_info_array`:
+```
+{
+  "command_type": 1,        // 1=training, 7=rest, 8=outing
+  "command_id": 101,        // 101-106=normal, 601-605=summer camp
+  "failure_rate": 31,       // game's ACTUAL failure % (0-99)
+  "is_enable": 1,
+  "training_partner_array": [1, 3],
+  "params_inc_dec_info_array": [
+    {"target_type": 1, "value": 40},  // 1=SPD 2=STA 3=POW 4=GUT 5=INT 10=VIT 30=skillpt
+    ...
+  ],
+  "level": 5
+}
+```
+
+Bot-injected fields (not from game): `_label`, `_decision_detail`, `_decision_options`.
+- `_decision_detail.failure_rate` — bot's INTERNAL failure_rate (may differ from game's due to bugs)
+- `_decision_options` — all scored options sorted by score, with `reasons[]`
+
+### Summer Camp
+
+Camp cmd_ids: 601-605 (SPD/STA/POW/GUT/INT). Camp turns defined in scenario code as `SUMMER_CAMP_TURNS`.
+
+### Analysis Checklist (use execute_code for all)
+
+1. **Header**: preset, scenario, status, error, duration, final_turn
+2. **Final stats**: last turn's chara_info → SPD/STA/POW/INT/GUT total, fans, skills learned
+3. **Training distribution**: count command_types from exec_command REQs → SPD/STA/POW/GUT/INT/REST/OUTING
+4. **Race results**: race_end RES → `race_history[0].{program_id, result_rank}`, `race_reward_info.gained_fans`. Cross-ref program_id with `data/race_map.json` (keyed under `meta` dict, lookup by program_id value)
+5. **Skill purchases**: gain_skills REQ → `skill_id_array` (empty = nothing bought)
+6. **Motivation tracking**: track `motivation` changes across turns
+7. **Failure rate analysis**: compare `command_info_array[].failure_rate` (game) vs `_decision_detail.failure_rate` (bot) for the chosen command. Training failure = stats barely change or drop + event 1007
+8. **Vitality management**: track vital across turns, flag when training at high failure_rate
+9. **Big stat jumps**: diff stats between consecutive turns, flag gains ≥40 (scenario bonuses, good training)
+
+### Detecting Training Failures
+
+A training failure shows as: stats don't increase (or drop slightly), event_id 1007 fires in exec_command RES. Compare pre/post stats. Gains ≤5 with a training action = likely failure.
+
+### Important: Turn Boundaries & Decision State
+
+The bot's decision for turn N may be made from the PREVIOUS turn's last `check_event` RES — after all events resolve, `chara_info.turn` advances and the state carries over. Multiple `check_event` calls per turn = events being processed sequentially. The exec_command is sent after the last event resolves. To find the ACTUAL state used for the decision, look at the last `check_event` RES with `unchecked_event_array=[]` and `command_info_array` present before the `exec_command` REQ — this may be in the previous turn's api_calls array.
+
+### Known Bug: failure_rate Key Mismatch
+
+In `career_bot/scenarios/ura.py` line 609: bot reads `cmd.get("fail_percent")` but game sends `"failure_rate"` → bot always sees 0% failure. The early rest-gate at line 287 reads `"failure_rate"` correctly but only triggers when ALL training options have ≥30% fail (Wit training at low VIT often has <30%, so the gate doesn't fire).

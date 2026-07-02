@@ -1,6 +1,7 @@
 """URA Finale scenario strategy — guide-informed training selection."""
 
 from career_bot.scenarios.base import ScenarioStrategy, Decision
+from uma_api.client import StateRecoveryError
 
 TRAINING_COMMANDS = {
     101: ("Speed", 0),
@@ -19,10 +20,16 @@ TRAINING_COMMANDS = {
 # Energy cost per training: Wit=0, Speed=1, Stamina=1, Power=1, Guts=2
 TRAINING_ENERGY = {101: 1, 102: 1, 103: 1, 105: 2, 106: 0}
 
-SUMMER_CAMP_TURNS = {(20, 23), (44, 47)}
+SUMMER_CAMP_TURNS = {(37, 40), (61, 64)}
 
 # Training levels up after 4 uses
 TRAINING_LEVEL_UP = 4
+
+# URA clear-biased floors: stop over-clicking Wit, patch low Power/Stamina.
+URA_STAT_TARGETS = [900, 450, 650, 250, 650]
+URA_STAT_WEIGHTS = [1.2, 1.4, 1.6, 0.1, 1.0]
+URA_STAT_OVER_WEIGHTS = [0.3, 0.4, 0.5, 0.05, 0.2]
+MIN_TRAIN_GAIN = 25
 
 # Orange bond threshold
 ORANGE_BOND = 50
@@ -32,6 +39,15 @@ TYPE_TO_IDX = {
     "Speed": 0, "Stamina": 1, "Power": 2, "Guts": 3, "Wisdom": 4,
 }
 IDX_TO_TYPE = {0: "Speed", 1: "Stamina", 2: "Power", 3: "Guts", 4: "Wit"}
+BAD_EFFECT_NAMES = {
+    1: "Night Owl",
+    2: "Slacker",
+    3: "Skin Outbreak",
+    4: "Slow Metabolism",
+    5: "Migraine",
+    6: "Practice Poor",
+    19: "Not Ready",
+}
 
 # Load support card type map (card_id → type string)
 _SUPPORT_MAP = None
@@ -86,7 +102,7 @@ class UraStrategy(ScenarioStrategy):
 
         # Empty chara_info → career already ended server-side
         if not chara or not chara.get("turn"):
-            return Decision("finish", {"current_turn": 0}, "no chara_info")
+            raise StateRecoveryError("strategy saw empty chara_info; force reload before deciding")
 
         if "single_mode_finish_common" in data:
             return Decision("finish", {"current_turn": turn}, "finished")
@@ -155,11 +171,36 @@ class UraStrategy(ScenarioStrategy):
                     {"program_id": fp, "current_turn": turn, "_strategy": self},
                     self.race_planner.label(fp) or f"forced {fp}",
                 )
+            mandatory = self.race_planner.mandatory_available(state, preset) if hasattr(self.race_planner, "mandatory_available") else []
+            if mandatory:
+                pid = mandatory[0]
+                return Decision(
+                    "race",
+                    {"program_id": pid, "current_turn": turn, "_strategy": self},
+                    self.race_planner.label(pid) or f"mandatory {pid}",
+                )
+            wanted = self.race_planner.wanted_available(state, preset) if hasattr(self.race_planner, "wanted_available") else []
+            if wanted:
+                best_training_gain = self._best_training_gain(commands)
+                if not preset.get("parent_run") or best_training_gain <= 30:
+                    pid = wanted[0]
+                    return Decision(
+                        "race",
+                        {"program_id": pid, "current_turn": turn, "_strategy": self},
+                        self.race_planner.label(pid) or f"optional {pid}",
+                    )
 
         # --- Skip self-selected races if target race is imminent ---
         # (forced_program above still runs — game forcing a race is fine)
         turns_until_target = self._turns_until_next_forced(data, turn)
         skip_optional = turns_until_target is not None and turns_until_target <= 1
+        vital_now = int(chara.get("vital", 100))
+        in_camp_now = any(s <= turn <= e for s, e in SUMMER_CAMP_TURNS)
+        pre_camp_now = turn in {35, 36, 59, 60}
+        if vital_now < 40 or in_camp_now or pre_camp_now:
+            skip_optional = True
+        if preset.get("parent_run") and self._best_training_gain(commands) > 30:
+            skip_optional = True
 
         if not skip_optional:
             # --- Optional race ---
@@ -182,42 +223,49 @@ class UraStrategy(ScenarioStrategy):
                     f"alt race {alt_pid}",
                 )
 
-        # --- Vital/mood check ---
+        # --- Vital/mood/status checks ---
+        in_camp = any(s <= turn <= e for s, e in SUMMER_CAMP_TURNS)
+        pre_camp_turn = turn in {35, 36, 59, 60}
         vital = int(chara.get("vital", 100))
         motivation = int(chara.get("motivation", 5))
         max_vital = int(chara.get("max_vital", 100))
         vital_pct = vital / max_vital if max_vital > 0 else 1.0
+        turns_until_next_forced = self._turns_until_next_forced(data, turn)
 
-        # Forced rest: <20% vital, or low mood + low vital
-        force_rest = vital_pct < 0.20 or vital < 20
-        if not force_rest and motivation <= 2 and vital_pct < 0.50:
+        medic_cmd = self._find_medic(commands)
+        bad_statuses = self._bad_statuses(chara)
+        if medic_cmd and bad_statuses:
+            return self._command_decision(medic_cmd, turn, vital, f"medic ({', '.join(bad_statuses)})")
+
+        rec_cmd = self._find_recreation(commands)
+        rest_cmd = self._find_rest(commands)
+
+        # ponytail: hard camp safety rails; upgrade to EV sim once logs need nuance.
+        if pre_camp_turn and vital < 60 and rest_cmd:
+            return self._command_decision(rest_cmd, turn, vital, f"pre-camp rest (vital={vital}/{max_vital})")
+        if in_camp and vital <= 0 and (bad_statuses or motivation <= 2):
+            if rec_cmd:
+                return self._command_decision(rec_cmd, turn, vital, f"camp recovery recreation (mood={motivation})")
+            if rest_cmd:
+                return self._command_decision(rest_cmd, turn, vital, f"camp recovery rest (vital={vital}/{max_vital} mood={motivation})")
+        if motivation <= 2 and not in_camp and (turns_until_next_forced is None or turns_until_next_forced > 1) and rec_cmd:
+            return self._command_decision(rec_cmd, turn, vital, f"recreation low mood={motivation}")
+
+        # Forced rest: <30% vital, or low mood + low vital; camp tolerates lower risk.
+        force_rest = ((vital_pct < 0.30 or vital < 30) and not in_camp) or (bad_statuses and vital < 40 and not in_camp)
+        if not force_rest and motivation <= 2 and vital_pct < 0.50 and not in_camp:
             force_rest = True
 
-        if force_rest:
-            rest_cmd = self._find_rest(commands)
-            if rest_cmd:
-                return Decision(
-                    "command",
-                    {
-                        "command_type": int(rest_cmd["command_type"]),
-                        "command_id": int(rest_cmd.get("command_id", 1)),
-                        "command_group_id": int(rest_cmd.get("command_group_id", 0)),
-                        "select_id": 0,
-                        "current_turn": turn,
-                        "current_vital": vital,
-                    },
-                    f"rest (vital={vital}/{max_vital} mood={motivation})",
-                )
+        if force_rest and rest_cmd:
+            return self._command_decision(rest_cmd, turn, vital, f"rest (vital={vital}/{max_vital} mood={motivation})")
 
         # --- Mood recovery (recreation/date) ---
         # Guide: date worth it if you'll have 6+ training turns after,
         # and especially valuable if mood is neutral (2-step potential).
         # Skip if close to forced races (uses those turns instead of training).
-        turns_until_next_forced = self._turns_until_next_forced(data, turn)
         date_worthwhile = turns_until_next_forced is None or turns_until_next_forced >= 6
 
         # Guide: summer camp auto-raises mood from rest, skip date near camp
-        in_camp = any(s <= turn <= e for s, e in SUMMER_CAMP_TURNS)
         pre_camp = any(turn >= s - 5 and turn < s for s, e in SUMMER_CAMP_TURNS)
 
         should_date = (
@@ -227,24 +275,11 @@ class UraStrategy(ScenarioStrategy):
             and not in_camp
             and turn <= 60
         )
-        if should_date:
-            rec_cmd = self._find_recreation(commands)
-            if rec_cmd:
-                import os
-                if os.environ.get("SWEEPY_DEBUG"):
-                    print(f"[recreation] found type={rec_cmd.get('command_type')} id={rec_cmd.get('command_id')} is_enable={rec_cmd.get('is_enable')}", flush=True)
-                return Decision(
-                    "command",
-                    {
-                        "command_type": int(rec_cmd["command_type"]),
-                        "command_id": 0,
-                        "command_group_id": int(rec_cmd.get("command_id") or rec_cmd.get("command_group_id", 301)),
-                        "select_id": 0,
-                        "current_turn": turn,
-                        "current_vital": vital,
-                    },
-                    f"recreation (mood={motivation})",
-                )
+        if should_date and rec_cmd:
+            import os
+            if os.environ.get("SWEEPY_DEBUG"):
+                print(f"[recreation] found type={rec_cmd.get('command_type')} id={rec_cmd.get('command_id')} is_enable={rec_cmd.get('is_enable')}", flush=True)
+            return self._command_decision(rec_cmd, turn, vital, f"recreation (mood={motivation})")
 
         # --- Training selection ---
         # Check failure rate: rest if best training is too risky
@@ -283,6 +318,8 @@ class UraStrategy(ScenarioStrategy):
                     "select_id": 0,
                     "current_turn": turn,
                     "current_vital": vital,
+                    "decision_detail": best.get("_decision_detail"),
+                    "decision_options": best.get("_decision_options"),
                 },
                 best.get("_label", "train"),
             )
@@ -320,14 +357,16 @@ class UraStrategy(ScenarioStrategy):
     # Event helpers
     # ------------------------------------------------------------------
     def _choice(self, event):
-        """Pick event choice. Returns None if ambiguous (let user decide)."""
+        """Pick event choice. Returns None if ambiguous (let user decide).
+
+        Server expects gain_select_id_index, not position index."""
         choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
         if not choices:
             return 0
         if len(choices) > 1:
             # Multiple choices — pick the one with stat gains
             return self._choose_from_event(event, 0)
-        return 0
+        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
 
     def _choose_from_event(self, event, current_turn):
         """Pick event choice that gives stat/skill gains."""
@@ -338,8 +377,8 @@ class UraStrategy(ScenarioStrategy):
             effects = choice.get("event_effect_array") or []
             # effect_type 1-5 = speed/stamina/power/guts/wiz, 11 = skill
             if any(e.get("effect_type") in (1, 2, 3, 4, 5, 11) for e in effects):
-                return choice.get("choice_number", choice.get("select_index", 1))
-        return choices[0].get("choice_number", choices[0].get("select_index", 1))
+                return choice.get("gain_select_id_index", choice.get("select_index", 0))
+        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
 
     # ------------------------------------------------------------------
     # Race planning helpers
@@ -468,6 +507,23 @@ class UraStrategy(ScenarioStrategy):
     # Rest / recreation
     # ------------------------------------------------------------------
     @staticmethod
+    def _command_decision(cmd, turn, vital, reason):
+        ct = int(cmd["command_type"])
+        cid = int(cmd.get("command_id", 0))
+        return Decision(
+            "command",
+            {
+                "command_type": ct,
+                "command_id": 0 if ct == 3 else cid,
+                "command_group_id": cid if ct == 3 else int(cmd.get("command_group_id") or 0),
+                "select_id": 0,
+                "current_turn": turn,
+                "current_vital": vital,
+            },
+            reason,
+        )
+
+    @staticmethod
     def _find_rest(commands):
         for cmd in commands:
             ct = int(cmd.get("command_type") or 0)
@@ -483,6 +539,20 @@ class UraStrategy(ScenarioStrategy):
             if ct == 3 and int(cmd.get("is_enable", 1)) == 1:
                 return cmd
         return None
+
+    @staticmethod
+    def _find_medic(commands):
+        for cmd in commands:
+            if int(cmd.get("command_type") or 0) == 8 and int(cmd.get("command_id") or 0) == 801 and int(cmd.get("is_enable", 0)) == 1:
+                return cmd
+        return None
+
+    @staticmethod
+    def _bad_statuses(chara):
+        return [
+            name for effect_id in (chara.get("chara_effect_id_array") or [])
+            if (name := BAD_EFFECT_NAMES.get(int(effect_id)))
+        ]
 
     # ------------------------------------------------------------------
     # Training selection — guide-informed
@@ -502,7 +572,7 @@ class UraStrategy(ScenarioStrategy):
           9. Stat deficit (muted, only as tiebreaker)
          10. Fail chance gating (skip if gain < 2× fail%)
         """
-        priority = preset.get("expect_attribute") or [600, 600, 600, 400, 400]
+        priority = [max(a, b) for a, b in zip(preset.get("expect_attribute") or [0, 0, 0, 0, 0], URA_STAT_TARGETS)]
         bonds = self._bond_map(chara)
 
         # Precompute deck stat distribution
@@ -512,6 +582,7 @@ class UraStrategy(ScenarioStrategy):
         best_score = -1.0
         best_idx = None
         scores_log = []
+        score_details = []
 
         for cmd in commands:
             if int(cmd.get("command_type") or 0) != 1:
@@ -525,6 +596,11 @@ class UraStrategy(ScenarioStrategy):
             idx = TRAINING_COMMANDS[cid][1]
             name = TRAINING_COMMANDS[cid][0]
             gain = self._training_gain(cmd)
+            current = self._current_stat(chara, idx)
+            under_target = current < priority[idx]
+            # ponytail: flat cutoff; upgrade to EV/failure sim once logs prove it matters.
+            if gain < MIN_TRAIN_GAIN and not is_camp and not under_target:
+                continue
             if is_camp:
                 gain *= 5.0
 
@@ -533,17 +609,26 @@ class UraStrategy(ScenarioStrategy):
             level = (uses // TRAINING_LEVEL_UP) + 1
 
             # --- Fail chance gate (guide rule) ---
-            fail_pct = int(cmd.get("fail_percent") or 0)
-            if fail_pct > 0 and gain < fail_pct * 2 and not is_camp:
+            fail_pct = int(cmd.get("failure_rate") or 0)
+            if fail_pct > 0 and gain < fail_pct * 2:
                 continue  # rest would be strictly better
 
+            reasons = []
+
             # --- Base: stat gain × level bonus ---
-            score = float(gain) * (1.0 + (level - 1) * 0.15)
+            level_bonus = float(gain) * (1.0 + (level - 1) * 0.15)
+            score = level_bonus
+            reasons.append(f"value +{gain:.0f} stats")
+            if level > 1:
+                reasons.append(f"level Lv{level} bonus")
 
             # --- Partner count ---
             partners = cmd.get("training_partner_array") or []
             partner_count = len(partners)
-            score += partner_count * 10
+            partner_bonus = partner_count * 10
+            score += partner_bonus
+            if partner_count:
+                reasons.append(f"friendship stack {partner_count} partners")
 
             # --- Non-orange bond bonus (guide: +1 per non-orange bonded card) ---
             partner_ids = [
@@ -551,57 +636,88 @@ class UraStrategy(ScenarioStrategy):
                 for p in partners
             ]
             non_orange = sum(1 for pid in partner_ids if bonds.get(pid, 0) < ORANGE_BOND)
-            score += non_orange * 8
+            bond_bonus = non_orange * 8
+            score += bond_bonus
+            if non_orange:
+                reasons.append(f"bonding {non_orange} below orange")
 
             # --- Deck composition: prefer trainings matching your deck ---
             total_deck = sum(deck_type_counts.values()) or 1
             type_pct = deck_type_counts.get(idx, 0) / total_deck
-            score += type_pct * 25  # up to +25 for primary stat
+            deck_bonus = type_pct * 25
+            score += deck_bonus  # up to +25 for primary stat
+            if deck_bonus:
+                reasons.append(f"deck match +{deck_bonus:.1f}")
 
             # --- Wit bonus (0 energy) / Guts penalty (2× energy) ---
             energy_cost = TRAINING_ENERGY.get(cid, 1)
             if energy_cost == 0:
                 score += 20  # Wit: free training
+                reasons.append("free Wit/energy")
             elif energy_cost >= 2:
                 score -= 10  # Guts: double cost
+                reasons.append("Guts energy penalty")
 
             # --- Near level-up ---
             uses_mod = uses % TRAINING_LEVEL_UP
             if uses_mod >= TRAINING_LEVEL_UP - 2:
                 score += 12
+                reasons.append("near facility level-up")
 
             # --- Pre-camp bond building ---
-            if pre_camp:
-                if partners:
-                    avg_bond = sum(bonds.get(pid, 0) for pid in partner_ids) / len(partner_ids)
-                    score += max(0, ORANGE_BOND - avg_bond) * 0.3  # prep for camp
+            if pre_camp and partners:
+                avg_bond = sum(bonds.get(pid, 0) for pid in partner_ids) / len(partner_ids)
+                camp_bond_bonus = max(0, ORANGE_BOND - avg_bond) * 0.3
+                score += camp_bond_bonus  # prep for camp
+                if camp_bond_bonus:
+                    reasons.append(f"pre-camp bond +{camp_bond_bonus:.1f}")
 
-            # --- Stat deficit (muted) ---
-            current = self._current_stat(chara, idx)
+            # --- Stat floors: Power/Stamina before vanity Wit. ---
             target = priority[idx]
-            flip = preset.get("deficit_flip", False)
-            if flip:
-                # Reward over-target stats (build strengths)
-                deficit = max(0, current - target)
-            else:
-                # Reward under-target stats (catch up weaknesses)
-                deficit = max(0, target - current)
+            deficit = max(0, target - current)
+            stat_weight = URA_STAT_WEIGHTS[idx] if deficit else URA_STAT_OVER_WEIGHTS[idx]
+            weighted_gain = gain * stat_weight
+            score += weighted_gain
+            reasons.append(f"{name} target {current}/{target} w={stat_weight}")
             if deficit > 200:
-                score += 20
+                score += 35
+                reasons.append("large stat deficit")
             elif deficit > 100:
-                score += 10
-            # small per-point signal so very low stats still get attention
-            score += deficit * 0.03
+                score += 20
+                reasons.append("stat deficit")
+            deficit_bonus = deficit * 0.08
+            score += deficit_bonus
+            if deficit_bonus:
+                reasons.append(f"deficit +{deficit_bonus:.1f}")
 
-            # --- Fail penalty (score reduction for non-zero fail) ---
-            if fail_pct > 0 and not is_camp:
-                score -= fail_pct * 0.5
+            # --- Fail penalty: EV multiplier (applies in camp too) ---
+            if fail_pct > 0:
+                ev_mult = 1.0 - fail_pct / 100.0
+                pre_ev_score = score
+                score *= ev_mult
+                reasons.append(f"fail {fail_pct}% EV ×{ev_mult:.2f} ({pre_ev_score:.0f}→{score:.0f})")
 
+            detail = {
+                "command_id": cid,
+                "name": name,
+                "gain": round(gain, 1),
+                "score": round(score, 1),
+                "level": level,
+                "partners": partner_count,
+                "non_orange": non_orange,
+                "current": current,
+                "target": target,
+                "deficit": deficit,
+                "failure_rate": fail_pct,
+                "reasons": reasons,
+            }
+            score_details.append(detail)
             scores_log.append((name, gain, score, level, partner_count, cid))
 
             if score > best_score:
                 best_score = score
-                cmd["_label"] = f"{name} +{gain:.0f} Lv{level}"
+                cmd["_label"] = f"{name} +{gain:.0f} sc={score:.1f}: " + "; ".join(reasons[:4])
+                cmd["_decision_detail"] = detail
                 best = cmd
                 best_idx = cid
 
@@ -616,6 +732,8 @@ class UraStrategy(ScenarioStrategy):
             if os.environ.get("SWEEPY_DEBUG"):
                 print(f"[URA_train] turn={turn} {top3}", flush=True)
 
+        if best:
+            best["_decision_options"] = sorted(score_details, key=lambda row: -row["score"])[:5]
         return best, best_idx
 
     def _deck_type_counts(self, chara):
@@ -633,6 +751,14 @@ class UraStrategy(ScenarioStrategy):
     # ------------------------------------------------------------------
     # Training gain / stat helpers
     # ------------------------------------------------------------------
+    def _best_training_gain(self, commands):
+        gains = [
+            self._training_gain(cmd)
+            for cmd in commands
+            if int(cmd.get("command_type") or 0) == 1 and int(cmd.get("command_id") or 0) in TRAINING_COMMANDS
+        ]
+        return max(gains) if gains else 0
+
     @staticmethod
     def _training_gain(cmd):
         # URA commands use params_inc_dec_info_array instead of effect_array
