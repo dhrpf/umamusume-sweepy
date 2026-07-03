@@ -295,9 +295,11 @@ class CareerRunner:
                         data = state.get("data") or {}
                         if data.get("unchecked_event_array"):
                             state = self._drain_events(client, strategy, state)
+                    except StateRecoveryError:
+                        raise
                     except Exception as exc:
                         err_str = str(exc)
-                        transient_codes = ("Network error", "201", "205", "208", "213", "214", "217", "709", "1055", "1503", "StateRecoveryError")
+                        transient_codes = ("Network error", "201", "205", "208", "213", "214", "217", "709", "1055", "1503")
                         if any(code in err_str for code in transient_codes):
                             if os.environ.get('SWEEPY_DEBUG'):
                                 print(f"[cmd_payload] {json.dumps({k: v for k, v in cmd_payload.items() if k not in ('viewer_id', 'device', 'device_id', 'device_name', 'graphics_device_name', 'ip_address', 'platform_os_version', 'carrier', 'keychain', 'locale', 'button_info', 'dmm_viewer_id', 'dmm_onetime_token', 'steam_id', 'steam_session_ticket')})}", flush=True)
@@ -798,6 +800,8 @@ class CareerRunner:
                 self.skill_buyer.reset_scoped_failures()
                 self.item_manager.reset_scoped_failures()
                 return state
+            except StateRecoveryError:
+                raise
             except Exception as exc:
                 err_str = str(exc)
                 errors.append(err_str)

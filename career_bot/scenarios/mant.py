@@ -117,14 +117,14 @@ class MantStrategy(ScenarioStrategy):
             return 0
         if len(choices) > 1:
             return None
-        return 0
+        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
 
     def choice_from_rewards(self, rewards, event):
         choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
         if not choices:
             return 0
         if not rewards:
-            return choices[0].get("select_index", 1)
+            return choices[0].get("gain_select_id_index", choices[0].get("select_index", 1))
         best_index = 0
         best_score = None
         for i, reward in enumerate(rewards):
@@ -133,8 +133,8 @@ class MantStrategy(ScenarioStrategy):
                 best_score = score
                 best_index = i
         if best_index < len(choices):
-            return choices[best_index].get("select_index", best_index + 1)
-        return choices[0].get("select_index", 1)
+            return choices[best_index].get("gain_select_id_index", choices[best_index].get("select_index", best_index + 1))
+        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 1))
 
     def _reward_score(self, reward):
         score = 0.0

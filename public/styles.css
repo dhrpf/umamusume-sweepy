@@ -1560,6 +1560,13 @@ body.veteran-mode .main-container {
   line-height: 1;
   text-transform: uppercase;
 }
+.grid-card-lb {
+  color: var(--accent-primary);
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
 .grid-card-name {
   color: var(--text-main);
   display: -webkit-box;

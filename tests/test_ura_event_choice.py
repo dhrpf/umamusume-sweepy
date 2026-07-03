@@ -16,21 +16,21 @@ class TestUraEventChoice(unittest.TestCase):
             }
         }
 
-        self.assertEqual(strategy._choice(event), 1)
+        self.assertEqual(strategy._choice(event), 5)
 
-    def test_choice_number_key_still_takes_precedence(self):
+    def test_choice_gain_id_takes_precedence_over_select_index(self):
         strategy = UraStrategy({})
         event = {
             "event_contents_info": {
                 "choice_array": [
-                    {"choice_number": 7, "select_index": 1},
+                    {"gain_select_id_index": 7, "select_index": 1},
                 ]
             }
         }
 
         self.assertEqual(strategy._choice(event), 7)
 
-    def test_choice_with_stat_gain_returns_select_index_not_gain_index(self):
+    def test_choice_with_stat_gain_returns_gain_index(self):
         strategy = UraStrategy({})
         event = {
             "event_contents_info": {
@@ -41,7 +41,7 @@ class TestUraEventChoice(unittest.TestCase):
             }
         }
 
-        self.assertEqual(strategy._choice(event), 2)
+        self.assertEqual(strategy._choice(event), 9)
 
 
 if __name__ == "__main__":

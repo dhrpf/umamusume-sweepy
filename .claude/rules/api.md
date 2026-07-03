@@ -23,6 +23,10 @@ Paths: `uma_api/**`, `capture_dailies.py`, `launcher.py`
 11. `get_os()` returns platform OS string; must match Unity format. Tweak regex, not the raw API strings.
 12. `runtime_output_root()` walks up to the first `.git` parent. Don't cache after a chdir.
 
+## API Schemas
+
+Live schemas at `.context/api_schemas/` (symlink to `docs/api_schemas/`). Read `.context/api_schemas/index.md` for the endpoint list, then pull the relevant `.json`/`.md` per route when implementing or modifying any client call.
+
 ## Frida / Auth Capture
 
 13. `FRIDARemote` env var selects remote vs local. Don't auto-detect when FRIDA_REMOTE set.

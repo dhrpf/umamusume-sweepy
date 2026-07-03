@@ -1,0 +1,50 @@
+{
+  "description": "Sweepy context manifest. Paths listed here are auto-discovered by agent runtimes that read .contextrc.json (per andrefigueira/.context convention).",
+  "paths": [
+    {
+      "path": ".",
+      "description": "Root AGENTS.md: architecture map, path-scoped rule table, tier-2 triggers"
+    },
+    {
+      "path": ".context/ai-rules.md",
+      "description": "Hard constraints for code edits"
+    },
+    {
+      "path": ".context/anti-patterns.md",
+      "description": "Common failure modes to avoid"
+    },
+    {
+      "path": ".context/env.md",
+      "description": "Env vars (UMA_MASTER_MDB, FRIDA_REMOTE, PORT)"
+    },
+    {
+      "path": ".context/errors.md",
+      "description": "Error code reference, absorb vs retry policy"
+    },
+    {
+      "path": ".context/glossary.md",
+      "description": "Domain glossary"
+    },
+    {
+      "path": ".context/runner-workflow.md",
+      "description": "Runner control flow, race resume, recovery, 102 relogin, dispatch"
+    },
+    {
+      "path": ".context/workflows.md",
+      "description": "Auth / start / regenerate sequences"
+    },
+    {
+      "path": ".context/decisions/",
+      "description": "Why-we-did-this docs (msgpack+aes, sid regen, device spoof, endpoint remap, rulebased-vs-mcts, runner chain, timing dna, tp strategy, fail-pct parity)"
+    },
+    {
+      "path": ".context/prompts/",
+      "description": "Tier-2 load-on-trigger prompts (fix-bug, add-scenario, refactor, regen master data)"
+    },
+    {
+      "path": ".context/api_schemas",
+      "description": "Game API schemas (symlink → docs/api_schemas). Load when editing uma_api/**. Read index.md for endpoint list, then pull relevant JSON/MD per route.",
+      "triggers": ["uma_api/**", "capture_dailies.py", "launcher.py"]
+    }
+  ]
+}

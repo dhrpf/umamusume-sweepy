@@ -158,7 +158,7 @@ before race_out in every race_end-102 branch.
 Loop `limit` times over `unchecked_event_array[0]`:
 
 ```
-strategy._choice(event) → choice_number       836
+strategy._choice(event) → choice_number (must use gain_select_id_index)  836
 choice None → pass _event/_current_turn (strategy picks)  840-841
 _event → check_event                          842-843
   217 → try alternate choices                  857-874

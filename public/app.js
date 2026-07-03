@@ -1113,26 +1113,33 @@ const els = {
                 const tooltip = card.querySelector('.sparks-tooltip');
                 if (!tooltip) return;
                 card.classList.add('has-sparks');
+                let hideTimer = null;
                 const show = () => {
+                    clearTimeout(hideTimer);
                     if (tooltip.parentElement !== document.body) document.body.appendChild(tooltip);
                     activeSparkCard = card;
                     activeSparkTooltip = tooltip;
                     positionSparkTooltip(card, tooltip);
                     tooltip.classList.add('is-visible');
                 };
-                const hide = () => {
-                    if (activeSparkCard === card) {
-                        activeSparkCard = null;
-                        activeSparkTooltip = null;
-                    }
-                    tooltip.classList.remove('is-visible');
+                const scheduleHide = () => {
+                    clearTimeout(hideTimer);
+                    hideTimer = window.setTimeout(() => {
+                        if (activeSparkCard === card) {
+                            activeSparkCard = null;
+                            activeSparkTooltip = null;
+                        }
+                        tooltip.classList.remove('is-visible');
+                    }, 200);
                 };
                 tooltip.addEventListener('click', event => event.stopPropagation());
                 tooltip.addEventListener('mousedown', event => event.stopPropagation());
+                tooltip.addEventListener('mouseenter', show);
+                tooltip.addEventListener('mouseleave', scheduleHide);
                 card.addEventListener('mouseenter', show);
-                card.addEventListener('mouseleave', hide);
+                card.addEventListener('mouseleave', scheduleHide);
                 card.addEventListener('focusin', show);
-                card.addEventListener('focusout', hide);
+                card.addEventListener('focusout', scheduleHide);
             });
         }
         document.addEventListener('scroll', () => {
@@ -2713,10 +2720,12 @@ const els = {
             els.deckList.innerHTML = decks.map(deck => {
                 const cards = deck.cards.map(card => {
                     const imgId = card.id || '10001';
+                    const lb = card.limit_break_count ?? 0;
                     return `<div class="grid-card deck-card">
                         <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                         <div class="grid-card-overlay">
                             <span class="grid-card-kicker">${card.type || '?'} | ${card.rarity || '?'}</span>
+                            <span class="grid-card-lb">${'★'.repeat(lb)}${'☆'.repeat(4 - lb)}</span>
                             <span class="grid-card-name">${card.name || 'Unknown'}</span>
                         </div>
                     </div>`;
@@ -3041,10 +3050,12 @@ const els = {
         function renderSupports(supports) {
             els.cardGrid.innerHTML = supports.map(card => {
                 const imgId = card.id || '10001';
+                const lb = card.limit_break_count ?? 0;
                 return `<div class="grid-card support-card">
                     <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                     <div class="grid-card-overlay">
                         <span class="grid-card-kicker">${(card.rarity || '?') + ' | ' + (card.type || '?')}</span>
+                        <span class="grid-card-lb">${'★'.repeat(lb)}${'☆'.repeat(4 - lb)}</span>
                         <span class="grid-card-name">${card.name || 'Unknown'}</span>
                     </div>
                 </div>`;

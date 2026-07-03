@@ -38,6 +38,10 @@ AES key per-call, struct prefix, msgpack body, then encrypt. Re-implementing out
 It lives in `response["data_headers"]["result_code"]`. Top-level read = KeyError.
 → See `ai-rules.md:4` bullet 4
 
+### AP-009: Returning `select_index` as `choice_number`
+Server expects `gain_select_id_index`. `select_index` is a position label, not the id. Using it → 205 "invalid choice".
+→ See `decisions/012-event-choice-id.md`
+
 ## Strategy
 
 ### AP-009: Fixing URA `fail_percent` bug backwards

@@ -862,6 +862,9 @@ class UmaClient:
             print(f"  data_headers={json.dumps(dh, ensure_ascii=False)}")
             print(f"  data={json.dumps(res.get('data', {}), ensure_ascii=False)[:500]}")
             raise Exception(f'1055 on {ep}')
+        if rc == 501:
+            print(f"SESSION INVALID (501) on {ep}: needs reauth via Frida capture")
+            raise StateRecoveryError(f'API error 501 on {ep}: session invalidated, reauth required')
         if rc != 1:
             if rc == 205 and retry_205 > 0:
                 print(f"205 on {ep}, retrying... ({retry_205} left)")

@@ -311,9 +311,9 @@ class UraStrategy(ScenarioStrategy):
         # ponytail: hard camp safety rails; upgrade to EV sim once logs need nuance.
         if pre_camp_turn and vital < 60 and rest_cmd:
             return self._command_decision(rest_cmd, turn, vital, f"pre-camp rest (vital={vital}/{max_vital})")
-        if in_camp and vital <= 0 and (bad_statuses or motivation <= 2):
+        if in_camp and vital < 30:
             if rec_cmd:
-                return self._command_decision(rec_cmd, turn, vital, f"camp recovery recreation (mood={motivation})")
+                return self._command_decision(rec_cmd, turn, vital, f"camp recovery recreation (vital={vital} mood={motivation})")
             if rest_cmd:
                 return self._command_decision(rest_cmd, turn, vital, f"camp recovery rest (vital={vital}/{max_vital} mood={motivation})")
         if motivation <= 2 and not in_camp and (turns_until_next_forced is None or turns_until_next_forced > 1) and rec_cmd:
@@ -429,6 +429,10 @@ class UraStrategy(ScenarioStrategy):
                 "rest (fallback)",
             )
 
+        rec_fallback = self._find_recreation(commands)
+        if rec_fallback:
+            return self._command_decision(rec_fallback, turn, vital, "recreation fallback (no viable training/rest)")
+
         if not commands:
             return Decision("done", {"current_turn": turn}, "no commands available")
 
@@ -447,7 +451,7 @@ class UraStrategy(ScenarioStrategy):
         if len(choices) > 1:
             # Multiple choices — pick the one with stat gains
             return self._choose_from_event(event, 0)
-        return choices[0].get("choice_number", choices[0].get("select_index", 0))
+        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
 
     def _choose_from_event(self, event, current_turn):
         """Pick event choice that gives stat/skill gains."""
@@ -458,8 +462,8 @@ class UraStrategy(ScenarioStrategy):
             effects = choice.get("event_effect_array") or []
             # effect_type 1-5 = speed/stamina/power/guts/wiz, 11 = skill
             if any(e.get("effect_type") in (1, 2, 3, 4, 5, 11) for e in effects):
-                return choice.get("choice_number", choice.get("select_index", 0))
-        return choices[0].get("choice_number", choices[0].get("select_index", 0))
+                return choice.get("gain_select_id_index", choice.get("select_index", 0))
+        return choices[0].get("gain_select_id_index", choices[0].get("select_index", 0))
 
     # ------------------------------------------------------------------
     # Race planning helpers
@@ -654,6 +658,7 @@ class UraStrategy(ScenarioStrategy):
         """
         priority = [max(a, b) for a, b in zip(preset.get("expect_attribute") or [0, 0, 0, 0, 0], URA_STAT_TARGETS)]
         bonds = self._bond_map(chara)
+        vital = int(chara.get("vital") or chara.get("current_vital") or 0)
 
         # Precompute deck stat distribution
         deck_type_counts = self._deck_type_counts(chara)

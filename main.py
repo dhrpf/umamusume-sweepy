@@ -1266,7 +1266,8 @@ def start_career_from_request(req):
                 try:
                     active_client.finish_career(current_turn=leftover_turn or 99, is_force_delete=True)
                 except Exception as e2:
-                    print(f"[start_career] force_delete also failed: {e2}", flush=True)
+                    print(f"[start_career] force_delete also failed: {e2}; hard-resetting", flush=True)
+                    active_client.hard_reset()
         else:
             print(f"[start_career] career_light set but load_career empty; skipping cleanup", flush=True)
     else:
@@ -1382,13 +1383,15 @@ def _build_dashboard_from_login_response(res):
         cid = str(card.get('card_id', card.get('id', '')))
         umas.append({'id': cid, 'name': chara_map.get(cid, f"Unknown ({cid})")})
     supports = []
+    support_lb = {}
     for s in d.get('support_card_list', []):
         sid = str(s.get('support_card_id', s.get('id', '')))
+        support_lb[sid] = s.get('limit_break_count', 0)
         info = support_map.get(sid)
         if info:
-            supports.append({'id': sid, 'name': info['name'], 'type': display_support_type(info['type']), 'rarity': info['rarity']})
+            supports.append({'id': sid, 'limit_break_count': support_lb[sid], 'name': info['name'], 'type': display_support_type(info['type']), 'rarity': info['rarity']})
         else:
-            supports.append({'id': sid, 'name': f"Unknown ({sid})", 'type': 'Unknown', 'rarity': '?'})
+            supports.append({'id': sid, 'limit_break_count': support_lb[sid], 'name': f"Unknown ({sid})", 'type': 'Unknown', 'rarity': '?'})
     decks = []
     for deck in d.get('support_card_deck_array', []):
         cards = []
@@ -1396,9 +1399,9 @@ def _build_dashboard_from_login_response(res):
             sid = str(cid)
             info = support_map.get(sid)
             if info:
-                cards.append({'id': sid, 'name': info['name'], 'rarity': info['rarity'], 'type': display_support_type(info['type'])})
+                cards.append({'id': sid, 'limit_break_count': support_lb.get(sid, 0), 'name': info['name'], 'rarity': info['rarity'], 'type': display_support_type(info['type'])})
             else:
-                cards.append({'id': sid, 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
+                cards.append({'id': sid, 'limit_break_count': support_lb.get(sid, 0), 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
         decks.append({'id': deck.get('deck_id'), 'name': deck.get('name', f'Deck {deck.get("deck_id")}'), 'cards': cards})
     parents = []
     for chara in d.get('trained_chara', []):
