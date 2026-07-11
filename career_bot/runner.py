@@ -167,6 +167,21 @@ class CareerRunner:
             self.burn_clocks = value
             self._log_locked("update_setting", 0, f"burn_clocks set to {value}")
 
+    def _is_recoverable_api_error(self, exc):
+        """Any non-success API/session failure we can heal via full reauth + load."""
+        err_str = str(exc)
+        if any(tag in err_str for tag in (
+            "Network error", "API error", "StateRecoveryError",
+            "session fully invalidated", "session invalid",
+            "no uma_password_hash",
+            "102", "201", "205", "208", "213", "214",
+            "217", "2502", "501", "917", "709", "1055", "1503",
+        )):
+            return True
+        if err_str.startswith("HTTP 5") or err_str.startswith("HTTP 429"):
+            return True
+        return False
+
     def _run(self, client, preset, result, strategy, max_steps):
 
         state = result or {}
@@ -175,72 +190,44 @@ class CareerRunner:
             for i in range(max_steps):
                 if self._should_stop():
                     break
-                data = state.get("data") or {}
-                chara = data.get("chara_info") or {}
-                turn = int(chara.get("turn") or 0)
-
-                if turn != last_turn:
-                    if hasattr(client, "wait_turn_delay"):
-                        client.wait_turn_delay()
-                    last_turn = turn
-                
-                self._mark(turn=turn)
-                self._track_turn_scores(state)
-
-                
-                self.skill_buyer.last_attempt = []
-                self.skill_buyer.last_result = {}
-                self.item_manager.last_buy_attempt = []
-                self.item_manager.last_buy_result = {}
-                self.item_manager.last_use_attempt = []
-                self.item_manager.last_use_result = {}
-                self.skill_buyer.attempt_events = []
-                self.item_manager.buy_attempt_events = []
-                self.item_manager.use_attempt_events = []
-
-                if data.get("unchecked_event_array"):
-
-                    state = self._drain_events(client, strategy, state)
-                    data = state.get("data") or {}
-                    chara = data.get("chara_info") or {}
-                    self._track_turn_scores(state)
-                
-                if self._blocked_playing_state(chara):
-
-                    state = self._recover_blocked_state(client, strategy, state)
-                    data = state.get("data") or {}
-                    chara = data.get("chara_info") or {}
-                    if self._blocked_playing_state(chara):
-
-                        self._mark(last_action=f"blocked state {chara.get('playing_state')}")
-                        break
-                
-                self._debug_turn(state, preset)
                 try:
-                    decision = strategy.next_decision(state, preset)
-                except StateRecoveryError as exc:
-                    self._log("strategy_recover", turn, f"next_decision reload: {exc}")
-                    state = self._fresh_career_state(client, strategy)
                     data = state.get("data") or {}
                     chara = data.get("chara_info") or {}
                     turn = int(chara.get("turn") or 0)
-                    last_turn = turn
-                    continue
 
-                
-                if self.report:
-                    add_decision(self.report, state, decision)
-                
-                if decision.action == "command":
+                    if turn != last_turn:
+                        if hasattr(client, "wait_turn_delay"):
+                            client.wait_turn_delay()
+                        last_turn = turn
 
-                    state = self._handle_items(client, state, preset, self._command_from_decision(state, decision))
-                    data = state.get("data") or {}
+                    self._mark(turn=turn)
+                    self._track_turn_scores(state)
+
+                    self.skill_buyer.last_attempt = []
+                    self.skill_buyer.last_result = {}
+                    self.item_manager.last_buy_attempt = []
+                    self.item_manager.last_buy_result = {}
+                    self.item_manager.last_use_attempt = []
+                    self.item_manager.last_use_result = {}
+                    self.skill_buyer.attempt_events = []
+                    self.item_manager.buy_attempt_events = []
+                    self.item_manager.use_attempt_events = []
+
                     if data.get("unchecked_event_array"):
-
                         state = self._drain_events(client, strategy, state)
-                    data = state.get("data") or {}
-                    chara = data.get("chara_info") or {}
-                    self._mark(turn=chara.get("turn", turn))
+                        data = state.get("data") or {}
+                        chara = data.get("chara_info") or {}
+                        self._track_turn_scores(state)
+
+                    if self._blocked_playing_state(chara):
+                        state = self._recover_blocked_state(client, strategy, state)
+                        data = state.get("data") or {}
+                        chara = data.get("chara_info") or {}
+                        if self._blocked_playing_state(chara):
+                            self._mark(last_action=f"blocked state {chara.get('playing_state')}")
+                            break
+
+                    self._debug_turn(state, preset)
                     try:
                         decision = strategy.next_decision(state, preset)
                     except StateRecoveryError as exc:
@@ -254,162 +241,193 @@ class CareerRunner:
 
                     if self.report:
                         add_decision(self.report, state, decision)
+                        try:
+                            trace = strategy.explain_decision(state, preset, decision)
+                            if trace:
+                                self.report.events.setdefault("decision_traces", []).append(trace)
+                        except Exception:
+                            pass
 
-                self._log(decision.action, chara.get("turn", turn), decision.reason)
-                if os.environ.get('SWEEPY_DEBUG'):
-                    print(f"[decision] turn={chara.get('turn', turn)} action={decision.action} reason={decision.reason}", flush=True)
-                if decision.action == "idle":
-                    self._mark(last_action=decision.reason)
-                    break
-                if decision.action == "done":
-                    self._mark(last_action=decision.reason, finished=True)
-                    break
-                
-                if decision.action == "event":
-                    try:
-                        state = self._event(client, strategy, decision.payload)
-                    except Exception as exc:
-                        if "Network error" in str(exc) or "201" in str(exc) or "205" in str(exc) or "208" in str(exc):
-                            state = self._fresh_career_state(client, strategy)
-                            continue
-                        if "API error 217" in str(exc):
-                            state = self._handle_event_217(client, strategy, decision.payload, exc)
-                            if state is None:
-                                # Event is unresolvable server-side; abort career loop
-                                turn = decision.payload.get("current_turn", 0)
-                                self.status["last_error"] = f"event {decision.payload.get('event_id')} exhausted at turn {turn}; aborting"
-                                self._log("recover", turn, self.status["last_error"])
-                                self._mark(turn=turn, last_action="unresolvable_event")
-                                return
-                            continue
-                        raise
-                elif decision.action == "command":
-                    cmd_payload = dict(decision.payload)
-                    self._log("command_exec", cmd_payload.get("current_turn", "?"), 
-                              f"type={cmd_payload.get('command_type')} id={cmd_payload.get('command_id')} grp={cmd_payload.get('command_group_id')} sel={cmd_payload.get('select_id')}")
-                    self._record_action(decision, chara)
-                    cmd_payload.pop("decision_detail", None)
-                    cmd_payload.pop("decision_options", None)
-                    try:
-                        state = client.exec_command(**cmd_payload)
+                    if decision.action == "command":
+                        state = self._handle_items(client, state, preset, self._command_from_decision(state, decision))
                         data = state.get("data") or {}
                         if data.get("unchecked_event_array"):
                             state = self._drain_events(client, strategy, state)
-                    except StateRecoveryError:
-                        raise
-                    except Exception as exc:
-                        err_str = str(exc)
-                        transient_codes = ("Network error", "201", "205", "208", "213", "214", "217", "709", "1055", "1503")
-                        if any(code in err_str for code in transient_codes):
-                            if os.environ.get('SWEEPY_DEBUG'):
-                                print(f"[cmd_payload] {json.dumps({k: v for k, v in cmd_payload.items() if k not in ('viewer_id', 'device', 'device_id', 'device_name', 'graphics_device_name', 'ip_address', 'platform_os_version', 'carrier', 'keychain', 'locale', 'button_info', 'dmm_viewer_id', 'dmm_onetime_token', 'steam_id', 'steam_session_ticket')})}", flush=True)
-                            state = self._fresh_career_state(client, strategy)
-                            continue
-                        if "102" in err_str or "1503" in err_str:
-                            raise  # logic errors never absorbed
-                        state = self._recover_blocked_state(client, strategy, state)
                         data = state.get("data") or {}
                         chara = data.get("chara_info") or {}
-                        if self._blocked_playing_state(chara):
-                            self._mark(last_action=f"blocked state {chara.get('playing_state')}")
-                            break
-                        continue
-                elif decision.action == "race":
-
-                    self._record_action(decision, chara)
-                    state = self._race(client, state, preset, decision.payload)
-                elif decision.action == "race_progress":
-
-                    self._record_action(decision, chara)
-                    state = self._race_progress(client, decision.payload, preset, strategy)
-                elif decision.action == "finish":
-
-                    self._record_action(decision, chara)
-
-                    state = self._buy_skills(client, state, preset, True)
-
-                    data = state.get("data") or {}
-                    if data.get("race_start_info"):
-                        self._log("race_out", decision.payload["current_turn"], "clearing active race")
+                        self._mark(turn=chara.get("turn", turn))
                         try:
-                            state = client.race_out(current_turn=decision.payload["current_turn"])
-                        except Exception as e:
-                            if any(err in str(e) for err in ("102", "201", "StateRecoveryError")):
-                                self._log("race_out_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
-                            else:
-                                raise
-                    state = self._drain_events(client, strategy, state, limit=50)
+                            decision = strategy.next_decision(state, preset)
+                        except StateRecoveryError as exc:
+                            self._log("strategy_recover", turn, f"next_decision reload: {exc}")
+                            state = self._fresh_career_state(client, strategy)
+                            data = state.get("data") or {}
+                            chara = data.get("chara_info") or {}
+                            turn = int(chara.get("turn") or 0)
+                            last_turn = turn
+                            continue
 
-                    chara = (state.get("data") or {}).get("chara_info") or {}
-                    if int(chara.get("skill_point") or 0) > 200:
-                        print(f"SP still high ({chara.get('skill_point')}), retrying final purchase...")
-                        state = self._buy_skills(client, state, preset, True)
+                        if self.report:
+                            add_decision(self.report, state, decision)
 
-                    # Retry finish_career on 205/208 (server busy/locked); reconcile stale 217.
-                    for _retry in range(5):
+                    self._log(decision.action, chara.get("turn", turn), decision.reason)
+                    if os.environ.get('SWEEPY_DEBUG'):
+                        print(f"[decision] turn={chara.get('turn', turn)} action={decision.action} reason={decision.reason}", flush=True)
+                    if decision.action == "idle":
+                        self._mark(last_action=decision.reason)
+                        break
+                    if decision.action == "done":
+                        self._mark(last_action=decision.reason, finished=True)
+                        break
+
+                    if decision.action == "event":
                         try:
-                            state = client.finish_career(current_turn=decision.payload["current_turn"], is_force_delete=False)
-                            break
-                        except Exception as e:
-                            if any(err in str(e) for err in ("102", "201", "217", "StateRecoveryError")):
-                                self._log("finish_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
-                                break
-                            if any(err in str(e) for err in ("205", "208")):
-                                self._log("finish_busy", decision.payload["current_turn"], f"server busy, retry {_retry+1}/5")
-                                dna_sleep(2.0, 3.0)
+                            state = self._event(client, strategy, decision.payload)
+                        except Exception as exc:
+                            if "Network error" in str(exc) or "201" in str(exc) or "205" in str(exc) or "208" in str(exc):
+                                state = self._fresh_career_state(client, strategy)
+                                continue
+                            if "API error 217" in str(exc):
+                                state = self._handle_event_217(client, strategy, decision.payload, exc)
+                                if state is None:
+                                    turn = decision.payload.get("current_turn", 0)
+                                    self.status["last_error"] = f"event {decision.payload.get('event_id')} exhausted at turn {turn}; aborting"
+                                    self._log("recover", turn, self.status["last_error"])
+                                    self._mark(turn=turn, last_action="unresolvable_event")
+                                    return
                                 continue
                             raise
-                    self._mark(last_action="finish", finished=True)
-                    break
-                else:
+                    elif decision.action == "command":
+                        cmd_payload = dict(decision.payload)
+                        self._log("command_exec", cmd_payload.get("current_turn", "?"),
+                                  f"type={cmd_payload.get('command_type')} id={cmd_payload.get('command_id')} grp={cmd_payload.get('command_group_id')} sel={cmd_payload.get('select_id')}")
+                        self._record_action(decision, chara)
+                        cmd_payload.pop("decision_detail", None)
+                        cmd_payload.pop("decision_options", None)
+                        try:
+                            state = client.exec_command(**cmd_payload)
+                            data = state.get("data") or {}
+                            if data.get("unchecked_event_array"):
+                                state = self._drain_events(client, strategy, state)
+                        except StateRecoveryError:
+                            raise
+                        except Exception as exc:
+                            err_str = str(exc)
+                            transient_codes = ("Network error", "201", "205", "208", "213", "214", "217", "709", "1055", "1503")
+                            if any(code in err_str for code in transient_codes):
+                                if os.environ.get('SWEEPY_DEBUG'):
+                                    print(f"[cmd_payload] {json.dumps({k: v for k, v in cmd_payload.items() if k not in ('viewer_id', 'device', 'device_id', 'device_name', 'graphics_device_name', 'ip_address', 'platform_os_version', 'carrier', 'keychain', 'locale', 'button_info', 'dmm_viewer_id', 'dmm_onetime_token', 'steam_id', 'steam_session_ticket')})}", flush=True)
+                                state = self._fresh_career_state(client, strategy)
+                                continue
+                            if "102" in err_str or "1503" in err_str:
+                                raise  # logic errors never absorbed
+                            state = self._recover_blocked_state(client, strategy, state)
+                            data = state.get("data") or {}
+                            chara = data.get("chara_info") or {}
+                            if self._blocked_playing_state(chara):
+                                self._mark(last_action=f"blocked state {chara.get('playing_state')}")
+                                break
+                            continue
+                    elif decision.action == "race":
+                        self._record_action(decision, chara)
+                        state = self._race(client, state, preset, decision.payload)
+                    elif decision.action == "race_progress":
+                        self._record_action(decision, chara)
+                        state = self._race_progress(client, decision.payload, preset, strategy)
+                    elif decision.action == "finish":
+                        self._record_action(decision, chara)
+                        state = self._buy_skills(client, state, preset, True)
 
-                    self._mark(last_action=decision.action)
-                    break
-                
-                if decision.action not in {"finish"}:
-                    state = self._buy_skills(client, state, preset, False)
-                
-                self._advance(decision.action)
+                        data = state.get("data") or {}
+                        chara_snapshot = data.get("chara_info") or {}
+                        # race only if both: active race flag set AND career not done (state==3)
+                        if data.get("race_start_info") and int(chara_snapshot.get("state") or 0) != 3:
+                            self._log("race_out", decision.payload["current_turn"], "clearing active race")
+                            try:
+                                state = client.race_out(current_turn=decision.payload["current_turn"])
+                            except Exception as e:
+                                if any(err in str(e) for err in ("102", "201", "StateRecoveryError")):
+                                    self._log("race_out_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
+                                else:
+                                    raise
+                        state = self._drain_events(client, strategy, state, limit=50)
+
+                        chara = (state.get("data") or {}).get("chara_info") or {}
+                        if int(chara.get("skill_point") or 0) > 200:
+                            print(f"SP still high ({chara.get('skill_point')}), retrying final purchase...")
+                            state = self._buy_skills(client, state, preset, True)
+
+                        # Retry finish_career on 205/208 (server busy/locked); reconcile stale 217 / post-race 501.
+                        for _retry in range(5):
+                            try:
+                                state = client.finish_career(current_turn=decision.payload["current_turn"], is_force_delete=False)
+                                break
+                            except Exception as e:
+                                if any(err in str(e) for err in ("102", "201", "217", "StateRecoveryError", "501")):
+                                    self._log("finish_reconciled", decision.payload["current_turn"], f"graceful exit: {e}")
+                                    break
+                                if any(err in str(e) for err in ("205", "208")):
+                                    self._log("finish_busy", decision.payload["current_turn"], f"server busy, retry {_retry+1}/5")
+                                    dna_sleep(2.0, 3.0)
+                                    continue
+                                raise
+                        self._mark(last_action="finish", finished=True)
+                        break
+                    else:
+                        self._mark(last_action=decision.action)
+                        break
+
+                    if decision.action not in {"finish"}:
+                        state = self._buy_skills(client, state, preset, False)
+                        self._advance(decision.action)
+                except Exception as step_exc:
+                    # Per-step recover: reauth from cache → start_session → load → continue.
+                    if not self._is_recoverable_api_error(step_exc):
+                        raise
+                    import traceback
+                    trace_str = traceback.format_exc()
+                    print(f"RUNNER RECOVER: {step_exc}")
+                    self._log("recover", self.snapshot().get("turn", 0), f"step fail → full reauth: {step_exc}")
+                    crash_log_path = runtime_output_root(self.base_dir) / "crash_trace.txt"
+                    try:
+                        crash_log_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(crash_log_path, "a", encoding="utf-8") as f:
+                            f.write(f"--- RECOVER AT {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+                            f.write(trace_str)
+                            f.write("\n\n")
+                    except Exception:
+                        pass
+                    try:
+                        state = self._fresh_career_state(client, strategy)
+                        data = state.get("data") or {}
+                        chara = data.get("chara_info") or {}
+                        turn = int(chara.get("turn") or 0)
+                        last_turn = turn
+                        self._mark(turn=turn, last_error=str(step_exc))
+                        continue
+                    except Exception as recover_exc:
+                        print(f"RUNNER CRASH: recovery failed after {step_exc}: {recover_exc}")
+                        self._log("error", self.snapshot().get("turn", 0), str(recover_exc))
+                        self._mark(last_error=str(recover_exc))
+                        if self.report:
+                            set_error(self.report, recover_exc)
+                        break
         except Exception as exc:
+            # Programming errors only — API errors handled per-step above.
             import traceback
-            trace_str = traceback.format_exc()
             traceback.print_exc()
             print(f"RUNNER CRASH: {exc}")
-
-            err_str = str(exc)
-            # Re-raise programming errors (not API errors) so they're visible,
-            # not silently absorbed by the career loop.
-            recoverable = any(tag in err_str for tag in ("Network error", "API error", "StateRecoveryError",
-                                                    "102", "201", "205", "208", "213", "214",
-                                                    "217", "2502", "917",
-                                                    "709", "1055", "1503"))
-            # HTTP 5xx (502/504 gateway errors) are recoverable
-            if not recoverable:
-                if err_str.startswith("HTTP 5") or err_str.startswith("HTTP 429"):
-                    recoverable = True
-            if not recoverable:
-                raise
-
-            # Session refresh on network-blip crashes: try to keep going
-            try:
-                state = self._fresh_career_state(client, strategy)
-            except Exception:
-                pass
-
-            crash_log_path = runtime_output_root(self.base_dir) / "crash_trace.txt"
-            try:
-                crash_log_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(crash_log_path, "a", encoding="utf-8") as f:
-                    f.write(f"--- CRASH AT {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-                    f.write(trace_str)
-                    f.write("\n\n")
-            except Exception:
-                pass
-
             self._log("error", self.snapshot().get("turn", 0), str(exc))
             self._mark(last_error=str(exc))
             if self.report:
                 set_error(self.report, exc)
+            if self._is_recoverable_api_error(exc):
+                try:
+                    self._fresh_career_state(client, strategy)
+                except Exception:
+                    pass
+            else:
+                raise
         finally:
             if self._should_stop():
                 self._log("stop", self.snapshot().get("turn", 0), "stop requested")
@@ -441,7 +459,10 @@ class CareerRunner:
             self.status.update(values)
 
     def _log_locked(self, action, turn, detail):
-        items = self.status.setdefault("log", [])
+        status = getattr(self, "status", None)
+        if not isinstance(status, dict):
+            return
+        items = status.setdefault("log", [])
         items.append({
             "id": len(items) + 1,
             "action": action,
@@ -453,7 +474,11 @@ class CareerRunner:
             del items[:len(items) - 120]
 
     def _log(self, action, turn, detail):
-        with self.lock:
+        lock = getattr(self, "lock", None)
+        if lock is None:
+            self._log_locked(action, turn, detail)
+            return
+        with lock:
             self._log_locked(action, turn, detail)
 
     def _record_action(self, decision, chara=None):
@@ -772,44 +797,96 @@ class CareerRunner:
         costs = {int(row.get("shop_item_id") or 0): int(row.get("cost") or 0) for row in selected or []}
         return sum(costs.get(int(row.get("shop_item_id") or 0), 0) for row in attempt or [])
 
+    def _reauth_session(self, client):
+        """login/cache → start_session → load/index. Prefer full login (ticket + transition).
+
+        hard_reset is last-ditch only (see _fresh_career_state), not mid-retry.
+        """
+        if hasattr(client, "login"):
+            client.login()
+            return
+        if hasattr(client, "regen_sid"):
+            client.regen_sid()
+            try:
+                client.call(
+                    "tool/start_session",
+                    {"attestation_type": 0, "device_token": None},
+                    anonymous=True,
+                )
+            except TypeError:
+                client.call("tool/start_session", {"attestation_type": 0, "device_token": None})
+            # load/index optional; login() already does it. Skip if call path is flaky.
+            try:
+                client.call("load/index", {"adid": ""})
+            except TypeError:
+                pass
+            except Exception:
+                # start_session alone is enough for next load_career try
+                pass
+            return
+        if hasattr(client, "hard_reset"):
+            client.hard_reset()
+            return
+        raise RuntimeError("client has no login/regen_sid/hard_reset for reauth")
+
+    def _load_career_state(self, client, strategy=None):
+        if hasattr(client, "load_career"):
+            state = client.load_career(scenario_id=self.status.get("scenario_id", 4))
+        else:
+            sc_id = self.status.get("scenario_id", 4)
+            ep = "single_mode/load" if sc_id == 1 else "single_mode_free/load"
+            state = client.call(ep, {})
+        if strategy and (state.get("data") or {}).get("unchecked_event_array"):
+            state = self._drain_events(client, strategy, state)
+        if hasattr(self, "skill_buyer") and self.skill_buyer:
+            self.skill_buyer.reset_scoped_failures()
+        if hasattr(self, "item_manager") and self.item_manager:
+            self.item_manager.reset_scoped_failures()
+        return state
+
     def _fresh_career_state(self, client, strategy=None):
-        import time
+        """Full recovery: reauth (login/cache) → start_session → load_index → load career.
+
+        Any non-success mid-career ends here. Never keep a dead SID.
+        """
         errors = []
         max_retries = 8
+        turn = 0
+        try:
+            turn = int((self.status or {}).get("turn") or 0)
+        except Exception:
+            turn = 0
         for attempt in range(max_retries):
-            relogin = attempt > 0
             try:
-                if relogin:
-                    if not hasattr(client, "login"):
-                        break
-                    try:
-                        client.login()
-                    except Exception as e:
-                        if "Network error" in str(e) or "102" in str(e) or "201" in str(e) or "208" in str(e):
-                            raise e
-                        else:
-                            raise
-                if hasattr(client, "load_career"):
-                    state = client.load_career(scenario_id=self.status.get("scenario_id", 4))
-                else:
-                    sc_id = self.status.get("scenario_id", 4)
-                    ep = 'single_mode/load' if sc_id == 1 else 'single_mode_free/load'
-                    state = client.call(ep, {})
-                if strategy and (state.get("data") or {}).get("unchecked_event_array"):
-                    state = self._drain_events(client, strategy, state)
-                self.skill_buyer.reset_scoped_failures()
-                self.item_manager.reset_scoped_failures()
-                return state
-            except StateRecoveryError:
-                raise
+                if attempt == 0:
+                    # Cheap path: load if session still warm.
+                    return self._load_career_state(client, strategy)
+                self._log("recover", turn, f"full reauth attempt {attempt + 1}/{max_retries}")
+                self._reauth_session(client)
+                return self._load_career_state(client, strategy)
             except Exception as exc:
                 err_str = str(exc)
                 errors.append(err_str)
+                self._log("recover", turn, f"fresh fail: {err_str[:160]}")
                 if attempt < max_retries - 1:
-                    dna_sleep(10, 10)
+                    if attempt > 0:
+                        dna_sleep(2.0, 4.0)
+                    continue
+        # Last-ditch hard_reset. Prefer its return if it already has career state.
         if hasattr(client, "hard_reset"):
-            return client.hard_reset()
-        raise RuntimeError("career recovery failed: " + " | ".join(errors[-2:]))
+            try:
+                self._log("recover", turn, "hard_reset fallback")
+                reset_state = client.hard_reset()
+                if isinstance(reset_state, dict) and ((reset_state.get("data") or {}).get("chara_info")):
+                    if hasattr(self, "skill_buyer") and self.skill_buyer:
+                        self.skill_buyer.reset_scoped_failures()
+                    if hasattr(self, "item_manager") and self.item_manager:
+                        self.item_manager.reset_scoped_failures()
+                    return reset_state
+                return self._load_career_state(client, strategy)
+            except Exception as e:
+                errors.append(str(e))
+        raise RuntimeError("career recovery failed: " + " | ".join(errors[-3:]))
 
     def _event(self, client, strategy, payload):
         data = dict(payload)

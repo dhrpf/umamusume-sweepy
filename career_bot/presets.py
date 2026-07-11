@@ -41,9 +41,7 @@ def normalize_skill_list(value):
     result = []
     for row in rows:
         if isinstance(row, list):
-            parts = []
-            for item in row:
-                parts.extend(split_csv(item))
+            parts = [str(item).strip() for item in row if str(item).strip()]
         else:
             parts = split_csv(row)
         if parts:

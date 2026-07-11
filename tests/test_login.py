@@ -225,6 +225,277 @@ class TestUmaLogin(unittest.TestCase):
         self.assertEqual(client.viewer_id, 5390138731907)
         print("Login retry ticket reuse test passed!")
 
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_relogs_in_after_start_session_501(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 5390138731907, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 5390138731907}, "data": {}},
+        ]
+
+        res = client.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
+
+        self.assertEqual(res["data_headers"]["result_code"], 1)
+        client._refresh_ticket_and_login.assert_called_once_with()
+        self.assertEqual(mock_session.post.call_count, 2)
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    @patch('uma_api.client.get_ticket')
+    def test_login_recovers_start_session_501_via_cached_transition(self, mock_get_ticket, mock_unpack_func, mock_session_cls, _mock_pack):
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({
+            "viewer_id": 5390138731907,
+            "auth_key": "66616b655f617574685f6b6579",
+            "steam_username": "test_user",
+            "steam_password_seed": "test_pass",
+        })
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client.signup = MagicMock()
+
+        # authed start 501 → anon start 501 → chain → get → anon start → load
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 1}, "data": {"viewer_id": 5390138731907, "auth_key": "bmV3X2F1dGhfa2V5"}},
+            {"data_headers": {"result_code": 1}, "data": {"viewer_id": 5390138731907, "auth_key": "bmV3X2F1dGhfa2V5"}},
+            {"data_headers": {"result_code": 1, "viewer_id": 5390138731907, "sid": "MOCK_NEW_SID_HEX"}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 5390138731907}, "data": {"tp_info": {"current_tp": 100}}},
+        ]
+
+        with TemporaryDirectory() as tmp_dir:
+            cache = Path(tmp_dir) / "auth_cache.json"
+            cache.write_text('{"uma_password_hash":"pw_hash"}', encoding="utf-8")
+            with patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+                res = client.login(max_retries=1)
+
+        posted_urls = [call.args[0] for call in mock_session.post.call_args_list]
+        self.assertTrue(any(url.endswith("account/chain_by_transition_code") for url in posted_urls))
+        self.assertTrue(any(url.endswith("account/get_by_transition_code") for url in posted_urls))
+        self.assertTrue(posted_urls[-2].endswith("tool/start_session"))
+        self.assertTrue(posted_urls[-1].endswith("load/index"))
+        self.assertEqual(res["data"]["tp_info"]["current_tp"], 100)
+        mock_get_ticket.assert_not_called()
+        client.signup.assert_not_called()
+        import base64
+        self.assertEqual(client.auth_key_hex, base64.b64decode("bmV3X2F1dGhfa2V5").hex())
+        self.assertEqual(client.viewer_id, 5390138731907)
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_login_persists_hex_auth_key_after_transition(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        import base64
+        import json
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({
+            "viewer_id": 5390138731907,
+            "auth_key": "66616b655f617574685f6b6579",
+            "steam_username": "test_user",
+            "steam_password_seed": "test_pass",
+        })
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client.signup = MagicMock()
+        new_b64 = "bmV3X2F1dGhfa2V5"
+        new_hex = base64.b64decode(new_b64).hex()
+
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 1}, "data": {"viewer_id": 5390138731907, "auth_key": new_b64}},
+            {"data_headers": {"result_code": 1}, "data": {"viewer_id": 5390138731907, "auth_key": new_b64}},
+            {"data_headers": {"result_code": 1, "viewer_id": 5390138731907, "sid": "MOCK_NEW_SID_HEX"}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 5390138731907}, "data": {"tp_info": {"current_tp": 100}}},
+        ]
+
+        with TemporaryDirectory() as tmp_dir:
+            cache = Path(tmp_dir) / "auth_cache.json"
+            cache.write_text('{"uma_password_hash":"pw_hash","viewer_id":1}', encoding="utf-8")
+            with patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+                client.login(max_retries=1)
+            saved = json.loads(cache.read_text(encoding="utf-8"))
+
+        self.assertEqual(saved["auth_key"], new_hex)
+        self.assertEqual(saved["viewer_id"], 5390138731907)
+        self.assertEqual(client.auth_key_hex, new_hex)
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_501_adopts_live_viewer_id_before_relogin(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 501, "viewer_id": 5148205094327}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 5148205094327}, "data": {}},
+        ]
+
+        client.call("load/index", {"adid": ""})
+
+        self.assertEqual(client.viewer_id, 5148205094327)
+        self.assertEqual(client._cfg["viewer_id"], 5148205094327)
+        client._refresh_ticket_and_login.assert_called_once_with()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_login_fails_fast_when_start_session_501_has_no_transition_hash(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({
+            "viewer_id": 5390138731907,
+            "auth_key": "66616b655f617574685f6b6579",
+            "steam_username": "test_user",
+            "steam_password_seed": "test_pass",
+        })
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client.signup = MagicMock()
+        # authed start 501 + anon start 501 → no password hash → fail
+        mock_unpack_func.return_value = {"data_headers": {"result_code": 501}, "data": {}}
+
+        with TemporaryDirectory() as tmp_dir:
+            with patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+                with self.assertRaisesRegex(Exception, "no uma_password_hash"):
+                    client.login(max_retries=3)
+
+        # One authed start_session + one anonymous start_session before fail.
+        self.assertEqual(mock_session.post.call_count, 2)
+        client.signup.assert_not_called()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_login_does_not_recurse_on_transition_501(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({
+            "viewer_id": 5390138731907,
+            "auth_key": "66616b655f617574685f6b6579",
+            "steam_username": "test_user",
+            "steam_password_seed": "test_pass",
+        })
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client.signup = MagicMock()
+        # authed start 501 → anon start 501 → chain 501 (fully invalidated)
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 501}, "data": {}},
+        ]
+
+        with TemporaryDirectory() as tmp_dir:
+            cache = Path(tmp_dir) / "auth_cache.json"
+            cache.write_text('{"uma_password_hash":"pw_hash"}', encoding="utf-8")
+            with patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+                with self.assertRaisesRegex(Exception, "session fully invalidated"):
+                    client.login(max_retries=3)
+
+        posted_urls = [call.args[0] for call in mock_session.post.call_args_list]
+        # Exactly one chain attempt; no get_by_transition after chain 501.
+        self.assertEqual(sum(url.endswith("account/chain_by_transition_code") for url in posted_urls), 1)
+        self.assertFalse(any(url.endswith("account/get_by_transition_code") for url in posted_urls))
+        client.signup.assert_not_called()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_transition_calls_use_anonymous_viewer_header(self, mock_unpack_func, mock_session_cls, mock_pack):
+        """Working game captures send ViewerID=0 + empty auth on chain/get_by_transition."""
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({
+            "viewer_id": 1122334455,
+            "auth_key": "66616b655f617574685f6b6579",
+            "steam_username": "test_user",
+            "steam_password_seed": "test_pass",
+        })
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client.signup = MagicMock()
+
+        # start_session 501 -> anonymous start_session 501 -> chain OK -> get OK -> start OK -> load OK
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 501}, "data": {}},
+            {"data_headers": {"result_code": 1}, "data": {"target_viewer_id": 1122334455}},
+            {"data_headers": {"result_code": 1}, "data": {"target_viewer_id": 1122334455, "auth_key": "bmV3X2F1dGhfa2V5"}},
+            {"data_headers": {"result_code": 1, "viewer_id": 1122334455, "sid": "MOCK_SID"}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 1122334455}, "data": {"tp_info": {"current_tp": 7}}},
+        ]
+
+        with TemporaryDirectory() as tmp_dir:
+            cache = Path(tmp_dir) / "auth_cache.json"
+            cache.write_text('{"uma_password_hash":"pw_hash","viewer_id":1122334455}', encoding="utf-8")
+            with patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+                res = client.login(max_retries=3)
+
+        # Inspect pack() auth args and post headers for transition endpoints.
+        posted = mock_session.post.call_args_list
+        packed = mock_pack.call_args_list
+        # map by order: start, start(anon), chain(anon), get(anon), start(anon), load(anon)
+        urls = [c.args[0] for c in posted]
+        self.assertTrue(any(u.endswith("account/chain_by_transition_code") for u in urls))
+        self.assertTrue(any(u.endswith("account/get_by_transition_code") for u in urls))
+
+        for call in posted:
+            url = call.args[0]
+            headers = call.kwargs.get("headers") or (call.args[2] if len(call.args) > 2 else {})
+            # requests Session.post(url, data=..., headers=...)
+            if not headers and "headers" in (call.kwargs or {}):
+                headers = call.kwargs["headers"]
+            # extract from kwargs always
+            headers = call.kwargs.get("headers", headers)
+            if any(url.endswith(ep) for ep in (
+                "account/chain_by_transition_code",
+                "account/get_by_transition_code",
+                "tool/start_session",
+            )):
+                # Only assert anonymous for transition; start_session after first 501 also anon.
+                if "transition" in url:
+                    self.assertEqual(str(headers.get("ViewerID")), "0", msg=f"{url} headers={headers}")
+
+        # pack(sid, udid_raw, auth, payload, udid) — auth must be empty for transition.
+        for c, url in zip(packed, urls):
+            if "transition" in url:
+                auth_arg = c.args[2]
+                self.assertEqual(auth_arg, b"", msg=f"auth not empty for {url}")
+
+        self.assertEqual(res["data"]["tp_info"]["current_tp"], 7)
+        client.signup.assert_not_called()
+
     @patch('uma_api.client.requests.Session')
     @patch('uma_api.client.unpack')
     @patch('uma_api.client.get_ticket')

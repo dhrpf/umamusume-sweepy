@@ -54,6 +54,7 @@ class SkillBuyer:
         self.skill_rarities = {}
         self.skill_costs = {}
         self.skill_grade_values = {}
+        self.skill_disabled_singlemode = set()
         self.skill_id_exists = set()
         self.group_to_skill_ids = {}
         self.skill_to_group_id = {}
@@ -77,6 +78,7 @@ class SkillBuyer:
             self.skill_rarities = {}
             self.skill_costs = {}
             self.skill_grade_values = {}
+            self.skill_disabled_singlemode = set()
             self.skill_to_group_id = {}
             for raw_id, raw_info in data.items():
                 skill_id = int(raw_id)
@@ -85,6 +87,8 @@ class SkillBuyer:
                     self.skill_rarities[skill_id] = int(raw_info.get("rarity") or 0)
                     self.skill_costs[skill_id] = int(raw_info.get("need_skill_point") or 0)
                     self.skill_grade_values[skill_id] = int(raw_info.get("grade_value") or 0)
+                    if int(raw_info.get("disable_singlemode") or 0):
+                        self.skill_disabled_singlemode.add(skill_id)
                     group_id = int(raw_info.get("group_id") or 0)
                     if group_id:
                         self.skill_to_group_id[skill_id] = group_id
@@ -122,6 +126,28 @@ class SkillBuyer:
         ]
         return sorted(ids, key=self._tier_sort_key)
 
+    def _best_owned_tier_index(self, tiers, owned_skill_ids):
+        best = -1
+        for index, sid in enumerate(tiers):
+            if sid in owned_skill_ids:
+                best = index
+        return best
+
+    def _is_red_skill(self, skill_id):
+        name = self.skill_names.get(skill_id, "")
+        if name.endswith(MARK_X) or name.endswith(MOJI_X):
+            return True
+        return int(self.skill_grade_values.get(skill_id) or 0) < 0
+
+    def _owned_red_in_group(self, group_id, owned_skill_ids):
+        return [
+            sid for sid in owned_skill_ids
+            if self.skill_to_group_id.get(sid) == group_id and self._is_red_skill(sid)
+        ]
+
+    def _owned_red_skills(self, owned_skill_ids):
+        return [sid for sid in owned_skill_ids if self._is_red_skill(sid)]
+
     def _resolve_buyable_tier(self, group_id, rarity, owned_skill_ids):
         tiers = self._tier_ids(group_id, rarity)
         if not tiers:
@@ -130,16 +156,20 @@ class SkillBuyer:
                 if self.skill_rarities.get(sid, 0) == rarity and sid not in owned_skill_ids
             ]
             return sorted(candidates, key=self._tier_sort_key)[0] if candidates else 0
-        for index, sid in enumerate(tiers):
-            if sid in owned_skill_ids:
-                continue
-            if index == 0 or tiers[index - 1] in owned_skill_ids:
-                return sid
+        # Own red × in group → no ○/◎ until red cleared via re-buy ×.
+        if self._owned_red_in_group(group_id, owned_skill_ids):
             return 0
+        # Only offer next tier above best owned positive skill. Own ◎ → no ○.
+        next_idx = self._best_owned_tier_index(tiers, owned_skill_ids) + 1
+        if next_idx < len(tiers):
+            return tiers[next_idx]
         return 0
 
     def _unowned_white_tiers(self, group_id, owned_skill_ids):
-        return [sid for sid in self._tier_ids(group_id, 1) if sid not in owned_skill_ids]
+        tiers = self._tier_ids(group_id, 1)
+        if self._best_owned_tier_index(tiers, owned_skill_ids) >= 0:
+            return []
+        return [sid for sid in tiers if sid not in owned_skill_ids]
 
     def reset_scoped_failures(self):
         self.failed_this_turn = {}
@@ -198,14 +228,20 @@ class SkillBuyer:
             self.last_result = {"skip": "no_candidates", "points": points}
             return state, 0
 
+        # Clear owned × first alone — re-buy red skill_id removes debuff.
+        clear_red = [c for c in candidates if c.get("clears_red")]
+        pool = clear_red or candidates
+
         selected = []
         spent = 0
-        for candidate in candidates:
+        for candidate in pool:
             cost = int(candidate.get("cost") or self._estimate_cost(candidate))
             if spent + cost > points:
                 continue
             selected.append(candidate)
             spent += cost
+            if candidate.get("clears_red"):
+                break
 
         if not selected:
             self.last_selected = []
@@ -214,9 +250,8 @@ class SkillBuyer:
             return state, 0
 
         self.last_selected = [dict(item) for item in selected]
-        
+
         current_state, total_bought = self._buy_batch(client, state, selected, turn)
-            
         return current_state, total_bought
 
     def preview(self, state, preset, force=False):
@@ -277,7 +312,40 @@ class SkillBuyer:
         owned_groups = {self.skill_to_group_id.get(skill_id, skill_id // 10) for skill_id in owned}
         priority = self._priority_context(preset)
         blacklist = self._blacklist(preset)
+        tip_groups = {
+            int(tip.get("group_id") or 0)
+            for tip in (chara.get("skill_tips_array") or [])
+            if int(tip.get("group_id") or 0)
+        }
         result = []
+
+        # Re-buy owned × to clear debuff. Must precede normal tip buys.
+        for red_id in self._owned_red_skills(owned):
+            group_id = self.skill_to_group_id.get(red_id) or (red_id // 10)
+            if group_id not in tip_groups:
+                continue
+            name = self.skill_names.get(red_id, "")
+            base_name = strip_mark(name)
+            if norm(name) in blacklist or norm(base_name) in blacklist:
+                continue
+            if red_id in self._failed_for_turn():
+                continue
+            cost = self._estimate_cost({"skill_id": red_id, "hint_level": 0, "name": name})
+            result.append({
+                "skill_id": red_id,
+                "group_id": group_id,
+                "tip_rarity": self.skill_rarities.get(red_id, 1),
+                "hint_level": 0,
+                "name": name,
+                "priority": -1000,
+                "cost": cost,
+                "bundled_skill_ids": [],
+                "resolution_reason": "clear_red",
+                "failed_scope": None,
+                "candidate_skill_ids": [red_id],
+                "clears_red": True,
+            })
+
         for tip in chara.get("skill_tips_array") or []:
             resolved = self.resolve_skill_tip(tip, owned, owned_groups, priority, blacklist, preset)
             if not resolved or resolved.get("skip_reason"):
@@ -294,9 +362,10 @@ class SkillBuyer:
                 "resolution_reason": resolved["resolution_reason"],
                 "failed_scope": resolved["failed_scope"],
                 "candidate_skill_ids": resolved["candidate_skill_ids"],
+                "clears_red": False,
             })
         result.sort(key=lambda item: (item["priority"], -item["hint_level"], item["cost"], item["skill_id"]))
-        
+
         deduped = []
         seen = set()
         for item in result:
@@ -304,11 +373,11 @@ class SkillBuyer:
                 seen.add(item["skill_id"])
                 deduped.append(item)
         result = deduped
-        
+
         if preset.get("learn_skill_only_user_provided"):
             if not any(row for row in (preset.get("learn_skill_list") or [])):
                 return []
-            return [item for item in result if item["priority"] < 999]
+            return [item for item in result if item["priority"] < 999 or item.get("clears_red")]
         return result
 
     def resolve_skill_tip(self, tip, owned_skill_ids, owned_groups, priority, blacklist, preset):
@@ -340,7 +409,11 @@ class SkillBuyer:
             "failed_scope": None,
         }
         if not candidate_skill_ids:
-            row["skip_reason"] = "unknown_master"
+            tiers = self._tier_ids(group_id, tip_rarity) if tip_rarity else []
+            if any(sid in owned_skill_ids for sid in tiers):
+                row["skip_reason"] = "already_owned_tier"
+            else:
+                row["skip_reason"] = "unknown_master"
             return row
 
         usable = [sid for sid in candidate_skill_ids if sid not in failed]
@@ -459,52 +532,111 @@ class SkillBuyer:
 
         # ponytail: expose in SkillBuyerConfig when per-scenario tuning needed
         MAX_BATCH = 4  # >4 skills in one gain_skills call → API 217 (resource busy)
-        payload = []
-        payload_ids = set()
-        for item in valid_candidates:
-            for skill_id in [*(item.get("bundled_skill_ids") or []), item["skill_id"]]:
-                skill_id = int(skill_id or 0)
-                if skill_id > 0 and skill_id not in payload_ids:
-                    payload.append({"skill_id": skill_id, "level": 1})
-                    payload_ids.add(skill_id)
+        # One gain_skills entry per candidate (main skill_id). Bundled whites prepended.
+        # Chunk by candidates so total_cost stays aligned with remaining SP after each res.
         self.last_attempt = [dict(item) for item in valid_candidates]
         event = {
             "turn": turn,
             "selected": [dict(item) for item in candidates],
             "attempt": [dict(item) for item in valid_candidates],
-            "payload": payload,
+            "payload": [],
             "result": {},
         }
         self.attempt_events.append(event)
 
-        results = []
+        remaining = points
+        remaining_candidates = list(valid_candidates)
+        sent_payload = []
+        bought_ids = set()
         failed_ids = set()
-        for i in range(0, len(payload), MAX_BATCH):
-            chunk = payload[i:i + MAX_BATCH]
+        merged = state
+
+        while remaining_candidates:
+            chunk_items = []
+            chunk_cost = 0
+            for item in remaining_candidates:
+                cost = int(item.get("total_cost") or item.get("cost") or 0)
+                if cost <= 0:
+                    continue
+                if chunk_cost + cost > remaining:
+                    continue
+                if len(chunk_items) >= MAX_BATCH:
+                    break
+                chunk_items.append(item)
+                chunk_cost += cost
+            if not chunk_items:
+                break
+
+            chunk_payload = []
+            chunk_ids = set()
+            for item in chunk_items:
+                for skill_id in [*(item.get("bundled_skill_ids") or []), item["skill_id"]]:
+                    skill_id = int(skill_id or 0)
+                    if skill_id > 0 and skill_id not in chunk_ids:
+                        chunk_payload.append({"skill_id": skill_id, "level": 1})
+                        chunk_ids.add(skill_id)
+            sent_payload.extend(chunk_payload)
+
             try:
-                res = client.gain_skills(chunk, turn)
-                if res and isinstance(res, dict) and "data" in res:
-                    results.append(res)
+                res = client.gain_skills(chunk_payload, turn)
             except Exception as exc:
                 print(f"Skill Purchase Error at turn {turn}: {exc}")
+                if "session fully invalidated" in str(exc) or "no uma_password_hash" in str(exc):
+                    raise
                 if any(code in str(exc) for code in ("201", "205", "208")):
                     self.recover_after_error = True
-                failed_ids.update(item["skill_id"] for item in chunk)
+                failed_ids.update(int(item["skill_id"]) for item in chunk_items)
+                # Permanent fail for this chunk — don't re-send same skills.
+                chunk_mains = {int(item["skill_id"]) for item in chunk_items}
+                remaining_candidates = [
+                    item for item in remaining_candidates if int(item["skill_id"]) not in chunk_mains
+                ]
+                continue
 
-        bought_count = sum(1 for item in valid_candidates if int(item["skill_id"]) not in failed_ids)
-        if bought_count > 0:
-            merged = state
-            for res in results:
+            if res and isinstance(res, dict) and "data" in res:
                 merged = self._merge_state(merged, res)
-            self.last_result = {"result": "ok", "turn": turn, "count": bought_count, "payload": payload}
+                chara = (merged.get("data") or {}).get("chara_info") or {}
+                remaining = int(chara.get("skill_point") or max(0, remaining - chunk_cost))
+            else:
+                remaining = max(0, remaining - chunk_cost)
+
+            bought_ids.update(int(item["skill_id"]) for item in chunk_items)
+            chunk_mains = {int(item["skill_id"]) for item in chunk_items}
+            remaining_candidates = [
+                item for item in remaining_candidates if int(item["skill_id"]) not in chunk_mains
+            ]
+
+        event["payload"] = sent_payload
+        bought_count = len(bought_ids)
+        if bought_count > 0:
+            self.last_result = {
+                "result": "ok",
+                "turn": turn,
+                "count": bought_count,
+                "payload": sent_payload,
+                "remaining_sp": remaining,
+            }
             event["result"] = self.last_result
             self._failed_for_turn(turn).clear()
             return merged, bought_count
-        else:
+
+        if failed_ids:
             self._failed_for_turn(turn).update(failed_ids)
-            self.last_result = {"result": "failed", "turn": turn, "error": "all chunks failed", "payload": payload}
-            event["result"] = self.last_result
-            return state, 0
+            self.last_result = {
+                "result": "failed",
+                "turn": turn,
+                "error": "all chunks failed",
+                "payload": sent_payload,
+            }
+        else:
+            self.last_result = {
+                "skip": "unaffordable_after_chunk",
+                "turn": turn,
+                "points": remaining,
+                "payload": sent_payload,
+            }
+        event["result"] = self.last_result
+        return merged if sent_payload else state, 0
 
     def _merge_state(self, state, res):
         if res and isinstance(res, dict) and "data" in res:
@@ -530,12 +662,12 @@ class SkillBuyer:
         
         is_circle = any(m in name for m in [MARK_WHITE_CIRCLE, MARK_LARGE_CIRCLE, MOJI_WHITE_CIRCLE, MOJI_LARGE_CIRCLE])
         
-        if is_circle:
-            base = 130
-        elif skill_id >= 900000:
-            base = 200
-        else:
-            base = self.skill_costs.get(skill_id)
-            if not base:
+        base = self.skill_costs.get(skill_id)
+        if not base:
+            if is_circle:
+                base = 130
+            elif skill_id >= 900000:
+                base = 200
+            else:
                 base = 200 if self.skill_rarities.get(skill_id, 0) >= 2 else 160
         return max(1, int(base * (100 - min(level, 5) * 10) / 100))

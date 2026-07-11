@@ -108,6 +108,10 @@ class RacePlanner:
         # Fallback: first available
         return available[0]
 
+    def _solver_aptitude_floor(self, preset=None):
+        """Minimum aptitude grade (G→S = 1→8) a race must meet. Configurable via preset."""
+        return int((preset or {}).get("min_aptitude_floor", 6))
+
     def check_aptitude(self, chara, program_id):
         info = self.program.get(int(program_id or 0)) or {}
         ground = int(info.get("ground") or 1)

@@ -81,11 +81,18 @@ def test_fresh_career_state_falls_back_to_hard_reset_after_retries(monkeypatch):
     class Client:
         def __init__(self):
             self.loads = 0
-            self.logins = 0
+            self.regen_sids = 0
+            self.start_sessions = 0
             self.hard_reset_called = False
 
-        def login(self):
-            self.logins += 1
+        def regen_sid(self):
+            self.regen_sids += 1
+
+        def call(self, ep, payload=None):
+            if ep == "tool/start_session":
+                self.start_sessions += 1
+                return {"data": {}}
+            raise Exception("Network error")
 
         def load_career(self, scenario_id=1):
             self.loads += 1
@@ -103,7 +110,8 @@ def test_fresh_career_state_falls_back_to_hard_reset_after_retries(monkeypatch):
     out = runner._fresh_career_state(client)
 
     assert client.loads == 8
-    assert client.logins == 7
+    assert client.regen_sids == 7
+    assert client.start_sessions == 7
     assert client.hard_reset_called is True
     assert out["data"]["chara_info"]["turn"] == 9
 

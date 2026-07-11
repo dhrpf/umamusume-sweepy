@@ -34,8 +34,19 @@ def test_split_csv_string_split():
     assert split_csv("a,b,,c") == ["a", "b", "c"]
 
 
-def test_normalize_skill_list_nested():
-    assert normalize_skill_list([["a,b", "c"], "d"]) == [["a", "b", "c"], ["d"]]
+def test_normalize_skill_list_splits_legacy_string_rows_only():
+    assert normalize_skill_list(["a,b", ["c,d", "e"]]) == [["a", "b"], ["c,d", "e"]]
+
+
+def test_serialize_preset_preserves_list_skill_names_with_commas():
+    out = serialize_preset({
+        "name": "u",
+        "learn_skill_list": [["1,500,000 CC", "15,000,000 CC"]],
+        "learn_skill_blacklist": ["1,500,000 CC"],
+    })
+
+    assert out["learn_skill_list"] == [["1,500,000 CC", "15,000,000 CC"]]
+    assert out["learn_skill_blacklist"] == ["1,500,000 CC"]
 
 
 def test_serialize_excluded_keys_dropped():

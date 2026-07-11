@@ -503,6 +503,7 @@ def get_ticket(u, p, c='', proxy_url=''):
 class UmaClient:
 
     def __init__(self, cfg, trace_enabled=True):
+        self._cfg = cfg
         profile = get_hwid(cfg.get('steam_password_seed', 'default'))
 
         self.viewer_id = cfg.get('viewer_id', 0)
@@ -705,7 +706,7 @@ class UmaClient:
         if self.proxy_url:
             self.session.proxies.update({'http': self.proxy_url, 'https': self.proxy_url})
 
-    def call(self, ep, args=None, retry_208=6, retry_205=3):
+    def call(self, ep, args=None, retry_208=6, retry_205=3, retry_501=1, anonymous=False):
         # Aoharu/Team scenario uses single_mode_team/* for core endpoints.
         if self.current_scenario_id == 2 and ep.startswith('single_mode_free/'):
             rest = ep[len('single_mode_free/'):]
@@ -791,9 +792,19 @@ class UmaClient:
             }
             payload['button_info'] = json.dumps(btn, separators=(',', ':'))
 
-        body = pack(self.sid, get_raw_udid(self.udid_str), self.auth_bytes(), payload, self.udid_str)
+        # Anonymous mode: game captures for transition/start_session reauth use
+        # ViewerID header 0 + empty auth. Dead session auth/SID causes 501 on chain.
+        if anonymous:
+            pack_sid = make_sid(0, self.udid_str)
+            pack_auth = b''
+            header_vid = '0'
+        else:
+            pack_sid = self.sid
+            pack_auth = self.auth_bytes()
+            header_vid = str(self.viewer_id)
+        body = pack(pack_sid, get_raw_udid(self.udid_str), pack_auth, payload, self.udid_str)
         headers = {
-            'SID': self.sid.hex(), 'Device': '4', 'ViewerID': str(self.viewer_id),
+            'SID': pack_sid.hex(), 'Device': '4', 'ViewerID': header_vid,
             'APP-VER': self.app_ver, 'RES-VER': self.res_ver,
         }
         
@@ -863,8 +874,26 @@ class UmaClient:
             print(f"  data={json.dumps(res.get('data', {}), ensure_ascii=False)[:500]}")
             raise Exception(f'1055 on {ep}')
         if rc == 501:
-            print(f"SESSION INVALID (501) on {ep}: needs reauth via Frida capture")
-            raise StateRecoveryError(f'API error 501 on {ep}: session invalidated, reauth required')
+            if retry_501 <= 0:
+                raise StateRecoveryError(f'API error 501 on {ep}: session fully invalidated')
+            # Prefer live viewer_id from the 501 response — cache can lag.
+            # Note: self.viewer_id may already be updated above from data_headers;
+            # still force-sync _cfg so recovery/login persist uses the live id.
+            live_vid = dh.get('viewer_id') or (data.get('viewer_id') if isinstance(data, dict) else None)
+            if live_vid:
+                try:
+                    live_vid = int(live_vid)
+                    if live_vid:
+                        if live_vid != int(self.viewer_id or 0):
+                            print(f"[501] viewer_id drift {self.viewer_id} -> {live_vid}", flush=True)
+                        self.viewer_id = live_vid
+                        if isinstance(self._cfg, dict):
+                            self._cfg['viewer_id'] = live_vid
+                except (TypeError, ValueError):
+                    pass
+            print(f"[501] {ep} session invalid — relogin via UmaClient.login then retry {ep}")
+            self._refresh_ticket_and_login()
+            return self.call(ep, args, retry_208=retry_208, retry_205=retry_205, retry_501=retry_501 - 1)
         if rc != 1:
             if rc == 205 and retry_205 > 0:
                 print(f"205 on {ep}, retrying... ({retry_205} left)")
@@ -970,6 +999,146 @@ class UmaClient:
         self.save_config()
         return res
 
+    def _persist_auth_cache(self, **updates):
+        """Merge live auth fields into auth_cache.json (hex auth_key only)."""
+        cache_path = runtime_output_root() / 'auth_cache.json'
+        try:
+            old = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
+        except Exception:
+            old = {}
+        if not isinstance(old, dict):
+            old = {}
+        old.update({k: v for k, v in updates.items() if v is not None})
+        # Keep runtime cfg aligned so next recovery uses fresh values.
+        if isinstance(self._cfg, dict):
+            self._cfg.update({k: v for k, v in updates.items() if v is not None})
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(old, ensure_ascii=False), encoding='utf-8')
+        except Exception as e:
+            print(f"[auth cache] persist failed: {e}", flush=True)
+        return old
+
+    def _refresh_ticket_and_login(self):
+        cfg = self._cfg if isinstance(self._cfg, dict) else {}
+        username = cfg.get('steam_username', '')
+        password = cfg.get('steam_password_seed', '')
+        if username and password:
+            try:
+                print(f"[501-refresh] Regenerating steam ticket for {username}...")
+                new_sid, new_tkt = get_ticket(username, password)
+                self.steam_id = str(new_sid)
+                self.steam_ticket = new_tkt
+                cfg['steam_id'] = new_sid
+                cfg['steam_session_ticket'] = new_tkt
+                self.save_config()
+                print(f"[501-refresh] Ticket regenerated ({len(new_tkt)} hex chars)")
+            except Exception as e:
+                print(f"[501-refresh] Ticket refresh failed: {e}")
+        self.login()
+
+    def _bootstrap_session(self, anonymous=False):
+        """start_session + load/index. anonymous=True => ViewerID=0, empty auth (game reauth)."""
+        if anonymous:
+            self.sid = make_sid(0, self.udid_str)
+        else:
+            self.regen_sid()
+        self.call(
+            'tool/start_session',
+            {'attestation_type': 0, 'device_token': None},
+            retry_501=0,
+            anonymous=anonymous,
+        )
+        res = self.call('load/index', {'adid': ''}, anonymous=anonymous)
+        data = res.get('data', {}) or {}
+        self.refresh_cached_account_state(data)
+        dh = res.get('data_headers') or {}
+        live_vid = dh.get('viewer_id') or data.get('viewer_id')
+        if live_vid:
+            try:
+                live_vid = int(live_vid)
+                if live_vid:
+                    self.viewer_id = live_vid
+            except (TypeError, ValueError):
+                pass
+        self._persist_auth_cache(
+            viewer_id=int(self.viewer_id) if self.viewer_id else None,
+            auth_key=self.auth_key_hex if self.auth_key_hex and self.auth_key_hex != 'YOUR_AUTH_KEY_HERE' else None,
+            res_ver=self.res_ver or None,
+            app_ver=self.app_ver or None,
+            steam_id=self.steam_id or None,
+        )
+        self.read_info()
+        return res
+
+    def _load_password_hash_and_viewer(self):
+        cache_path = runtime_output_root() / 'auth_cache.json'
+        try:
+            cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
+        except Exception:
+            cache = {}
+        if not isinstance(cache, dict):
+            cache = {}
+        if not self.viewer_id:
+            try:
+                self.viewer_id = int(cache.get('viewer_id') or 0)
+            except (TypeError, ValueError):
+                pass
+        pw_hash = cache.get('uma_password_hash', '') or (
+            self._cfg.get('uma_password_hash', '') if isinstance(self._cfg, dict) else ''
+        )
+        return pw_hash, int(self.viewer_id or 0)
+
+    def _recover_via_transition(self, pw_hash, target_vid):
+        """Game reauth: chain/get with ViewerID=0 header; body carries password + viewer_id."""
+        dev_args = {
+            'password': pw_hash,
+            'input_viewer_id': str(target_vid),
+            'viewer_id': target_vid,
+            'device': 4, 'device_id': self.device_id,
+            'device_name': self.device_name, 'graphics_device_name': self.graphics_device,
+            'ip_address': self.ip_address, 'platform_os_version': self.platform_os,
+            'carrier': '', 'keychain': 0, 'locale': self.locale,
+            'button_info': '', 'dmm_viewer_id': None, 'dmm_onetime_token': None,
+            'steam_id': self.steam_id,
+            'steam_session_ticket': self.steam_ticket,
+        }
+        print(f"[login] session invalid on start_session, chain_by_transition_code...", flush=True)
+        chain = self.call(
+            'account/chain_by_transition_code',
+            dev_args,
+            retry_501=0,
+            anonymous=True,
+        )
+        chain_data = chain.get('data', {}) or {}
+        print(f"[login] chain OK", flush=True)
+        dna_sleep(0.5, 1.0, 0.75, 0.1)
+        print(f"[login] get_by_transition_code...", flush=True)
+        get_res = self.call(
+            'account/get_by_transition_code',
+            dev_args,
+            retry_501=0,
+            anonymous=True,
+        )
+        get_data = get_res.get('data', {}) or {}
+        new_vid = (
+            get_data.get('viewer_id')
+            or get_data.get('target_viewer_id')
+            or chain_data.get('viewer_id')
+            or chain_data.get('target_viewer_id')
+            or target_vid
+        )
+        if new_vid:
+            self.viewer_id = int(new_vid)
+        ak = get_data.get('auth_key') or chain_data.get('auth_key')
+        if ak:
+            self.auth_key_hex = base64.b64decode(ak).hex()
+        self._persist_auth_cache(
+            viewer_id=int(self.viewer_id) if self.viewer_id else None,
+            auth_key=self.auth_key_hex if ak else None,
+        )
+        print(f"[login] re-auth via transition OK, viewer_id={self.viewer_id}", flush=True)
+
     def login(self, max_retries=3):
         using_existing_auth = self.has_captured_auth()
         if not using_existing_auth:
@@ -990,69 +1159,57 @@ class UmaClient:
 
         for attempt in range(max_retries + 1):
             try:
-                self.regen_sid()
-                self.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
-                res = self.call('load/index', {'adid': ''})
-                data = res.get('data', {})
-                self.refresh_cached_account_state(data)
-                self.read_info()
-                return res
+                return self._bootstrap_session(anonymous=False)
             except Exception as e:
                 err = str(e)
                 if '709' in err and attempt < max_retries:
                     dna_sleep(0.83, 0.83)
                     continue
-                if '1055' in err and attempt < max_retries:
+                if ('1055' in err or '501' in err) and attempt < max_retries:
+                    # 1) Steam-ticket anonymous bootstrap (ViewerID=0, no dead auth).
                     try:
-                        cache_path = runtime_output_root() / 'auth_cache.json'
-                        if cache_path.exists():
-                            cache = json.loads(cache_path.read_text(encoding='utf-8'))
-                        else:
-                            cache = {}
-                        pw_hash = cache.get('uma_password_hash', '')
-                        if pw_hash:
-                            import time
-                            dev_args = {
-                                'password': pw_hash,
-                                'input_viewer_id': str(self.viewer_id),
-                                'viewer_id': self.viewer_id,
-                                'device': 4, 'device_id': self.device_id,
-                                'device_name': self.device_name, 'graphics_device_name': self.graphics_device,
-                                'ip_address': self.ip_address, 'platform_os_version': self.platform_os,
-                                'carrier': '', 'keychain': 0, 'locale': self.locale,
-                                'button_info': '', 'dmm_viewer_id': None, 'dmm_onetime_token': None,
-                                'steam_id': self.steam_id,
-                                'steam_session_ticket': self.steam_ticket,
-                            }
-                            print(f"[login] 1055 on start_session, chain_by_transition_code...", flush=True)
-                            chain = self.call('account/chain_by_transition_code', dev_args)
-                            chain_data = chain.get('data', {})
-                            print(f"[login] chain OK", flush=True)
-                            dna_sleep(0.5, 1.0, 0.75, 0.1)
-                            print(f"[login] get_by_transition_code...", flush=True)
-                            get_res = self.call('account/get_by_transition_code', dev_args)
-                            get_data = get_res.get('data', {})
-                            # Update viewer_id and auth from response
-                            new_vid = get_data.get('viewer_id') or chain_data.get('viewer_id')
-                            if new_vid:
-                                self.viewer_id = int(new_vid)
-                            ak = get_data.get('auth_key') or chain_data.get('auth_key')
-                            if ak:
-                                self.auth_key_hex = base64.b64decode(ak).hex()
-                            self.regen_sid()
-                            # Re-save auth cache with new creds
-                            if new_vid or ak:
-                                old = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
-                                if new_vid: old['viewer_id'] = int(new_vid)
-                                if ak: old['auth_key'] = ak
-                                cache_path.write_text(json.dumps(old, ensure_ascii=False), encoding='utf-8')
-                            print(f"[login] re-auth via transition OK, viewer_id={self.viewer_id}", flush=True)
-                            continue
-                        else:
-                            print(f"[login] 1055 but no uma_password_hash in auth_cache, retrying...", flush=True)
+                        print(
+                            "[login] session invalid — retry start_session anonymous "
+                            "(ViewerID=0, no auth)",
+                            flush=True,
+                        )
+                        return self._bootstrap_session(anonymous=True)
+                    except Exception as e_anon:
+                        anon_err = str(e_anon)
+                        if '709' in anon_err:
                             dna_sleep(0.83, 0.83)
                             continue
+                        if '501' not in anon_err and '1055' not in anon_err:
+                            # Non-session error on anon path — surface it.
+                            if '394' in anon_err and attempt < max_retries:
+                                dna_sleep(2.5, 2.5)
+                                continue
+                            if '202' in anon_err and attempt < max_retries:
+                                dna_sleep(4.15, 4.15)
+                                continue
+                            raise
+
+                    # 2) Transition chain (still anonymous headers).
+                    try:
+                        pw_hash, target_vid = self._load_password_hash_and_viewer()
+                        if not pw_hash:
+                            raise RuntimeError(
+                                "session invalid and no uma_password_hash in auth_cache; "
+                                "re-login via web UI to refresh credentials"
+                            )
+                        if not target_vid:
+                            raise RuntimeError(
+                                "session invalid and no viewer_id for transition recovery"
+                            )
+                        self._recover_via_transition(pw_hash, target_vid)
+                        return self._bootstrap_session(anonymous=True)
                     except Exception as ae:
+                        if (
+                            "no uma_password_hash" in str(ae)
+                            or "no viewer_id for transition" in str(ae)
+                            or "session fully invalidated" in str(ae)
+                        ):
+                            raise
                         print(f"[login] chain_by_transition failed: {ae}", flush=True)
                         dna_sleep(0.83, 0.83)
                         continue
@@ -1251,10 +1408,11 @@ class UmaClient:
             }
             for item in gain_skill_info_array
         ]
+        # 205 on skill buy is permanent (overspend / invalid tip) — never retry same payload.
         return self.call('single_mode_free/gain_skills', {
             'gain_skill_info_array': gain_skill_info_array,
             'current_turn': current_turn
-        })
+        }, retry_205=0)
 
     def race_entry(self, program_id, current_turn, running_style=None, retry_208=6, retry_205=3):
         if running_style is not None:

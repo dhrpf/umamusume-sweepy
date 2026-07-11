@@ -1518,6 +1518,10 @@ async def login(req: LoginRequest):
         active_client = gated_client
         cfg['res_ver'] = c.res_ver
         cfg['app_ver'] = c.app_ver
+        if c.viewer_id:
+            cfg['viewer_id'] = int(c.viewer_id)
+        if c.auth_key_hex and c.auth_key_hex != 'YOUR_AUTH_KEY_HERE':
+            cfg['auth_key'] = c.auth_key_hex
         save_auth_cache(cfg)
         return _build_dashboard_from_login_response(res)
     except Exception as e:
@@ -1648,6 +1652,10 @@ def capture_login():
         active_selection = {"deck": None, "friend": None, "trainee": None, "veterans": []}
         cfg['res_ver'] = c.res_ver
         cfg['app_ver'] = c.app_ver
+        if c.viewer_id:
+            cfg['viewer_id'] = int(c.viewer_id)
+        if c.auth_key_hex and c.auth_key_hex != 'YOUR_AUTH_KEY_HERE':
+            cfg['auth_key'] = c.auth_key_hex
         save_auth_cache(cfg)
         dashboard = _build_dashboard_from_login_response(res)
         print('[capture-login] Login successful.', flush=True)
@@ -2665,6 +2673,10 @@ def auto_login_from_cache():
         active_client = gated_client
         cfg['res_ver'] = c.res_ver
         cfg['app_ver'] = c.app_ver
+        if c.viewer_id:
+            cfg['viewer_id'] = int(c.viewer_id)
+        if c.auth_key_hex and c.auth_key_hex != 'YOUR_AUTH_KEY_HERE':
+            cfg['auth_key'] = c.auth_key_hex
         save_auth_cache(cfg)
         _build_dashboard_from_login_response(res)
         raw_load_index_response = None

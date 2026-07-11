@@ -6,6 +6,7 @@ class EventManager:
     def __init__(self, base_dir):
         self.base_dir = Path(base_dir)
         self.outcomes = {}
+        self.last_choice_trace = None
         self._load()
 
     def _load(self):
@@ -17,14 +18,16 @@ class EventManager:
         except Exception:
             pass
 
-    def choose(self, event):
+    def choose(self, event, preset=None, turn=None, chara=None):
         story_id = str(event.get("story_id", ""))
-        
+
         if story_id == "400004002":
+            self.last_choice_trace = {"story_id": story_id, "choice": 2, "reason": "hardcoded"}
             return 2
-            
+
         choices = ((event.get("event_contents_info") or {}).get("choice_array") or [])
         if not choices:
+            self.last_choice_trace = {"story_id": story_id, "choice": 0, "reason": "no_choices"}
             return 0
 
         outcome_data = self.outcomes.get(story_id)
@@ -41,8 +44,9 @@ class EventManager:
             for i, choice in enumerate(choices):
                 select_index = str(choice.get("select_index", ""))
                 if outcomes.get(select_index) == "good":
+                    self.last_choice_trace = {"story_id": story_id, "choice": i, "reason": "outcome_good"}
                     return i
 
-        if len(choices) > 1:
-            return 1
-        return 0
+        pick = 1 if len(choices) > 1 else 0
+        self.last_choice_trace = {"story_id": story_id, "choice": pick, "reason": "fallback"}
+        return pick
