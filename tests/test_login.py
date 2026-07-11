@@ -249,6 +249,57 @@ class TestUmaLogin(unittest.TestCase):
         self.assertEqual(mock_session.post.call_count, 2)
 
     @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.get_ticket', return_value=(76561198141605647, 'fresh-ticket'))
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_501_reloads_cache_then_reboots_session(
+        self, mock_unpack, mock_session_cls, mock_get_ticket, _mock_pack,
+    ):
+        import json
+
+        stale = MagicMock()
+        fresh = MagicMock()
+        response = MagicMock(status_code=200, text='response')
+        stale.post.return_value = response
+        fresh.post.return_value = response
+        mock_session_cls.side_effect = [stale, fresh]
+        self.cfg.update({
+            'viewer_id': 1,
+            'auth_key': '7374616c652d61757468',
+            'steam_username': 'test_user',
+            'steam_password_seed': 'test-pass',
+        })
+        client = UmaClient(self.cfg, trace_enabled=False)
+        mock_unpack.side_effect = [
+            {'data_headers': {'result_code': 501}, 'data': {}},
+            {'data_headers': {'result_code': 1, 'sid': 'start-sid'}, 'data': {}},
+            {'data_headers': {'result_code': 1, 'sid': 'load-sid'}, 'data': {}},
+            {'data_headers': {'result_code': 1}, 'data': {}},
+        ]
+
+        with TemporaryDirectory() as tmp_dir:
+            Path(tmp_dir, 'auth_cache.json').write_text(json.dumps({
+                'viewer_id': 5390138731907,
+                'auth_key': '66616b655f617574685f6b6579',
+                'steam_username': 'test_user',
+                'steam_password_seed': 'test-pass',
+                'res_ver': 'cached-res',
+                'app_ver': 'cached-app',
+            }), encoding='utf-8')
+            with patch('uma_api.client.runtime_output_root', return_value=Path(tmp_dir)):
+                client.call('single_mode/load', {})
+
+        stale.close.assert_called()
+        mock_get_ticket.assert_called_once_with('test_user', 'test-pass')
+        self.assertEqual(client.viewer_id, 5390138731907)
+        self.assertEqual(client.auth_key_hex, '66616b655f617574685f6b6579')
+        self.assertEqual(client.steam_ticket, 'fresh-ticket')
+        posted_urls = [call.args[0] for call in fresh.post.call_args_list]
+        self.assertTrue(posted_urls[0].endswith('tool/start_session'))
+        self.assertTrue(posted_urls[1].endswith('load/index'))
+        self.assertTrue(posted_urls[2].endswith('single_mode/load'))
+
+    @patch('uma_api.client.pack', return_value=b'body')
     @patch('uma_api.client.requests.Session')
     @patch('uma_api.client.unpack')
     @patch('uma_api.client.get_ticket')

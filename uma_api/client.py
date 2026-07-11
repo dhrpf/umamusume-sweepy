@@ -1019,22 +1019,52 @@ class UmaClient:
             print(f"[auth cache] persist failed: {e}", flush=True)
         return old
 
+    def _reload_cached_auth(self):
+        cache_path = runtime_output_root() / 'auth_cache.json'
+        try:
+            cfg = json.loads(cache_path.read_text(encoding='utf-8'))
+        except Exception as e:
+            raise StateRecoveryError(f'501 recovery cannot load auth cache: {e}') from e
+        if not isinstance(cfg, dict):
+            raise StateRecoveryError('501 recovery auth cache is invalid')
+
+        if not isinstance(self._cfg, dict):
+            self._cfg = {}
+        self._cfg.update(cfg)
+        self.viewer_id = int(cfg.get('viewer_id') or 0)
+        self.auth_key_hex = cfg.get('auth_key', '')
+        self.steam_id = str(cfg.get('steam_id', ''))
+        self.proxy_url = cfg.get('proxy_url', self.proxy_url)
+        self.device_id = cfg.get('device_id', self.device_id)
+        self.device_name = cfg.get('device_name', self.device_name)
+        self.graphics_device = cfg.get('graphics_device_name', self.graphics_device)
+        self.ip_address = cfg.get('ip_address', self.ip_address)
+        self.platform_os = cfg.get('platform_os_version', self.platform_os)
+        self.locale = cfg.get('locale', self.locale)
+        self.unity_ver = cfg.get('unity_ver', self.unity_ver)
+        self.app_ver = cfg.get('app_ver', self.app_ver)
+        self.res_ver = cfg.get('res_ver', self.res_ver)
+        return cfg
+
     def _refresh_ticket_and_login(self):
-        cfg = self._cfg if isinstance(self._cfg, dict) else {}
+        self.session.close()
+        cfg = self._reload_cached_auth()
         username = cfg.get('steam_username', '')
         password = cfg.get('steam_password_seed', '')
-        if username and password:
-            try:
-                print(f"[501-refresh] Regenerating steam ticket for {username}...")
-                new_sid, new_tkt = get_ticket(username, password)
-                self.steam_id = str(new_sid)
-                self.steam_ticket = new_tkt
-                cfg['steam_id'] = new_sid
-                cfg['steam_session_ticket'] = new_tkt
-                self.save_config()
-                print(f"[501-refresh] Ticket regenerated ({len(new_tkt)} hex chars)")
-            except Exception as e:
-                print(f"[501-refresh] Ticket refresh failed: {e}")
+        if not username or not password:
+            raise StateRecoveryError('501 recovery requires cached Steam credentials')
+        try:
+            print(f"[501-refresh] Regenerating steam ticket for {username}...")
+            new_sid, new_tkt = get_ticket(username, password)
+        except Exception as e:
+            raise StateRecoveryError(f'501 recovery ticket refresh failed: {e}') from e
+
+        self.steam_id = str(new_sid)
+        self.steam_ticket = new_tkt
+        cfg['steam_id'] = new_sid
+        cfg['steam_session_ticket'] = new_tkt
+        self.save_config()
+        print(f"[501-refresh] Ticket regenerated ({len(new_tkt)} hex chars)")
         self.login()
 
     def _bootstrap_session(self, anonymous=False):
