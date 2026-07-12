@@ -57,13 +57,69 @@ CMD_ID_MAP = {
     601: "SPD☀", 602: "STA☀", 603: "POW☀", 604: "GUT☀", 605: "INT☀",
 }
 CMD_MAP = {1: "SPD", 2: "STA", 3: "POW", 4: "GUT", 5: "INT", 7: "REST", 8: "OUTING"}
+SCENARIO_NAMES = {1: "URA Finale", 2: "Unity Cup", 4: "Make a New Track"}
+TEAM_RESULT_NAMES = {1: "WIN", 2: "LOSS", 3: "DRAW"}
+
 
 def classify_command(command_type, command_id):
     if command_type == 1:
         return CMD_ID_MAP.get(command_id, f"train_{command_id}")
+    if command_type == 3 and command_id in (0, 301, 390):
+        return "OUTING"
     if command_type <= 5:
         return CMD_MAP.get(command_type, f"type_{command_type}")
     return CMD_TYPE_MAP.get(command_type, f"type_{command_type}")
+
+
+def endpoint_action(call):
+    return str(call.get("endpoint") or "").rsplit("/", 1)[-1]
+
+
+def collect_race_results(turns):
+    normal_results = []
+    team_results = []
+    for turn in turns:
+        pid_start = None
+        latest_team_result = None
+        for call in turn.get("api_calls") or []:
+            if call.get("direction") != "RES":
+                continue
+            action = endpoint_action(call)
+            inner = get_inner(call)
+            if action == "race_start":
+                pid_start = (inner.get("race_start_info") or {}).get("program_id")
+            elif action == "race_end":
+                history = inner.get("race_history") or []
+                reward = inner.get("race_reward_info") or {}
+                row = history[0] if history else {}
+                normal_results.append({
+                    "turn": turn.get("turn", 0),
+                    "program_id": pid_start or row.get("program_id"),
+                    "rank": row.get("result_rank") or reward.get("result_rank"),
+                    "fans": reward.get("gained_fans", 0),
+                })
+                pid_start = None
+            elif action == "team_race_end":
+                team_data = inner.get("team_data_set") or {}
+                history = team_data.get("team_race_history_array") or []
+                row = history[-1] if history else {}
+                latest_team_result = {
+                    "turn": turn.get("turn", 0),
+                    "race_num": row.get("race_num"),
+                    "team_race_set_id": row.get("team_race_set_id"),
+                    "result_state": row.get("result_state"),
+                    "rank_before": (team_data.get("team_info") or {}).get("team_rank"),
+                    "rank_after": None,
+                }
+                team_results.append(latest_team_result)
+            elif action == "team_race_out" and latest_team_result is not None:
+                rank_after = inner.get("tmp_team_rank")
+                if rank_after is None:
+                    rank_after = ((inner.get("team_data_set") or {}).get("team_info") or {}).get("team_rank")
+                latest_team_result["rank_after"] = rank_after
+    return normal_results, team_results
+
+
 MOTIV_MAP = {1: "最悪", 2: "悪い", 3: "普通", 4: "好調", 5: "絶好調"}
 
 def analyze(log_path):
@@ -81,7 +137,10 @@ def analyze(log_path):
     print("CAREER LOG ANALYSIS")
     print("=" * 60)
     print(f"  Preset:    {log.get('preset_name', '?')}")
-    print(f"  Scenario:  {log.get('scenario_id', '?')}")
+    scenario_id = log.get("scenario_id", "?")
+    scenario_name = SCENARIO_NAMES.get(scenario_id)
+    scenario_label = f"{scenario_id} ({scenario_name})" if scenario_name else str(scenario_id)
+    print(f"  Scenario:  {scenario_label}")
     print(f"  Status:    {log.get('status', '?')}")
     err = log.get("error")
     if err:
@@ -163,33 +222,45 @@ def analyze(log_path):
     print(f"  {'Total':>7s}: {sum(cmd_counts.values()):>3d}")
 
     # === RACE RESULTS ===
+    normal_results, team_results = collect_race_results(turns)
     print(f"\n{'=' * 60}")
-    print("RACE RESULTS")
+    print("NORMAL RACE RESULTS")
     print("=" * 60)
-    race_count = 0
-    wins = 0
-    for turn in turns:
-        pid_start = None
-        for call in turn["api_calls"]:
-            if call["direction"] == "RES" and "race_start" in call.get("endpoint", ""):
-                inner = get_inner(call)
-                pid_start = inner.get("race_start_info", {}).get("program_id")
-            if call["direction"] == "RES" and "race_end" in call.get("endpoint", ""):
-                inner = get_inner(call)
-                rh = inner.get("race_history", [])
-                rr = inner.get("race_reward_info", {})
-                pid = pid_start or (rh[0].get("program_id") if rh else None)
-                rank = rh[0].get("result_rank") if rh else rr.get("result_rank")
-                fans = rr.get("gained_fans", 0)
-                name = race_map.get(pid, f"race_{pid}") if pid else "?"
-                rank_str = f"#{rank}" if rank else "?"
-                result = "  ✓" if rank == 1 else " ✗" if rank and rank > 3 else ""
-                print(f"  Turn {turn['turn']:>2d}: {name:<35s} {rank_str:>3s}  (+{fans:>6,} fans){result}")
-                race_count += 1
-                if rank == 1:
-                    wins += 1
-    print(f"  ─────────")
-    print(f"  {wins}/{race_count} wins")
+    normal_wins = 0
+    for result_row in normal_results:
+        pid = result_row.get("program_id")
+        rank = result_row.get("rank")
+        fans = result_row.get("fans", 0)
+        name = race_map.get(pid, f"race_{pid}") if pid else "?"
+        rank_str = f"#{rank}" if rank else "?"
+        marker = "  ✓" if rank == 1 else " ✗" if rank and rank > 3 else ""
+        print(f"  Turn {result_row['turn']:>2d}: {name:<35s} {rank_str:>3s}  (+{fans:>6,} fans){marker}")
+        if rank == 1:
+            normal_wins += 1
+    print("  ─────────")
+    print(f"  {normal_wins}/{len(normal_results)} wins")
+
+    team_wins = sum(1 for row in team_results if row.get("result_state") == 1)
+    if team_results:
+        print(f"\n{'=' * 60}")
+        print("UNITY TEAM RACE RESULTS")
+        print("=" * 60)
+        for row in team_results:
+            result_name = TEAM_RESULT_NAMES.get(row.get("result_state"), "UNKNOWN")
+            rank_before = row.get("rank_before")
+            rank_after = row.get("rank_after")
+            rank_text = ""
+            if rank_before is not None and rank_after is not None:
+                rank_text = f"  Rank {rank_before} → {rank_after}"
+            race_num = row.get("race_num") or "?"
+            print(f"  Turn {row['turn']:>2d}: Team Race {race_num}  {result_name}{rank_text}")
+        print("  ─────────")
+        print(f"  {team_wins}/{len(team_results)} wins")
+
+    wins = normal_wins + team_wins
+    race_count = len(normal_results) + len(team_results)
+    if team_results:
+        print(f"  Overall: {wins}/{race_count} wins")
 
     # === MOTIVATION TIMELINE ===
     print(f"\n{'=' * 60}")
@@ -275,8 +346,8 @@ def analyze(log_path):
             if call["direction"] == "REQ" and "exec_command" in call.get("endpoint", ""):
                 d = call.get("data", {})
                 payload = d.get("payload", d)
-                cmd_type = payload.get("command_type")
-                if not cmd_type or cmd_type > 5:
+                cmd_type = int(payload.get("command_type") or 0)
+                if cmd_type != 1:
                     continue
                 training_total += 1
                 pre = latest_chara
@@ -353,7 +424,7 @@ def analyze(log_path):
     for k in cmd_counts:
         if k in training_labels:
             trained_stats.add(k.replace("☀",""))
-    if len(trained_stats) <= 1:
+    if trained_stats and len(trained_stats) <= 1:
         issues.append(f"⚠️ One-dimensional training: only {', '.join(trained_stats)}")
     if log.get("error"):
         issues.append(f"🔴 Career ended with error: {log['error']}")

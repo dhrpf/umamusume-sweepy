@@ -4,6 +4,7 @@ import pytest
 
 from career_bot.runner import CareerRunner, STRATEGIES
 from career_bot.scenarios.unity import UnityStrategy
+from career_bot.scenarios.ura import UraStrategy
 from uma_api.client import StateRecoveryError, UmaClient
 
 
@@ -85,6 +86,58 @@ def test_unity_strategy_dispatches_team_race_states(playing_state, phase):
     assert decision.payload["_strategy"] is strategy
 
 
+def test_unity_goal_failure_is_marked_as_failed_finish():
+    strategy = UnityStrategy()
+    state = {
+        "data": {
+            "chara_info": {
+                "turn": 24,
+                "state": 2,
+                "playing_state": 5,
+            },
+        },
+    }
+
+    decision = strategy.next_decision(state, {"scenario_id": 2})
+
+    assert decision.action == "finish"
+    assert decision.payload["career_failed"] is True
+    assert "failed" in decision.reason
+
+
+def test_unity_post_race_playing_state_five_is_not_terminal_without_failed_state():
+    strategy = UnityStrategy()
+    state = {
+        "data": {
+            "chara_info": {
+                "turn": 12,
+                "state": 0,
+                "playing_state": 5,
+                "vital": 50,
+                "max_vital": 100,
+                "motivation": 4,
+                "speed": 290,
+                "stamina": 182,
+                "power": 213,
+                "guts": 115,
+                "wiz": 197,
+                "evaluation_info_array": [],
+                "chara_effect_id_array": [],
+            },
+            "home_info": {
+                "command_info_array": [_training(101, 1, 30)],
+                "race_program_info_array": [],
+            },
+            "race_history": [],
+            "race_condition_array": [],
+        },
+    }
+
+    decision = strategy.next_decision(state, {"scenario_id": 2})
+
+    assert decision.action != "finish"
+
+
 def test_unity_pending_event_takes_priority_over_team_race_state():
     strategy = UnityStrategy()
     state = {
@@ -102,14 +155,14 @@ def test_unity_pending_event_takes_priority_over_team_race_state():
     assert decision.payload["event_id"] == 9001
 
 
-def test_unity_spirit_burst_bonus_can_change_training_choice():
+def test_unity_default_spirit_burst_bonus_can_change_training_choice():
     strategy = UnityStrategy()
     preset = {
         "scenario_id": 2,
         "expect_attribute": [600, 600, 600, 400, 400],
         "unity_config": {
             "unity_training_weight": 0.6,
-            "spirit_burst_weight": 500.0,
+            "spirit_burst_weight": 5.0,
         },
     }
 
@@ -118,7 +171,62 @@ def test_unity_spirit_burst_bonus_can_change_training_choice():
     assert decision.action == "command"
     assert decision.payload["command_id"] == 102
     assert decision.payload["decision_detail"]["unity_spirit_bursts"] == 1
-    assert decision.payload["decision_detail"]["unity_bonus"] == 500.0
+    assert decision.payload["decision_detail"]["unity_bonus"] == 150.0
+
+
+def test_summer_camp_uses_server_preview_gain_without_extra_multiplier():
+    strategy = UraStrategy()
+    command = _training(602, 2, 32)
+    command["params_inc_dec_info_array"].extend([
+        {"target_type": 4, "value": 19},
+        {"target_type": 30, "value": 9},
+    ])
+    chara = {
+        "vital": 85,
+        "speed": 650,
+        "stamina": 280,
+        "power": 480,
+        "guts": 230,
+        "wiz": 410,
+        "evaluation_info_array": [],
+    }
+
+    best, _ = strategy._best_training(
+        [command],
+        {"expect_attribute": [0, 0, 0, 0, 0]},
+        chara,
+        turn=37,
+        is_camp=True,
+        pre_camp=False,
+    )
+
+    assert best["_decision_detail"]["gain"] == 60.0
+
+
+def test_9999_expected_stats_use_scenario_targets_instead_of_literal_deficit():
+    strategy = UraStrategy()
+    command = _training(101, 1, 30)
+    chara = {
+        "vital": 100,
+        "speed": 500,
+        "stamina": 500,
+        "power": 500,
+        "guts": 300,
+        "wiz": 500,
+        "evaluation_info_array": [],
+    }
+
+    best, _ = strategy._best_training(
+        [command],
+        {"expect_attribute": [9999, 9999, 9999, 9999, 9999]},
+        chara,
+        turn=10,
+        is_camp=False,
+        pre_camp=False,
+    )
+
+    assert best["_decision_detail"]["target"] == 900
+    assert best["_decision_detail"]["deficit"] == 400
 
 
 def test_unity_scenario_is_registered():
@@ -135,32 +243,70 @@ def test_runner_allows_unity_playing_states_for_unity_strategy():
     assert runner._blocked_playing_state({"playing_state": 7}) is True
 
 
-def test_build_unity_team_uses_round_robin_joined_members():
+def test_build_unity_team_falls_back_to_round_robin_when_aptitude_is_unknown():
     runner = CareerRunner.__new__(CareerRunner)
+    runner._unity_aptitudes = {}
     team_data_set = {
         "evaluation_info_array": [
-            {"member_state": 1, "chara_id": 2001},
-            {"member_state": 0, "chara_id": 9999},
-            {"member_state": 1, "chara_id": 2002},
-            {"member_state": 1, "chara_id": 2003},
-            {"member_state": 1, "chara_id": 2004},
-            {"member_state": 1, "chara_id": 2005},
+            {"member_state": 1, "chara_id": 9001},
+            {"member_state": 0, "chara_id": 9998},
+            {"member_state": 1, "chara_id": 9002},
+            {"member_state": 1, "chara_id": 9003},
+            {"member_state": 1, "chara_id": 9004},
+            {"member_state": 1, "chara_id": 9005},
         ],
     }
 
     roster = runner._build_unity_team(
         team_data_set,
-        {"card_id": 100101},
+        {"card_id": 999901},
         {"unity_config": {"default_running_style": 4}},
     )
 
     assert roster == [
-        {"distance_type": 1, "member_id": 1, "chara_id": 1001, "running_style": 4},
-        {"distance_type": 2, "member_id": 1, "chara_id": 2001, "running_style": 4},
-        {"distance_type": 3, "member_id": 1, "chara_id": 2002, "running_style": 4},
-        {"distance_type": 4, "member_id": 1, "chara_id": 2003, "running_style": 4},
-        {"distance_type": 5, "member_id": 1, "chara_id": 2004, "running_style": 4},
-        {"distance_type": 1, "member_id": 2, "chara_id": 2005, "running_style": 4},
+        {"distance_type": 1, "member_id": 1, "chara_id": 9999, "running_style": 4},
+        {"distance_type": 2, "member_id": 1, "chara_id": 9001, "running_style": 4},
+        {"distance_type": 3, "member_id": 1, "chara_id": 9002, "running_style": 4},
+        {"distance_type": 4, "member_id": 1, "chara_id": 9003, "running_style": 4},
+        {"distance_type": 5, "member_id": 1, "chara_id": 9004, "running_style": 4},
+        {"distance_type": 1, "member_id": 2, "chara_id": 9005, "running_style": 4},
+    ]
+
+
+def test_build_unity_team_assigns_distance_and_style_from_aptitude():
+    runner = CareerRunner.__new__(CareerRunner)
+    runner._unity_aptitudes = {
+        100101: {
+            "turf": 7, "dirt": 1,
+            "short": 1, "mile": 2, "medium": 5, "long": 7,
+            "front": 2, "pace": 7, "late": 4, "end": 1,
+        },
+        200101: {
+            "turf": 7, "dirt": 1,
+            "short": 7, "mile": 3, "medium": 1, "long": 1,
+            "front": 7, "pace": 3, "late": 2, "end": 1,
+        },
+    }
+    team_data_set = {
+        "evaluation_info_array": [
+            {"target_id": 1, "member_state": 1, "chara_id": 2001},
+        ],
+        "team_info": {
+            "team_chara_info_array": [
+                {"training_partner_id": 1, "rank_score": 3000},
+            ],
+        },
+    }
+
+    roster = runner._build_unity_team(
+        team_data_set,
+        {"card_id": 100101, "speed": 500, "stamina": 500, "power": 500, "guts": 500, "wiz": 500},
+        {"unity_config": {"default_running_style": 4}},
+    )
+
+    assert roster == [
+        {"distance_type": 1, "member_id": 1, "chara_id": 2001, "running_style": 1},
+        {"distance_type": 4, "member_id": 1, "chara_id": 1001, "running_style": 2},
     ]
 
 

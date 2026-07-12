@@ -22,3 +22,114 @@ def test_planned_race_beats_low_vital_rest():
 
     assert decision.action == "race"
     assert decision.payload["program_id"] == 5
+
+
+def test_fan_building_race_beats_imminent_target_skip():
+    planner = RacePlanner("/nonexistent")
+    planner.meta = {
+        11: {"turn": 23, "program_id": 1001},
+    }
+    planner.program = {
+        1001: {"name": "Planned G1", "race_instance_id": 100001, "ground": 1, "distance": 1600},
+        4001: {"name": "Eligible Open", "race_instance_id": 400001, "ground": 1, "distance": 1600},
+    }
+    current = state(23)
+    current["data"]["chara_info"].update({
+        "fans": 652,
+        "proper_ground_turf": 7,
+        "proper_distance_mile": 7,
+        "target_chara_race_info_array": [{"target_turn": 24, "is_cleared": False}],
+    })
+    current["data"]["race_condition_array"] = [
+        {"program_id": 1001},
+        {"program_id": 4001},
+    ]
+
+    decision = UraStrategy(planner).next_decision(
+        current,
+        {"extra_race_list": [11]},
+    )
+
+    assert decision.action == "race"
+    assert decision.payload["program_id"] == 4001
+
+
+def test_lost_debut_forces_best_aptitude_maiden_race():
+    planner = RacePlanner("/nonexistent")
+    planner.program = {
+        298: {"name": "Junior Maiden Race", "race_instance_id": 904050, "ground": 2, "distance": 1150},
+        946: {"name": "Junior Maiden Race", "race_instance_id": 904060, "ground": 1, "distance": 1200},
+        951: {"name": "Junior Maiden Race", "race_instance_id": 904100, "ground": 1, "distance": 1800},
+    }
+    current = state(13)
+    current["data"]["chara_info"].update({
+        "fans": 652,
+        "proper_ground_turf": 7,
+        "proper_ground_dirt": 6,
+        "proper_distance_short": 3,
+        "proper_distance_mile": 7,
+        "proper_distance_middle": 7,
+        "proper_distance_long": 7,
+    })
+    current["data"]["race_condition_array"] = [
+        {"program_id": 298},
+        {"program_id": 946},
+        {"program_id": 951},
+    ]
+
+    strategy = UraStrategy(planner)
+    strategy.record_race_result(1070, 2)
+    decision = strategy.next_decision(current, {"extra_race_list": []})
+
+    assert decision.action == "race"
+    assert decision.payload["program_id"] == 951
+    assert "maiden" in decision.reason.lower()
+
+
+def test_resume_after_lost_debut_reconstructs_maiden_gate_from_history():
+    planner = RacePlanner("/nonexistent")
+    planner.program = {
+        951: {"name": "Junior Maiden Race", "race_instance_id": 904100, "ground": 1, "distance": 1800},
+    }
+    current = state(13)
+    current["data"]["chara_info"].update({
+        "fans": 652,
+        "proper_ground_turf": 7,
+        "proper_distance_mile": 7,
+    })
+    current["data"]["race_history"] = [
+        {"turn": 12, "program_id": 1070, "result_rank": 2},
+    ]
+    current["data"]["race_condition_array"] = [{"program_id": 951}]
+
+    decision = UraStrategy(planner).next_decision(current, {"extra_race_list": []})
+
+    assert decision.action == "race"
+    assert decision.payload["program_id"] == 951
+
+
+def test_maiden_gate_stops_after_first_win():
+    planner = RacePlanner("/nonexistent")
+    planner.meta = {11: {"turn": 14, "program_id": 1001}}
+    planner.program = {
+        951: {"name": "Junior Maiden Race", "race_instance_id": 904100, "ground": 1, "distance": 1800},
+        1001: {"name": "Planned G1", "race_instance_id": 100001, "ground": 1, "distance": 1600},
+    }
+    current = state(14)
+    current["data"]["chara_info"].update({
+        "fans": 1400,
+        "proper_ground_turf": 7,
+        "proper_distance_mile": 7,
+    })
+    current["data"]["race_condition_array"] = [
+        {"program_id": 951},
+        {"program_id": 1001},
+    ]
+
+    strategy = UraStrategy(planner)
+    strategy.record_race_result(1070, 2)
+    strategy.record_race_result(951, 1)
+    decision = strategy.next_decision(current, {"extra_race_list": [11]})
+
+    assert decision.action == "race"
+    assert decision.payload["program_id"] == 1001

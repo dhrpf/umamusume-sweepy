@@ -9,6 +9,9 @@ from career_bot.scenarios.base import Decision
 from career_bot.scenarios.ura import UraStrategy
 
 
+UNITY_SCORE_SCALE = 30.0
+
+
 class UnityStrategy(UraStrategy):
     scenario_id = 2
     display_name = "Unity Cup"
@@ -62,25 +65,29 @@ class UnityStrategy(UraStrategy):
         cfg = (preset or {}).get("unity_config") or {}
         unity_weight = float(cfg.get("unity_training_weight", 0.6))
         burst_weight = float(cfg.get("spirit_burst_weight", 5.0))
+        unity_member_score = unity_weight * UNITY_SCORE_SCALE
+        spirit_burst_score = burst_weight * UNITY_SCORE_SCALE
 
         guide_members = len(team_cmd.get("guide_event_partner_array") or [])
         soul_members = len(team_cmd.get("soul_event_partner_array") or [])
         spirit_bursts = len(team_cmd.get("sp_soul_event_partner_array") or [])
         unity_members = guide_members + soul_members
-        bonus = unity_members * unity_weight + spirit_bursts * burst_weight
+        bonus = unity_members * unity_member_score + spirit_bursts * spirit_burst_score
 
         reasons = []
         if unity_members:
             reasons.append(
-                f"Unity Training {unity_members} × {unity_weight:g}"
+                f"Unity Training {unity_members} × {unity_member_score:g}"
             )
         if spirit_bursts:
             reasons.append(
-                f"Spirit Burst {spirit_bursts} × {burst_weight:g}"
+                f"Spirit Burst {spirit_bursts} × {spirit_burst_score:g}"
             )
 
         return bonus, reasons, {
             "unity_members": unity_members,
             "unity_spirit_bursts": spirit_bursts,
+            "unity_member_score": round(unity_member_score, 3),
+            "unity_spirit_burst_score": round(spirit_burst_score, 3),
             "unity_bonus": round(bonus, 3),
         }

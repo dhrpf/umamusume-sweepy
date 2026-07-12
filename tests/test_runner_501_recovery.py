@@ -105,6 +105,12 @@ class CommandDecision:
     reason = "test"
 
 
+class FailedFinishDecision:
+    action = "finish"
+    payload = {"current_turn": 24, "career_failed": True}
+    reason = "career failed (ps=5)"
+
+
 class FakeStrategy:
     def __init__(self, decision):
         self._d = decision
@@ -142,6 +148,31 @@ class TestFinishCareer501Recovery(unittest.TestCase):
         self.assertEqual(client.finish_calls, [10])
         self.assertTrue(runner.status.get("finished"),
                         "status.finished should be True after graceful 501 reconciliation")
+
+    def test_failed_finish_is_not_marked_as_successful(self):
+        runner = _make_runner_with_stubs()
+        client = RecordingClient()
+        client.call = MagicMock(return_value={"data": {}})
+        client.finish_career = MagicMock(return_value={"data": {}})
+        state = {
+            "data": {
+                "chara_info": {"turn": 24, "state": 2, "playing_state": 5},
+                "unchecked_event_array": [],
+            }
+        }
+
+        with patch("career_bot.runner.dna_sleep"):
+            runner._run(
+                client=client,
+                preset={"name": "test", "scenario_id": 2},
+                result=state,
+                strategy=FakeStrategy(FailedFinishDecision()),
+                max_steps=10,
+            )
+
+        self.assertFalse(runner.status.get("finished"))
+        self.assertEqual(runner.status.get("last_action"), "career_failed")
+        self.assertIn("career failed", runner.status.get("last_error", ""))
 
     def test_missing_transition_hash_records_runner_error(self):
         runner = _make_runner_with_stubs()

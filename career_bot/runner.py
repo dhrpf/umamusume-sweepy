@@ -380,7 +380,18 @@ class CareerRunner:
                                     dna_sleep(2.0, 3.0)
                                     continue
                                 raise
-                        self._mark(last_action="finish", finished=True)
+                        career_failed = bool(decision.payload.get("career_failed"))
+                        if career_failed:
+                            failure_message = str(decision.reason or "career failed")
+                            self._mark(
+                                last_action="career_failed",
+                                last_error=failure_message,
+                                finished=False,
+                            )
+                            if self.report:
+                                set_error(self.report, RuntimeError(failure_message))
+                        else:
+                            self._mark(last_action="finish", finished=True)
                         break
                     else:
                         self._mark(last_action=decision.action)
@@ -1090,23 +1101,27 @@ class CareerRunner:
 
         return finish_order + 1
 
-    def _build_unity_team(self, team_data_set, chara_info, preset):
-        """Build the five-division roster required by Unity Cup team_edit."""
-        cfg = (preset or {}).get("unity_config") or {}
-        default_style = int(cfg.get("default_running_style", 1) or 1)
+    def _load_unity_aptitudes(self):
+        cached = getattr(self, "_unity_aptitudes", None)
+        if isinstance(cached, dict):
+            return cached
 
-        chara_ids = []
-        card_id = int((chara_info or {}).get("card_id") or 0)
-        if card_id:
-            chara_ids.append(card_id // 100)
+        root = Path(getattr(self, "base_dir", Path(__file__).resolve().parents[1]))
+        path = root / "data" / "chara_aptitude.json"
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            cached = {
+                int(card_id): values
+                for card_id, values in raw.items()
+                if str(card_id).isdigit() and isinstance(values, dict)
+            }
+        except (OSError, ValueError, TypeError):
+            cached = {}
+        self._unity_aptitudes = cached
+        return cached
 
-        for member in (team_data_set or {}).get("evaluation_info_array") or []:
-            if int(member.get("member_state") or 0) != 1:
-                continue
-            chara_id = int(member.get("chara_id") or 0)
-            if chara_id:
-                chara_ids.append(chara_id)
-
+    @staticmethod
+    def _legacy_unity_roster(chara_ids, default_style):
         roster = []
         slots = [0, 0, 0, 0, 0]
         for index, chara_id in enumerate(chara_ids):
@@ -1120,6 +1135,148 @@ class CareerRunner:
                 "member_id": slots[slot_index],
                 "chara_id": chara_id,
                 "running_style": default_style,
+            })
+        return roster
+
+    @staticmethod
+    def _unity_running_style(aptitude, default_style):
+        if not aptitude:
+            return default_style
+        styles = [
+            (int(aptitude.get("front") or 0), 1),
+            (int(aptitude.get("pace") or 0), 2),
+            (int(aptitude.get("late") or 0), 3),
+            (int(aptitude.get("end") or 0), 4),
+        ]
+        best = max(score for score, _ in styles)
+        if best <= 0:
+            return default_style
+        tied = [style for score, style in styles if score == best]
+        return default_style if default_style in tied else tied[0]
+
+    @staticmethod
+    def _unity_division_score(aptitude, distance_type, rank_score=0):
+        if not aptitude:
+            return float(rank_score or 0) / 1000.0
+        distance_keys = {1: "short", 2: "mile", 3: "medium", 4: "long"}
+        if distance_type in distance_keys:
+            distance = int(aptitude.get(distance_keys[distance_type]) or 0)
+            surface = int(aptitude.get("turf") or 0)
+            score = distance * 100 + surface * 25
+        else:
+            surface = int(aptitude.get("dirt") or 0)
+            distance = max(
+                int(aptitude.get(key) or 0)
+                for key in ("short", "mile", "medium", "long")
+            )
+            score = surface * 100 + distance * 25
+        return float(score) + float(rank_score or 0) / 1000.0
+
+    def _build_unity_team(self, team_data_set, chara_info, preset):
+        """Build an aptitude-aware five-division Unity Cup roster."""
+        cfg = (preset or {}).get("unity_config") or {}
+        default_style = int(cfg.get("default_running_style", 1) or 1)
+        aptitudes = self._load_unity_aptitudes()
+
+        team_info = (team_data_set or {}).get("team_info") or {}
+        team_stats = {
+            int(row.get("training_partner_id") or 0): row
+            for row in team_info.get("team_chara_info_array") or []
+        }
+
+        candidates = []
+        card_id = int((chara_info or {}).get("card_id") or 0)
+        if card_id:
+            candidates.append({
+                "chara_id": card_id // 100,
+                "card_id": card_id,
+                "rank_score": sum(
+                    int((chara_info or {}).get(key) or 0)
+                    for key in ("speed", "stamina", "power", "guts", "wiz")
+                ),
+            })
+
+        for member in (team_data_set or {}).get("evaluation_info_array") or []:
+            if int(member.get("member_state") or 0) != 1:
+                continue
+            chara_id = int(member.get("chara_id") or 0)
+            if not chara_id:
+                continue
+            target_id = int(member.get("target_id") or 0)
+            candidates.append({
+                "chara_id": chara_id,
+                "card_id": chara_id * 100 + 1,
+                "rank_score": int((team_stats.get(target_id) or {}).get("rank_score") or 0),
+            })
+
+        if not candidates:
+            return []
+
+        by_base_chara = {}
+        for aptitude_card_id, values in aptitudes.items():
+            by_base_chara.setdefault(int(aptitude_card_id) // 100, values)
+
+        known_aptitudes = 0
+        for candidate in candidates:
+            aptitude = aptitudes.get(candidate["card_id"])
+            if aptitude is None:
+                aptitude = by_base_chara.get(candidate["chara_id"])
+            candidate["aptitude"] = aptitude or {}
+            if aptitude:
+                known_aptitudes += 1
+
+        if known_aptitudes == 0:
+            return self._legacy_unity_roster(
+                [candidate["chara_id"] for candidate in candidates],
+                default_style,
+            )
+
+        # Dynamic programming finds the highest-scoring assignment while keeping
+        # every division at the API limit of three members.
+        states = {(0, 0, 0, 0, 0): (0.0, [])}
+        for candidate_index, candidate in enumerate(candidates):
+            next_states = dict(states)
+            for counts, (score, assignments) in states.items():
+                for distance_type in range(1, 6):
+                    slot_index = distance_type - 1
+                    if counts[slot_index] >= 3:
+                        continue
+                    new_counts = list(counts)
+                    new_counts[slot_index] += 1
+                    new_counts = tuple(new_counts)
+                    new_score = score + self._unity_division_score(
+                        candidate["aptitude"],
+                        distance_type,
+                        candidate["rank_score"],
+                    )
+                    previous = next_states.get(new_counts)
+                    if previous is None or new_score > previous[0]:
+                        next_states[new_counts] = (
+                            new_score,
+                            assignments + [(candidate_index, distance_type)],
+                        )
+            states = next_states
+
+        _, (_, assignments) = max(
+            states.items(),
+            key=lambda item: (sum(item[0]), item[1][0]),
+        )
+        assignments.sort(key=lambda item: (item[1], item[0]))
+
+        roster = []
+        slots = [0, 0, 0, 0, 0]
+        for candidate_index, distance_type in assignments:
+            candidate = candidates[candidate_index]
+            slot_index = distance_type - 1
+            slots[slot_index] += 1
+            roster.append({
+                "distance_type": distance_type,
+                "member_id": slots[slot_index],
+                "chara_id": candidate["chara_id"],
+                "running_style": self._unity_running_style(
+                    candidate["aptitude"],
+                    default_style,
+                ),
             })
         return roster
 
@@ -1278,10 +1435,15 @@ class CareerRunner:
             running_style = 0
 
         try:
-            entry = client.race_entry(program_id=program_id, current_turn=current_turn)
+            entry = client.race_entry(
+                program_id=program_id,
+                current_turn=current_turn,
+                retry_205=0,
+            )
         except Exception as exc:
             print(f"Race Entry Error at turn {current_turn}: {exc}")
-            if not any(err in str(exc) for err in ("205", "208")):
+            err_str = str(exc)
+            if not any(err in err_str for err in ("205", "208")):
                 raise
             self.race_planner.reject(current_turn, program_id)
             # Notify strategy so it skips this race next time
@@ -1293,6 +1455,38 @@ class CareerRunner:
             fresh_race_history = (fresh.get("data") or {}).get("race_history") or []
             if any(int(r.get("program_id", 0)) == program_id for r in fresh_race_history):
                 self._log("race_skipped_history", current_turn, f"race {program_id} already completed")
+                return fresh
+
+            # 205 is usually a deterministic entry restriction (most often fan
+            # count). Try another eligible race on the same turn instead of
+            # training and immediately failing the scenario goal.
+            rejected_ids = {
+                int(pid)
+                for pid in (payload.get("_rejected_program_ids") or [])
+                if int(pid or 0)
+            }
+            rejected_ids.add(int(program_id or 0))
+            if "205" in err_str and hasattr(self.race_planner, "fallback_candidates"):
+                candidates = self.race_planner.fallback_candidates(
+                    fresh,
+                    exclude=rejected_ids,
+                )
+                if candidates:
+                    fallback_id = int(candidates[0])
+                    self._log(
+                        "race_fallback",
+                        current_turn,
+                        f"{program_id} rejected; trying {fallback_id}",
+                    )
+                    fallback_payload = dict(payload)
+                    fallback_payload["program_id"] = fallback_id
+                    fallback_payload["_rejected_program_ids"] = sorted(rejected_ids)
+                    return self._race(
+                        client,
+                        fresh,
+                        preset,
+                        fallback_payload,
+                    )
             return fresh
         self._log("race_entry", current_turn, program_id)
         entry_data = entry.get("data") or {}
@@ -1381,6 +1575,9 @@ class CareerRunner:
             except Exception as e:
                 self._log("race_clock_failed", current_turn, str(e))
                 break
+
+        if strategy and hasattr(strategy, "record_race_result"):
+            strategy.record_race_result(program_id, rank)
 
         if strategy:
             res_data = res.get("data") or {}

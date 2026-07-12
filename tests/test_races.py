@@ -17,6 +17,7 @@ def _planner(tmp_path):
                     "1001": {"name": "G1 Race", "race_instance_id": "100001", "ground": 1, "distance": 1600},
                     "1002": {"name": "Later Race", "race_instance_id": "100002", "ground": 1, "distance": 1600},
                     "2002": {"name": "G2 Race", "race_instance_id": "200002", "ground": 1, "distance": 1600},
+                    "4001": {"name": "Open Race", "race_instance_id": "400001", "ground": 1, "distance": 1600},
                 },
                 "instance": {"500": [1001, 2002]},
             }
@@ -26,13 +27,13 @@ def _planner(tmp_path):
     return RacePlanner(tmp_path)
 
 
-def _state(turn=12, available=(1001,), race_enabled=True, scenario_id=1):
+def _state(turn=12, available=(1001,), race_enabled=True, scenario_id=1, fans=1000):
     return {
         "data": {
             "chara_info": {
                 "turn": turn,
                 "scenario_id": scenario_id,
-                "fans": 1000,
+                "fans": fans,
                 "proper_ground_turf": 6,
                 "proper_distance_mile": 6,
             },
@@ -68,3 +69,25 @@ def test_rejected_program_is_removed_from_wanted_available(tmp_path):
     planner.reject(12, 1001)
 
     assert planner.choose(state, preset) == 0
+
+
+def test_choose_falls_back_when_planned_g1_fan_requirement_is_not_met(tmp_path):
+    planner = _planner(tmp_path)
+    state = _state(available=(1001, 4001), fans=652)
+
+    assert planner.choose(state, {"extra_race_list": [11]}) == 4001
+
+
+def test_choose_builds_fans_before_next_turn_planned_g1(tmp_path):
+    planner = _planner(tmp_path)
+    state = _state(turn=12, available=(4001,), fans=652)
+
+    assert planner.choose(state, {"extra_race_list": [12]}) == 4001
+
+
+def test_fallback_candidates_exclude_ineligible_and_rejected_races(tmp_path):
+    planner = _planner(tmp_path)
+    state = _state(available=(1001, 2002, 4001), fans=652)
+    planner.reject(12, 2002)
+
+    assert planner.fallback_candidates(state, exclude={1001}) == [4001]

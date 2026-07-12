@@ -87,6 +87,8 @@ class UraStrategy(ScenarioStrategy):
         self.race_planner = race_planner
         self._training_counts = {}  # command_id -> use count
         self._rejected_race_ids = set()  # program_ids that got 205 on entry
+        self._has_raced = False
+        self._has_career_win = False
         self._mcts_planner = None  # lazy-built below
         _load_support_map()
 
@@ -149,6 +151,29 @@ class UraStrategy(ScenarioStrategy):
     def reject_race(self, program_id):
         """Called by runner when race_entry fails with 205/208."""
         self._rejected_race_ids.add(int(program_id))
+
+    def record_race_result(self, program_id, rank):
+        """Keep first-win progress even when post-race responses omit history."""
+        self._has_raced = True
+        try:
+            result_rank = int(rank or 0)
+        except (TypeError, ValueError):
+            result_rank = 0
+        if result_rank == 1:
+            self._has_career_win = True
+
+    def _update_race_progress(self, state):
+        history = ((state or {}).get("data") or {}).get("race_history") or []
+        if history:
+            self._has_raced = True
+            if any(int(row.get("result_rank") or 0) == 1 for row in history):
+                self._has_career_win = True
+
+    def _needs_maiden_win(self, state):
+        self._update_race_progress(state)
+        chara = ((state or {}).get("data") or {}).get("chara_info") or {}
+        turn = int(chara.get("turn") or 0)
+        return turn >= 13 and self._has_raced and not self._has_career_win
 
     # ------------------------------------------------------------------
     # next_decision — main turn loop
@@ -228,8 +253,34 @@ class UraStrategy(ScenarioStrategy):
                 )
 
         # --- Finish check (early: before any race fallback) ---
-        if data.get("is_goal", False) or chara.get("playing_state") in (3, 5):
-            return Decision("finish", {"current_turn": turn}, "career finished (ps=%s)" % chara.get("playing_state"))
+        playing_state = int(chara.get("playing_state") or 0)
+        career_state = int(chara.get("state") or 0)
+        career_failed = playing_state == 5 and career_state == 2
+        if data.get("is_goal", False) or playing_state == 3 or career_failed:
+            payload = {"current_turn": turn}
+            if career_failed:
+                payload["career_failed"] = True
+            reason = (
+                f"career failed (ps={playing_state})"
+                if career_failed
+                else f"career finished (ps={playing_state})"
+            )
+            return Decision("finish", payload, reason)
+
+        # A debut loss leaves the trainee in maiden class. Keep racing the
+        # best aptitude-compatible maiden until the first win unlocks graded races.
+        if self.race_planner and self._needs_maiden_win(state):
+            maiden_candidates = self.race_planner.maiden_candidates(
+                state,
+                exclude=self._rejected_race_ids,
+            )
+            if maiden_candidates:
+                pid = maiden_candidates[0]
+                return Decision(
+                    "race",
+                    {"program_id": pid, "current_turn": turn, "_strategy": self},
+                    self.race_planner.label(pid) or f"maiden recovery {pid}",
+                )
 
         if self.race_planner:
             fp = self.race_planner.forced_program(state, preset)
@@ -256,6 +307,22 @@ class UraStrategy(ScenarioStrategy):
                         "race",
                         {"program_id": pid, "current_turn": turn, "_strategy": self},
                         self.race_planner.label(pid) or f"optional {pid}",
+                    )
+
+            # A planned graded race may be visible before its fan requirement is
+            # met. Build fans even when the normal optional-race path would be
+            # suppressed by an imminent scenario target.
+            if hasattr(self.race_planner, "fan_building_candidate"):
+                fan_pid = self.race_planner.fan_building_candidate(
+                    state,
+                    preset,
+                    lookahead=1,
+                )
+                if fan_pid:
+                    return Decision(
+                        "race",
+                        {"program_id": fan_pid, "current_turn": turn, "_strategy": self},
+                        self.race_planner.label(fan_pid) or f"fan-building race {fan_pid}",
                     )
 
         # --- Skip self-selected races if target race is imminent ---
@@ -554,8 +621,14 @@ class UraStrategy(ScenarioStrategy):
         return nearest
 
     def _find_alternative_race(self, state, chara, turn):
-        """Scan available race programs for one the horse can enter (aptitude check).
-        Used as fallback when the forced debut race gets 205."""
+        """Scan available race programs for an eligible fallback race."""
+        if self.race_planner and hasattr(self.race_planner, "fallback_candidates"):
+            candidates = self.race_planner.fallback_candidates(
+                state,
+                exclude=self._rejected_race_ids,
+            )
+            return candidates[0] if candidates else None
+
         programs = self._program_lookup(state)
         history_pids = {r.get("program_id") for r in ((state.get("data") or {}).get("race_history") or [])}
         candidates = []
@@ -570,14 +643,7 @@ class UraStrategy(ScenarioStrategy):
                     continue
             else:
                 candidates.append(pid)
-        if not candidates:
-            return None
-        # Prefer G1 (race_instance_id leading 1)
-        prog_map = getattr(self.race_planner, 'program', {}) if self.race_planner else {}
-        g1 = [pid for pid in candidates if str(prog_map.get(str(pid), {}).get("race_instance_id", "0"))[0] == "1"]
-        if g1:
-            return g1[0]
-        return candidates[0]
+        return candidates[0] if candidates else None
 
     # ------------------------------------------------------------------
     # Bond map
@@ -656,7 +722,7 @@ class UraStrategy(ScenarioStrategy):
           9. Stat deficit (muted, only as tiebreaker)
          10. Fail chance gating (skip if gain < 2× fail%)
         """
-        priority = [max(a, b) for a, b in zip(preset.get("expect_attribute") or [0, 0, 0, 0, 0], URA_STAT_TARGETS)]
+        priority = self._stat_targets(preset)
         bonds = self._bond_map(chara)
         vital = int(chara.get("vital") or chara.get("current_vital") or 0)
 
@@ -686,9 +752,9 @@ class UraStrategy(ScenarioStrategy):
             # ponytail: flat cutoff; upgrade to EV/failure sim once logs prove it matters.
             if gain < MIN_TRAIN_GAIN and not is_camp and not under_target:
                 continue
-            if is_camp:
-                gain *= 5.0
 
+            # Camp command previews already contain the server-calculated boosted
+            # values. Multiplying them again inflates both score and failure EV.
             # Training level
             uses = self._training_counts.get(cid, 0)
             level = (uses // TRAINING_LEVEL_UP) + 1
@@ -835,6 +901,22 @@ class UraStrategy(ScenarioStrategy):
     def _training_score_bonus(self, cmd, chara, preset, turn):
         """Scenario hook for command-specific training bonuses."""
         return 0.0, [], {}
+
+    @staticmethod
+    def _stat_targets(preset):
+        """Resolve configured targets while treating 9999 as an uncapped sentinel."""
+        configured = list((preset or {}).get("expect_attribute") or [])
+        targets = []
+        for index, baseline in enumerate(URA_STAT_TARGETS):
+            raw = configured[index] if index < len(configured) else 0
+            try:
+                value = int(raw or 0)
+            except (TypeError, ValueError):
+                value = 0
+            if value >= 9000:
+                value = baseline
+            targets.append(max(value, baseline))
+        return targets
 
     def _deck_type_counts(self, chara):
         """Count support card types in the deck → training index counts."""
