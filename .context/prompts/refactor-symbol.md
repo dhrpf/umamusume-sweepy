@@ -22,7 +22,7 @@
 - `tests/test_runner_command_metadata.py` + `tests/test_runner_event_recovery.py` — refactors near runner dispatch break these.
 - `main.py` routes — Pydantic models must stay wire-compatible.
 - Cross-package: verify `runtime_output_root()` (`runner.py:31-41`) won't break for cwd-relative lookups.
-- `runner.py:561` `client.hard_reset()` — method rename breaks recovery waterfall silently.
+- `CareerRunner._recover_blocked_state` and `_fresh_career_state` call client recovery paths. Renaming `hard_reset()` or `login()` requires updating both recovery contracts.
 
 ### Edit
 

@@ -1,19 +1,25 @@
-ADR-005: Rule-based default + calibration-gated MCTS alpha
+# ADR-005: Rule-Based Default + Calibration-Gated MCTS
 
-Context
-  Need career planner. MCTS pure math but unrewarded without real-game params.
+## Context
 
-Decision
-  `STRATEGIES` dict in `runner.py` only maps {4: MantStrategy, 1: UraStrategy}.
-  MCTS NOT wired into `CareerRunner.start()` — grep confirms zero MCTS refs in runner/main.
-  `SimulatorBase.enabled` True only when calibrated_from >= 20 logs:
-    - <20 logs → warning confidence
-    - <10 logs → disabled
-  URA sim loads `params.json`; `MCTSConfig.time_budget_sec=5` + `max_simulations` dual-budget cutoff.
+Rule-based strategies remain production default. MCTS needs calibrated simulator parameters before its results are trustworthy.
 
-Consequences
-  - MCTS can't be flipped on implicitly — opt-in required.
-  - Calibration data grows in `mcts/calibration/`.
-  - `use_expected_value` mode replaces rollout RNG with weighted sums.
+## Decision
 
-See: `career_bot/runner.py:25-28,109-110`; `career_bot/mcts/sim/ura.py:19-59`; `career_bot/mcts/__init__.py`
+`CareerRunner.STRATEGIES` maps Mant and URA strategies; runner does not select a planner directly. URA strategy can use its MCTS/simulator path when its configuration and calibrated simulator permit it.
+
+`UraSimulator` calibration state:
+
+- Fewer than 10 logs: disabled.
+- 10–19 logs: enabled with warning confidence.
+- 20 or more logs: enabled with high confidence.
+
+MCTS honors both `time_budget_sec` and `max_simulations`. Simulator remains side-effect free; live API calls stay in runner/client layers.
+
+## Consequences
+
+- Do not silently enable a new scenario simulator from runner startup.
+- Preserve calibration data and update simulator parameters through calibration workflow.
+- Rule-based decision behavior remains fallback when MCTS is disabled.
+
+See: `CareerRunner.STRATEGIES`, `UraStrategy`, `UraSimulator`.

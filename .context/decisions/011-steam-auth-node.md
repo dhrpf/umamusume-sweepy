@@ -1,17 +1,23 @@
-ADR-011: Steam auth via node bridge
+# ADR-011: Steam Auth via Node Bridge
 
-Context
-  Capture flow needs Steam session ticket. No clean Python SteamUser lib.
+## Context
 
-Decision
-  Embed `TICKET_GEN_JS` inline → spawn `node -e` with `steam-user` npm package.
-  Writes refresh token to `~/.uma_runtime/steam_refresh_tokens/<user>.jwt`.
-  Extracts `session_ticket` on login.
-  Exit codes: `REFRESH_TOKEN_EXPIRED` (fail), `NEED_GUARD:2fa` (2), other (3).
+Steam session tickets require `steam-user`; project does not depend on a compatible Python replacement.
 
-Consequences
-  - `node` binary is hard dep (raised in `check_deps`).
-  - `node_modules` must be installed at repo root.
-  - Captured stderr used for status JSON parsing — don't redirect logs carelessly.
+## Decision
 
-See: `uma_api/client.py:50-157,457-460,466+`
+`TICKET_GEN_JS` runs through `node -e` with `steam-user`. It persists refresh token at:
+
+```text
+runtime_output_root()/steam_refresh_tokens/<username>.jwt
+```
+
+It returns Steam id plus session ticket. `REFRESH_TOKEN_EXPIRED` requires user login refresh; Steam Guard requires interactive handling.
+
+## Consequences
+
+- `node` and repo `node_modules` are runtime dependencies for ticket generation.
+- Preserve stderr/status handling; do not redirect it blindly.
+- 501 cold recovery regenerates ticket only after reloading cached runtime auth.
+
+See: `_steam_keyfile_path`, `get_ticket`, `UmaClient._refresh_ticket_and_login`.

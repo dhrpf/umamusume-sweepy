@@ -1,15 +1,18 @@
-ADR-002: SID regeneration — make_sid vs next_sid
+# ADR-002: SID Regeneration — make_sid vs next_sid
 
-Context
-  SID is auth token; 1055/session-stale demands fresh derivation.
+## Context
 
-Decision
-  `regen_sid()` always calls `make_sid(viewer_id, udid_str)` — never `next_sid` mid-session.
-  `next_sid()` only used when loading saved SID from prior state cache (e.g., `_fresh_career_state` takes `next_sid(dh['sid'])`).
-  214 (res_ver) auto-updates + retries WITHOUT SID regen.
+SID identifies API session state. New login/bootstrap needs fresh derivation; successful responses advance the SID chain.
 
-Consequences
-  - Calling `regen_sid` inside a retry except after 208 is a protocol violation.
-  - Rule #2 in `.claude/rules/api.md` codifies.
+## Decision
 
-See: `uma_api/client.py:210-214,678-679,888,961`
+- `regen_sid()` derives SID with `make_sid(viewer_id, udid_str)` for new session/bootstrap state.
+- `next_sid()` advances from response `data_headers.sid` after a successful response.
+- Do not regenerate SID inside ordinary retries.
+- Result 214 updates resource version, closes and recreates transport, reapplies headers/proxy, resets and regenerates SID, starts session, then retries endpoint.
+
+## Consequences
+
+Incorrect SID advancement creates replay/session failures. Keep SID changes inside `UmaClient` recovery paths.
+
+See: `make_sid`, `next_sid`, `UmaClient.regen_sid`, `UmaClient.call`.

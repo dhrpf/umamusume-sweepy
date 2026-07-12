@@ -786,6 +786,12 @@ class UraStrategy(ScenarioStrategy):
                 score *= ev_mult
                 reasons.append(f"fail {fail_pct}% EV ×{ev_mult:.2f} ({pre_ev_score:.0f}→{score:.0f})")
 
+            scenario_bonus, scenario_reasons, scenario_detail = self._training_score_bonus(
+                cmd, chara, preset, turn
+            )
+            score += float(scenario_bonus or 0.0)
+            reasons.extend(scenario_reasons or [])
+
             detail = {
                 "command_id": cid,
                 "name": name,
@@ -800,6 +806,7 @@ class UraStrategy(ScenarioStrategy):
                 "failure_rate": fail_pct,
                 "reasons": reasons,
             }
+            detail.update(scenario_detail or {})
             score_details.append(detail)
             scores_log.append((name, gain, score, level, partner_count, cid))
 
@@ -824,6 +831,10 @@ class UraStrategy(ScenarioStrategy):
         if best:
             best["_decision_options"] = sorted(score_details, key=lambda row: -row["score"])[:5]
         return best, best_idx
+
+    def _training_score_bonus(self, cmd, chara, preset, turn):
+        """Scenario hook for command-specific training bonuses."""
+        return 0.0, [], {}
 
     def _deck_type_counts(self, chara):
         """Count support card types in the deck → training index counts."""

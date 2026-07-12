@@ -12,6 +12,7 @@ from pathlib import Path
 
 from career_bot.scenarios.mant import MantStrategy
 from career_bot.scenarios.ura import UraStrategy
+from career_bot.scenarios.unity import UnityStrategy
 from career_bot.races import RacePlanner
 from career_bot.skills import SkillBuyer
 from career_bot.items import MantItemManager, ITEM_NAMES, SHOP_ITEM_COSTS, DISPLAY_TO_ID, display_to_slug
@@ -24,6 +25,7 @@ from uma_api.client import StateRecoveryError
 
 STRATEGIES = {
     4: MantStrategy,
+    2: UnityStrategy,
     1: UraStrategy,
 }
 
@@ -61,6 +63,8 @@ class CareerRunner:
         self.thread = None
         self.stop_requested = False
         self.burn_clocks = False
+        self._team_race_turn = None
+        self._team_race_tries = 0
         self.race_planner = RacePlanner(base_dir)
         self.skill_buyer = SkillBuyer(base_dir)
         self.item_manager = MantItemManager()
@@ -112,6 +116,8 @@ class CareerRunner:
                 raise RuntimeError(f"No runner for scenario {scenario_id}")
             self.stop_requested = False
             self.burn_clocks = burn_clocks
+            self._team_race_turn = None
+            self._team_race_tries = 0
             self.dev_mode = dev_mode
             self._exhausted_events = set()
             self.race_planner = RacePlanner(self.base_dir)
@@ -219,11 +225,11 @@ class CareerRunner:
                         chara = data.get("chara_info") or {}
                         self._track_turn_scores(state)
 
-                    if self._blocked_playing_state(chara):
+                    if self._blocked_playing_state(chara, strategy):
                         state = self._recover_blocked_state(client, strategy, state)
                         data = state.get("data") or {}
                         chara = data.get("chara_info") or {}
-                        if self._blocked_playing_state(chara):
+                        if self._blocked_playing_state(chara, strategy):
                             self._mark(last_action=f"blocked state {chara.get('playing_state')}")
                             break
 
@@ -324,7 +330,7 @@ class CareerRunner:
                             state = self._recover_blocked_state(client, strategy, state)
                             data = state.get("data") or {}
                             chara = data.get("chara_info") or {}
-                            if self._blocked_playing_state(chara):
+                            if self._blocked_playing_state(chara, strategy):
                                 self._mark(last_action=f"blocked state {chara.get('playing_state')}")
                                 break
                             continue
@@ -334,6 +340,9 @@ class CareerRunner:
                     elif decision.action == "race_progress":
                         self._record_action(decision, chara)
                         state = self._race_progress(client, decision.payload, preset, strategy)
+                    elif decision.action == "team_race":
+                        self._record_action(decision, chara)
+                        state = self._team_race(client, strategy, state, preset, decision.payload)
                     elif decision.action == "finish":
                         self._record_action(decision, chara)
                         state = self._buy_skills(client, state, preset, True)
@@ -513,6 +522,9 @@ class CareerRunner:
                 facility = self.race_planner.label(program_id)
             else:
                 facility = str(program_id or "")
+        elif action == "team_race":
+            action = "team race"
+            facility = str(payload.get("phase") or "")
         elif action == "finish":
             action = "finish"
         row = {
@@ -556,9 +568,12 @@ class CareerRunner:
             f"GUT {stats['guts']} WIT {stats['wit']} SP {stats['skill_point']}"
         )
 
-    def _blocked_playing_state(self, chara):
+    def _blocked_playing_state(self, chara, strategy=None):
         playing_state = int((chara or {}).get("playing_state") or 1)
-        return playing_state not in {1, 2, 3, 4, 5}
+        allowed = getattr(strategy, "allowed_playing_states", None)
+        if not allowed:
+            allowed = {1, 2, 3, 4, 5}
+        return playing_state not in allowed
 
     def _recover_blocked_state(self, client, strategy, state):
         data = state.get("data") or {}
@@ -1074,6 +1089,163 @@ class CareerRunner:
         finish_order = struct.unpack_from("<i", blob, offset + result_index * horse_result_size)[0]
 
         return finish_order + 1
+
+    def _build_unity_team(self, team_data_set, chara_info, preset):
+        """Build the five-division roster required by Unity Cup team_edit."""
+        cfg = (preset or {}).get("unity_config") or {}
+        default_style = int(cfg.get("default_running_style", 1) or 1)
+
+        chara_ids = []
+        card_id = int((chara_info or {}).get("card_id") or 0)
+        if card_id:
+            chara_ids.append(card_id // 100)
+
+        for member in (team_data_set or {}).get("evaluation_info_array") or []:
+            if int(member.get("member_state") or 0) != 1:
+                continue
+            chara_id = int(member.get("chara_id") or 0)
+            if chara_id:
+                chara_ids.append(chara_id)
+
+        roster = []
+        slots = [0, 0, 0, 0, 0]
+        for index, chara_id in enumerate(chara_ids):
+            distance_type = index % 5 + 1
+            slot_index = distance_type - 1
+            slots[slot_index] += 1
+            if slots[slot_index] > 3:
+                continue
+            roster.append({
+                "distance_type": distance_type,
+                "member_id": slots[slot_index],
+                "chara_id": chara_id,
+                "running_style": default_style,
+            })
+        return roster
+
+    @staticmethod
+    def _unity_team_race_set_id(response):
+        """Read a team race id from known opponent-list response layouts."""
+        if not isinstance(response, dict):
+            return None
+
+        containers = [response]
+        data = response.get("data")
+        if isinstance(data, dict):
+            containers.append(data)
+            for key in ("team_data_set", "opponent_list"):
+                nested = data.get(key)
+                if isinstance(nested, dict):
+                    containers.append(nested)
+
+        for container in containers:
+            for key in ("team_race_set_id", "race_set_id"):
+                value = int(container.get(key) or 0)
+                if value:
+                    return value
+            for key in ("opponent_info_array", "opponent_array"):
+                for opponent in container.get(key) or []:
+                    if not isinstance(opponent, dict):
+                        continue
+                    for id_key in ("team_race_set_id", "race_set_id"):
+                        value = int(opponent.get(id_key) or 0)
+                        if value:
+                            return value
+        return None
+
+    def _team_race(self, client, strategy, state, preset, payload):
+        """Run or resume Unity Cup's team-race state machine."""
+        current_turn = int((payload or {}).get("current_turn") or 0)
+        phase = str((payload or {}).get("phase") or "full")
+        if phase not in {"full", "end", "out"}:
+            raise ValueError(f"unknown Unity team-race phase: {phase}")
+        if self._should_stop():
+            return state
+
+        if getattr(self, "_team_race_turn", None) != current_turn:
+            self._team_race_turn = current_turn
+            self._team_race_tries = 0
+        self._team_race_tries = int(getattr(self, "_team_race_tries", 0)) + 1
+        if self._team_race_tries > 5:
+            message = (
+                f"Unity team race stuck at turn {current_turn} "
+                f"({self._team_race_tries} attempts failed)"
+            )
+            self._log("team_race_stuck", current_turn, message)
+            self._mark(last_action="unity_team_race_stuck", last_error=message)
+            with self.lock:
+                self.stop_requested = True
+            return state
+
+        def optional(label, operation):
+            try:
+                return operation()
+            except Exception as exc:
+                self._log("team_race_optional", current_turn, f"{label}: {exc}")
+                return None
+
+        def required(label, operation):
+            try:
+                result = operation()
+            except Exception as exc:
+                raise StateRecoveryError(
+                    f"Unity team race {label} failed at turn {current_turn}: {exc}"
+                ) from exc
+            if not isinstance(result, dict):
+                raise StateRecoveryError(
+                    f"Unity team race {label} returned no state at turn {current_turn}"
+                )
+            return result
+
+        data = (state or {}).get("data") or {}
+        chara = data.get("chara_info") or {}
+        team_data_set = data.get("team_data_set") or {}
+        result = state
+
+        if phase == "full":
+            roster = self._build_unity_team(team_data_set, chara, preset)
+            optional(
+                "team_edit",
+                lambda: client.team_edit(roster, current_turn=current_turn),
+            )
+            opponent_state = required(
+                "opponent_list",
+                lambda: client.opponent_list(current_turn=current_turn),
+            )
+            race_set_id = self._unity_team_race_set_id(opponent_state)
+            if not race_set_id:
+                raise StateRecoveryError(
+                    f"Unity opponent_list returned no team_race_set_id at turn {current_turn}"
+                )
+            analyze_state = optional(
+                "team_race_analyze",
+                lambda: client.team_race_analyze(
+                    race_set_id,
+                    current_turn=current_turn,
+                ),
+            )
+            team_race_set_id = self._unity_team_race_set_id(analyze_state) or race_set_id
+            result = required(
+                "team_race_start",
+                lambda: client.team_race_start(
+                    team_race_set_id,
+                    current_turn=current_turn,
+                ),
+            )
+
+        if phase in {"full", "end"}:
+            result = required(
+                "team_race_end",
+                lambda: client.team_race_end(current_turn),
+            )
+
+        result = required(
+            "team_race_out",
+            lambda: client.team_race_out(current_turn),
+        )
+        self._team_race_tries = 0
+        self._log("team_race_done", current_turn, "team race complete")
+        return result
 
     def _race(self, client, state, preset, payload):
         if int((preset or {}).get("scenario_id") or (preset or {}).get("scenario") or 4) == 4:

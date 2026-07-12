@@ -1,44 +1,39 @@
 # Protocol: add-scenario
 
-**Trigger**: new scenario_id, career type, minigame integration
+**Trigger**: new `scenario_id`, career type, minigame integration.
 
 ## Pre-checks
 
-1. Confirm scenario_id not in `STRATEGIES` at `runner.py:25-28` (only `1` UraStrategy, `4` MantStrategy exist).
-2. Decide: **rule-based** vs **MCTS**:
-   - Rule-based: subclass `ScenarioStrategy` (`base.py:11`), implement `next_decision`.
-   - MCTS: subclass `SimulatorBase` (`mcts/sim/base.py:11-28`), implement `simulate_action`, `generate_actions`, `is_terminal`, `evaluate`.
+1. Confirm id is absent from `CareerRunner.STRATEGIES`.
+2. Choose rule-based strategy or MCTS simulator:
+   - Rule-based: implement scenario `next_decision(state, preset) -> Decision`.
+   - MCTS: subclass `SimulatorBase`; keep it pure and calibrated.
 
-## Steps — rule-based
+## Rule-Based Steps
 
-1. Create `career_bot/scenarios/<name>.py`:
-   - `scenario_id = <N>`
-   - `next_decision(self, state, preset) -> Decision` — return one of 7 actions (`base.py:5`).
-   - Payload contract: `"command"` MUST include `current_turn` + (`command_id` XOR `command_group_id`).
-2. Import at top of `runner.py:13`.
-3. Add entry to `STRATEGIES` dict at `runner.py:25-28`.
-4. Verify dispatch unpacks: `runner.py:110` lookup, `220`/`245` call sites, `264-363` action branches.
-5. Preset wiring: `career_bot/presets.py` validation must accept new `scenario_id` (check `validate_start_selection` in `main.py`).
-6. Tests mirroring `tests/test_mant_strategy.py`.
+1. Create `career_bot/scenarios/<name>.py` with scenario id and `next_decision`.
+2. Return supported actions only: `command`, `event`, `race`, `race_progress`, `finish`, `idle`, `done`.
+3. Command payload includes `current_turn` plus command identifier metadata.
+4. Import strategy in `career_bot/runner.py`; add scenario id to `STRATEGIES`.
+5. Confirm FastAPI preset/start validation accepts scenario id.
+6. Add strategy tests following existing Mant/URA test patterns.
 
-## Steps — MCTS (opt-in only)
+## MCTS Steps
 
-1. Create `career_bot/mcts/sim/<name>.py` subclass `SimulatorBase` (`mcts/sim/base.py:11`). Mirror `ura.py:19-28`.
-2. Load params from sibling JSON.
-3. Wire into `MCTSConfig` if needed (`mcts/core/config.py`).
-4. **DO NOT** flip on in `CareerRunner.start()` (`career_bot/runner.py:105`) without explicit flag.
+1. Add simulator under `career_bot/mcts/sim/`.
+2. Extend `GameState`/actions only through canonical MCTS models.
+3. Provide calibrated parameter loading and honor MCTS budgets.
+4. Do not switch runner startup behavior without explicit configuration.
 
 ## Verify
 
-- `pytest tests/ -x` unchanged.
-- Start career with new `scenario_id`. Confirm `next_decision` fires (add debug print).
-- If MCTS: `pytest tests/test_mcts_*.py` green.
+```bash
+venv/bin/python -m pytest tests/test_mant_strategy.py tests/test_ura_*.py tests/test_mcts_*.py -x
+```
 
 ## Known Traps
 
-- `base.py:12` `next_decision` abstract — must override.
-- `Decision.action` must be one of 7 at `base.py:5` — else runner hits `else` at `runner.py:360-363` and BREAKS LOOP.
-- Every `"command"` Decision.payload MUST include `current_turn` + (`command_id` XOR `command_group_id`).
-- `runner.py:201-207` drains events BEFORE strategy — strategy receives poisoned state if this contract breaks.
-- `runner.py:789` `load_career(scenario_id=...)` must match your registered id.
-- MCTS `is_terminal` missing → planner never stops.
+- `UmaClient.call()` remaps core endpoints for scenario 1 and 2; avoid manual endpoint rewrites.
+- Event drain occurs before strategy decision.
+- Registered scenario id must match `load_career` and start payload.
+- A new action without runner dispatch breaks loop control.

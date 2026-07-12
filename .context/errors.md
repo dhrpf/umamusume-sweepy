@@ -6,40 +6,42 @@ Policy legend: ⟲ retry, ✗ re-raise, ⚠ log+absorb, ⊙ silent-skip, ↔ sta
 
 | Code | Name | Semantics | Policy | Ref |
 |---|---|---|---|---|
-| 1 | SUCCESS | `dh["result_code"]==1` — only gate that passes | passthrough | `uma_api/client.py:849` |
+| 1 | SUCCESS | `data_headers["result_code"] == 1` | passthrough | `UmaClient.call` |
 
-## Absorbable (handled inside `_run_loop` / retry path)
+## Handled API Results
 
 | Code | Name | Semantics | Policy | Ref |
 |---|---|---|---|---|
-| 102 | RACE_ALREADY_DONE | race state consumed; race_end/race_out no-op | ⊙ silent-skip on race_end/race_out; ⚠ absorbed elsewhere | `uma_api/client.py:884`, `runner.py:304,350,1198,1205` |
-| 201 | SESSION_EXPIRED | auth/SID stale | ↔ `auto_login_from_cache()` in loop; `_fresh_career_state` re-raises to force relogin | `main.py:1152,1765,1811`, `runner.py:784,272,299` |
-| 202 | START_SESSION_AGAIN | login glitch | ⟲ sleep 4.15s in-login only | `uma_api/client.py:1030` |
-| 205 | PROXY_TEMP_ERROR | per-call transient | ⟲ up to 3× w/ jitter; minigame → ⚠; race_entry → reject permanently | `uma_api/client.py:850`, `runner.py:552,1029` |
-| 208 | SERVER_BUSY | server lock | ⟲ up to 6×; gain_skills/multi_item_exchange → return | `uma_api/client.py:855` |
-| 213 | TP_RECOVERY_BLOCKED | TP refresh denied | ↔ refresh state + retry; in crash allowlist | `main.py:1192`, `runner.py:379` |
-| 214 | RES_VER_STALE | server resource_version bumped | ⟲ auto-update `self.res_ver`, retry same ep | `uma_api/client.py:864` |
-| 217 | EVENT_STALE | check_event failed | ⟲ alternate choice indices; exhaust → fresh_career_state | `career_bot/runner.py:845-885` |
-| 2502 | STYLE_CHANGE_REJECTED | running_style already set / N/A for scenario | ⊙ fall through to plain race_entry | `uma_api/client.py:1244`, `runner.py:1273,1282` |
-| 394 | LOAD_BUSY | load/index busy right after TP wait | ⟲ sleep 2.5s in login | `client.py:1027`, `main.py:1157` |
-| 709 | VIEWER_ID_MISMATCH | server viewer_id ≠ ours | ⟲ update viewer_id + regen SID; outer login swallows | `uma_api/client.py:837,970` |
-| 1055 | VIEWER_ID_INVALID | viewer_id rejected | ↔ chain_by_transition_code → get_by_transition_code re-auth | `uma_api/client.py:844,973` |
-| 1503 | RESUME_ALREADY_DONE | race_end on already-resumed | ⚠ absorbed in exec_command, race_end, race_out | `career_bot/runner.py:304,1198,1297,1304` |
+| 102 | RACE_ALREADY_DONE | race state already consumed | ⊙ race-end/out special cases; otherwise recover state | `CareerRunner._race`, `_race_progress` |
+| 201 | SESSION_EXPIRED | auth or SID stale | ↔ refresh state / headless re-auth where caller owns loop | `main.py`, `CareerRunner._fresh_career_state` |
+| 202 | START_SESSION_AGAIN | login transient | ⟲ sleep in `UmaClient.login()` | `UmaClient.login` |
+| 205 | PROXY_TEMP_ERROR | per-call transient | ⟲ built-in retry; race entry rejects failed program | `UmaClient.call`, `RacePlanner.reject_race` |
+| 208 | SERVER_BUSY | server lock | ⟲ built-in retry; selected item/skill calls may return response | `UmaClient.call` |
+| 213 | TP_RECOVERY_BLOCKED | TP refresh denied | ↔ refresh state + retry when caller handles it | `main.py`, runner recovery |
+| 214 | RES_VER_STALE | resource version changed | ⟲ update `res_ver`, reset transport/SID, start session, retry endpoint | `UmaClient.call` |
+| 217 | EVENT_STALE | event/resource state stale | ⟲ alternate event choices; exhaust → fresh state | `CareerRunner._drain_events` |
+| 2502 | STYLE_CHANGE_REJECTED | style change unavailable/already set | ⊙ fall through to normal race entry | `UmaClient.race_entry`, runner race flow |
+| 394 | LOAD_BUSY | `load/index` busy after wait | ⟲ bounded login retry | `UmaClient.login` |
+| 501 | SESSION_INVALID | active session fully stale | ↔ close transport → reload `auth_cache.json` → require cached Steam credentials → refresh ticket → `login()` bootstrap → retry original endpoint once; second 501 → `StateRecoveryError` | `UmaClient.call`, `_reload_cached_auth`, `_refresh_ticket_and_login` |
+| 709 | VIEWER_ID_MISMATCH | server viewer id differs | ⟲ adopt returned viewer id + regenerate SID | `UmaClient.call` |
+| 917 | RECOVERY_REQUIRED | response cannot continue in place | ↔ client raises `StateRecoveryError`; runner refreshes career state | `UmaClient.call`, `CareerRunner._run` |
+| 1055 | VIEWER_ID_INVALID | viewer id rejected | ↔ anonymous bootstrap, then transition recovery when needed | `UmaClient.login` |
+| 1503 | RESUME_ALREADY_DONE | race already resumed | ⚠ absorbed only in race/reconcile paths | `CareerRunner` |
 
-## Re-raised (✗) unless in absorb allowlist
+## Re-raised
 
-- `rc != 1` AND not in above → raises `API error {rc}`.
-- `_run_loop` crash path re-raises if not in 378-381 recoverable list.
-- `runner.py:378-381` is the definitive allowlist. Don't add without checking `StateRecoveryError` contract.
+- Unknown `result_code` raises `API error {code}`.
+- Programming errors re-raise from runner; do not add arbitrary codes to recovery handling.
+- `StateRecoveryError` means callers must obtain fresh state, not repeat stale strategy decisions.
 
-## Tests covering error paths
+## Tests covering recovery
 
-- `tests/test_runner_event_recovery.py:18` — 217 drain + refresh
-- `tests/test_login.py:139,220` — 202 in start_session → 1 success path
+- `tests/test_login.py` — login, transition, 501 cache-backed cold relogin.
+- `tests/test_runner_event_recovery.py` — event drain and fresh-state recovery.
+- `tests/test_runner_501_recovery.py` — runner 501 reconciliation.
 
-## Flags
+## Rules
 
-- `102` policy bifurcation: silent-skip vs absorb depends on endpoint.
-- `213` undocumented in `api.md` but actively handled.
-- `rc==1` is the ONLY success gate. Never short-circuit it.
-- No code-name enum exists — names inferred from git history/comments.
+- Read result code from `response["data_headers"]["result_code"]`.
+- `1` is only success gate.
+- Error names are operational labels, not server enums.

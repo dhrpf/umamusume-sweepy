@@ -1,50 +1,42 @@
 # Protocol: fix-bug
 
-**Trigger**: crash, wrong action, race entry fails, skill/item buy fails, MCTS wrong score
+**Trigger**: crash, wrong action, race entry failure, skill/item buy failure, wrong MCTS score.
 
 ## Pre-checks
 
-1. **Scope by symptom**:
-   - crash/traceback → `career_bot/runner.py:369-404` (crash path writes `crash_trace.txt`)
-   - strategy picks wrong action → `career_bot/scenarios/{mant,ura}.py` `next_decision()`
-   - race never entered → `career_bot/races.py:8` / `career_bot/runner.py:313`
-   - skill/item buy fail → `career_bot/skills.py:482` / `career_bot/items.py:847`
-   - MCTS wrong score → `career_bot/mcts/sim/ura.py:123` `evaluate()`
-2. **Ask runner**: `scenario_id` (`runner.py:109` — 4=mant, 1=ura). Symptoms differ per scenario.
-3. **Career log**: `ls -t uma_runtime/*/bot_logs/career_log_*.json | head -1` → parse with `/log-insider` skill.
-4. **Runner dump**: `runner.status["last_action"]`, `runner.status["last_error"]` at `runner.py:120-134`.
+1. Scope symptom:
+   - traceback → `CareerRunner._run` crash path
+   - wrong strategy action → scenario `next_decision()`
+   - race failure → `RacePlanner` + `CareerRunner._race`
+   - skill/item failure → buyer/item manager
+   - MCTS score → simulator `evaluate()`
+2. Confirm `scenario_id`: 4=Mant, 1=URA, 2=Aoharu endpoint remap.
+3. Analyze latest career log with `scripts/analyze_career_log.py` or `/log-insider`.
+4. Inspect locked runner status: `last_action`, `last_error`.
 
 ## Steps
 
-1. Read offending `Decision.action` dispatch branch in `runner.py`:
-   - event → `268-285`
-   - command → `286-312`
-   - race → `313-316`
-   - race_progress → `317-320`
-   - finish → `321-359`
-2. If API error:
-   - Confirm recoverable code list at `runner.py:378-381` includes it.
-   - Check `_fresh_career_state()` + `uma_api/client.py` relogin waterfall.
-3. If strategy bug:
-   - Read `next_decision()` in scenario file. Trace `_score_command` / `_find_rest` / `_find_medic` / `_choice`.
-   - Field name check — `failure_rate` is correct API field; `fail_percent` is KNOWN BUG at `ura.py:612`. Preserve parity.
-4. Patch minimal — one hunk. Don't refactor adjacent.
-5. If runner crash: verify hit lands outside recoverable-tags list before adding re-raise.
+1. Read affected `CareerRunner._run` dispatch branch.
+2. For API errors, inspect `UmaClient.call()` then runner recovery:
+   - 501: close stale transport → reload `auth_cache.json` → fresh Steam ticket → `login()` bootstrap → retry once.
+   - 917: client raises `StateRecoveryError`; runner must fetch fresh career state.
+   - 214: client updates resource version, resets transport/SID, starts session, retries endpoint.
+   - Other transient failures: verify existing recovery path before adding handling.
+3. For strategy bugs, trace `next_decision()` through scoring/gates/choice code. Training failure field is `failure_rate` in both URA and Mant.
+4. Patch smallest correct hunk. Do not refactor adjacent behavior.
+5. Keep programming errors visible; do not broaden runner recovery without proof.
 
 ## Verify
 
 ```bash
-pytest tests/test_mant_strategy.py tests/test_ura_*.py tests/test_runner_command_metadata.py tests/test_runner_event_recovery.py -x
+venv/bin/python -m pytest tests/test_runner_command_metadata.py tests/test_runner_event_recovery.py tests/test_runner_501_recovery.py -x
 ```
 
-- If no test covers new branch → add one mirroring `tests/` style (pytest, no network).
-- Manual smoke: `/api/career/start` with matching `scenario_id`. Confirm no regression 5 turns in.
+Add a no-network regression test for any new branch. Smoke matching scenario through `/api/career/start` only when game environment is available.
 
 ## Known Traps
 
-- `ura.py:612` reads `fail_percent` not `failure_rate`. **DO NOT fix.** (rules:scenarios.md:11)
-- `mant.py:383` reads `failure_rate` correctly. Different file, different behavior.
-- `runner.py:377` recoverable list — arbitrary `"9999"` swallows real bugs.
-- `runner.py:182-184` turn delay gate — strategy called twice per turn if bypassed.
-- `runner.py:789` `load_career(scenario_id=...)` — wrong id = wrong strategy silently.
-- Event drain before decision (`runner.py:201-207`) — mutation must stay idempotent.
+- Event drain runs before decision; recovery changes must stay idempotent.
+- `Decision.command` payload needs `current_turn` and command identifier metadata.
+- Race state reconciliation requires fresh state before follow-up calls after already-done responses.
+- Preserve `data_headers.result_code` parsing; top-level result code is wrong.

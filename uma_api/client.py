@@ -1297,8 +1297,8 @@ class UmaClient:
         })
 
     def load_career(self, scenario_id=4):
-        ep = 'single_mode/load' if scenario_id == 1 else 'single_mode_free/load'
-        return self.call(ep, {})
+        self.current_scenario_id = int(scenario_id or 4)
+        return self.call('single_mode_free/load', {})
 
     def change_support_card_deck_party(self, support_card_deck_array):
         if not support_card_deck_array:
@@ -1491,4 +1491,37 @@ class UmaClient:
             'current_turn': current_turn,
             'add_race_array': add_race_array or [],
             'cancel_race_array': cancel_race_array or []
+        })
+
+    def opponent_list(self, current_turn=0):
+        return self.call('single_mode_team/opponent_list', {
+            'current_turn': current_turn,
+        })
+
+    def team_edit(self, team_data_array, current_turn=0):
+        return self.call('single_mode_team/team_edit', {
+            'team_data_array': team_data_array,
+            'current_turn': current_turn,
+        })
+
+    def team_race_analyze(self, race_set_id, current_turn=0):
+        return self.call('single_mode_team/team_race_analyze', {
+            'race_set_id': race_set_id,
+            'current_turn': current_turn,
+        })
+
+    def team_race_start(self, team_race_set_id, current_turn=0):
+        return self.call('single_mode_team/team_race_start', {
+            'team_race_set_id': team_race_set_id,
+            'current_turn': current_turn,
+        })
+
+    def team_race_end(self, current_turn):
+        return self.call('single_mode_team/team_race_end', {
+            'current_turn': current_turn,
+        })
+
+    def team_race_out(self, current_turn):
+        return self.call('single_mode_team/team_race_out', {
+            'current_turn': current_turn,
         })

@@ -45,7 +45,7 @@
 | Frida | Dynamic instrumentation used to hook Unity TLS and capture auth |
 | frida-server | Windows exe running inside the Proton Wine prefix |
 | ticket | Steam session ticket from steam-user (Node.js) used to log in |
-| refresh_token | Persisted Steam credential at `uma_runtime/steam_login_keys/<user>.txt` |
+| refresh_token | Persisted Steam credential at `runtime_output_root()/steam_refresh_tokens/<username>.jwt` |
 | auth_cache.json | Persisted viewer_id + udid + auth_key + app_ver + res_ver |
 | viewer_id, udid, auth_key | The three-legged auth pair for game API; never expose publicly |
 | res_ver | Resource version; 214 code bumps it |

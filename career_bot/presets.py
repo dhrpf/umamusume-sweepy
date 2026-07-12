@@ -56,6 +56,13 @@ def as_int(value, default):
         return default
 
 
+def as_float(value, default):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 STAT_VECTOR_LEN = 5
 DEFAULT_MIN_STATS = [0, 0, 0, 0, 0]
 DEFAULT_MAX_STATS = [1200, 1200, 1200, 1200, 1200]
@@ -173,6 +180,14 @@ def serialize_preset(raw):
     serialized["scenario_id"] = int(data.get("scenario_id") or data.get("scenario") or 4)
     serialized["scenario"] = serialized["scenario_id"]
 
+    unity_cfg = data.get("unity_config") if isinstance(data.get("unity_config"), dict) else {}
+    serialized["unity_config"] = {
+        "unity_training_weight": as_float(unity_cfg.get("unity_training_weight"), 0.6),
+        "spirit_burst_weight": as_float(unity_cfg.get("spirit_burst_weight"), 5.0),
+        "default_distance_type": as_int(unity_cfg.get("default_distance_type"), 1),
+        "default_running_style": as_int(unity_cfg.get("default_running_style"), 1),
+    }
+
     # PAL recreation settings
     serialized["prioritize_recreation"] = bool(data.get("prioritize_recreation"))
     serialized["pal_recreation_required"] = bool(data.get("pal_recreation_required"))
@@ -231,6 +246,12 @@ def hydrate_preset(raw):
         "rest_threshold": 48,
         "manual_purchase_at_end": False,
         "mant_config": {},
+        "unity_config": {
+            "unity_training_weight": 0.6,
+            "spirit_burst_weight": 5.0,
+            "default_distance_type": 1,
+            "default_running_style": 1,
+        },
     }
     merged = {**defaults, **data}
 

@@ -1,13 +1,21 @@
-ADR-004: Endpoint path remap per scenario_id
+# ADR-004: Endpoint Path Remap per scenario_id
 
-Context
-  Career endpoints shift by scenario: URA=1 → `single_mode/*`, Mant=4 → `single_mode_free/*`, Aoharu=2 → `single_mode_team/*`.
+## Context
 
-Decision
-  `UmaClient.call()` intercepts `single_mode_free/<op>` before send → rewrites prefix per `self.current_scenario_id`. Whitelist of 12 ops, client-side hardcoded.
+Career endpoints differ by scenario: URA (1) uses `single_mode/*`, Mant (4) uses `single_mode_free/*`, and Aoharu (2) uses `single_mode_team/*`.
 
-Consequences
-  - Adding a new op (e.g., minigame) requires touching both if-elif blocks.
-  - Canonical path per op must be captured from live traffic.
+## Decision
 
-See: `uma_api/client.py:700-717`
+`UmaClient.call()` rewrites supported `single_mode_free/<operation>` paths before sending:
+
+- Scenario 1 → `single_mode/<operation>`
+- Scenario 2 → `single_mode_team/<operation>`
+- Other scenarios → unchanged
+
+Supported operations include load/start, commands/events, race lifecycle, finish/factor selection, style changes, skills, multi-item use/exchange, and minigame completion. Extend both scenario remap branches when adding a supported core operation.
+
+## Consequences
+
+Call client methods with canonical paths; do not hardcode scenario endpoint families in runner or strategies. Capture live traffic before extending remap coverage.
+
+See: `UmaClient.call`.

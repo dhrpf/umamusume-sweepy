@@ -1,4 +1,6 @@
 (() => {
+const scenarioTypes = { 1: "Ura", 2: "Unity", 4: "Mant" };
+
 const state = {
     needs2fa: false,
     isLoading: false,
@@ -100,6 +102,8 @@ const els = {
     presetDelayMax: document.getElementById('preset-delay-max'),
     presetTpMode: document.getElementById('preset-tp-mode'),
     presetScenario: document.getElementById('preset-scenario'),
+    unityTrainingWeight: document.getElementById('unity-training-weight'),
+    unityBurstWeight: document.getElementById('unity-burst-weight'),
     presetUseMcts: document.getElementById('preset-use-mcts'),
     presetPalRecreation: document.getElementById('preset-pal-recreation'),
     presetParentRun: document.getElementById('preset-parent-run'),
@@ -1818,6 +1822,14 @@ const els = {
             current.running_style = parseInt(els.presetRunningStyle?.value) || 1;
             current.scenario_id = parseInt(els.presetScenario?.value) || 4;
             current.scenario = current.scenario_id;
+            state.scenarioType = scenarioTypes[current.scenario_id] || "Mant";
+            current.unity_config = current.unity_config || {};
+            const unityTrainingWeight = parseFloat(els.unityTrainingWeight?.value);
+            const unityBurstWeight = parseFloat(els.unityBurstWeight?.value);
+            current.unity_config.unity_training_weight = Number.isFinite(unityTrainingWeight) ? unityTrainingWeight : 0.6;
+            current.unity_config.spirit_burst_weight = Number.isFinite(unityBurstWeight) ? unityBurstWeight : 5.0;
+            current.unity_config.default_distance_type = parseInt(current.unity_config.default_distance_type) || 1;
+            current.unity_config.default_running_style = parseInt(current.running_style) || 1;
             current.run_delay_min_min = parseInt(els.presetDelayMin?.value) || 0;
             current.run_delay_max_min = parseInt(els.presetDelayMax?.value) || 0;
             current.tp_mode = (els.presetTpMode?.value === 'wait') ? 'wait' : 'carat';
@@ -1866,7 +1878,12 @@ const els = {
             if (els.presetDelayMin) els.presetDelayMin.value = current.run_delay_min_min ?? 0;
             if (els.presetDelayMax) els.presetDelayMax.value = current.run_delay_max_min ?? 0;
             if (els.presetTpMode) els.presetTpMode.value = (current.tp_mode === 'wait') ? 'wait' : 'carat';
-            if (els.presetScenario) els.presetScenario.value = String(current.scenario_id || current.scenario || 4);
+            const scenarioId = Number(current.scenario_id || current.scenario || 4);
+            state.scenarioType = scenarioTypes[scenarioId] || "Mant";
+            if (els.presetScenario) els.presetScenario.value = String(scenarioId);
+            const unityConfig = current.unity_config || {};
+            if (els.unityTrainingWeight) els.unityTrainingWeight.value = unityConfig.unity_training_weight ?? 0.6;
+            if (els.unityBurstWeight) els.unityBurstWeight.value = unityConfig.spirit_burst_weight ?? 5.0;
             if (els.presetUseMcts) els.presetUseMcts.checked = !!current.use_mcts;
             if (els.presetPalRecreation) els.presetPalRecreation.checked = !!current.pal_recreation_required;
             if (els.presetParentRun) els.presetParentRun.checked = !!current.parent_run;
@@ -1912,6 +1929,8 @@ const els = {
             els.presetDelayMax?.addEventListener('change', saveHandler);
             els.presetTpMode?.addEventListener('change', saveHandler);
             els.presetScenario?.addEventListener('change', saveHandler);
+            els.unityTrainingWeight?.addEventListener('change', saveHandler);
+            els.unityBurstWeight?.addEventListener('change', saveHandler);
             els.presetUseMcts?.addEventListener('change', saveHandler);
             els.presetPalRecreation?.addEventListener('change', saveHandler);
             els.presetParentRun?.addEventListener('change', saveHandler);

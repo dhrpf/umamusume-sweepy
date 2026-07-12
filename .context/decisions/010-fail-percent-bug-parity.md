@@ -1,15 +1,16 @@
-ADR-010: Known-bug parity — URA `fail_percent` vs `failure_rate`
+# ADR-010: Training Failure Field
 
-Context
-  `ura.py:609` reads `cmd.get("fail_percent")` but game sends `"failure_rate"` → bot sees 0% fail chance.
+## Context
 
-Decision
-  DON'T fix backwards. Preserving bug parity until runner is aligned.
-  URA rest-gate at line 287 reads `"failure_rate"` correctly — only triggers when ALL trainings ≥ 30%.
+Training options provide `command_info_array[].failure_rate`.
 
-Consequences
-  - Rule id 11 in `.claude/rules/scenarios.md` codifies.
-  - Regression test asserting correct fail% IS forbidden.
-  - Fix must land on runner side.
+## Decision
 
-See: `career_bot/scenarios/ura.py:609,287`; `.claude/rules/scenarios.md:11-12`
+URA and Mant read `failure_rate` for training-risk scoring. Preserve this field name in strategy code and tests. If a live capture differs, inspect payload before adding compatibility logic.
+
+## Consequences
+
+- Do not add `fail_percent` fallbacks without capture evidence.
+- Rest gates and command scoring must use game-provided failure data.
+
+See: `career_bot/scenarios/ura.py`, `career_bot/scenarios/mant.py`.

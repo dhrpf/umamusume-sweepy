@@ -44,8 +44,8 @@ Server expects `gain_select_id_index`. `select_index` is a position label, not t
 
 ## Strategy
 
-### AP-009: Fixing URA `fail_percent` bug backwards
-`ura.py:612` reads `cmd.get("fail_percent")` but game sends `"failure_rate"` → bot sees 0% fail. Fix must land on runner side, not strategy side. Until then, preserving parity.
+### AP-009: Using a made-up training failure field
+URA and Mant use game `command_info_array[].failure_rate`. Adding `fail_percent` compatibility without a live capture hides payload drift.
 → See `decisions/010-fail-percent-bug-parity.md`
 
 ### AP-010: Returning garbage on missing state

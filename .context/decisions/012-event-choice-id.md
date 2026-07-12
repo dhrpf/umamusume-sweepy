@@ -1,24 +1,19 @@
-# 012 — Event choice_number must use gain_select_id_index
-
-## Status: ACCEPTED
+# ADR-012: Event choice_number uses gain_select_id_index
 
 ## Problem
-Bot got 205 on every `check_event`. Trace showed server returned choices with
-`gain_select_id_index` ∈ {4,2,5} but bot sent `choice_number=1` (the
-`select_index`). Server rejects unknown choice ids → 205.
 
-## Root cause
-`select_index` is a position-based label (always starts at 1). Server tracks
-options by `gain_select_id_index` (effect-map position). They can diverge when
-events have >3 options or gaps in the id space.
+Server event choices expose `gain_select_id_index`; sending position-only `select_index` can produce 205 when ids have gaps.
 
-## Fix
-`_choice()` / `_choose_from_reward()` now return
-`choice.get("gain_select_id_index", choice.get("select_index", 0))`. Fallback to
-`select_index` only if `gain_select_id_index` absent (older capture format).
+## Decision
 
-Affected: `career_bot/scenarios/mant.py`, `career_bot/scenarios/ura.py`,
-`tests/test_ura_event_choice.py`.
+Scenario choice helpers prefer:
 
-## Verification
-`pytest tests/test_ura_event_choice.py` → 3 passed.
+```python
+choice.get("gain_select_id_index", choice.get("select_index", 0))
+```
+
+Use `select_index` only for older payloads lacking `gain_select_id_index`.
+
+## Consequences
+
+Keep event choice behavior aligned across Mant and URA. Validate against captured event payloads and existing scenario/event tests; do not claim coverage from absent test files.
