@@ -54,6 +54,7 @@ class SkillBuyer:
         self.skill_rarities = {}
         self.skill_costs = {}
         self.skill_grade_values = {}
+        self.skill_tags = {}
         self.skill_disabled_singlemode = set()
         self.skill_id_exists = set()
         self.group_to_skill_ids = {}
@@ -78,6 +79,7 @@ class SkillBuyer:
             self.skill_rarities = {}
             self.skill_costs = {}
             self.skill_grade_values = {}
+            self.skill_tags = {}
             self.skill_disabled_singlemode = set()
             self.skill_to_group_id = {}
             for raw_id, raw_info in data.items():
@@ -87,6 +89,10 @@ class SkillBuyer:
                     self.skill_rarities[skill_id] = int(raw_info.get("rarity") or 0)
                     self.skill_costs[skill_id] = int(raw_info.get("need_skill_point") or 0)
                     self.skill_grade_values[skill_id] = int(raw_info.get("grade_value") or 0)
+                    self.skill_tags[skill_id] = {
+                        int(tag) for tag in (raw_info.get("tags") or [])
+                        if int(tag or 0)
+                    }
                     if int(raw_info.get("disable_singlemode") or 0):
                         self.skill_disabled_singlemode.add(skill_id)
                     group_id = int(raw_info.get("group_id") or 0)
@@ -307,6 +313,32 @@ class SkillBuyer:
     def _blacklist(self, preset):
         return {norm(item) for item in preset.get("learn_skill_blacklist") or []}
 
+    @staticmethod
+    def _running_style(preset):
+        preset = preset or {}
+        raw = preset.get("running_style")
+        if raw in (None, ""):
+            raw = (preset.get("unity_config") or {}).get("default_running_style")
+        try:
+            value = int(raw or 0)
+        except (TypeError, ValueError):
+            value = 0
+        return value if value in (1, 2, 3, 4) else 0
+
+    def _style_compatible(self, skill_id, preset):
+        """Reject skills tied to a different running style.
+
+        Master-data tags 101..104 map directly to running styles 1..4.
+        Skills without one of those tags are style-neutral.
+        """
+        desired_style = self._running_style(preset)
+        if not desired_style:
+            return True
+        style_tags = set(self.skill_tags.get(int(skill_id or 0), set())) & {101, 102, 103, 104}
+        if not style_tags:
+            return True
+        return (100 + desired_style) in style_tags
+
     def _candidates(self, chara, preset):
         owned = {int(item.get("skill_id") or 0) for item in chara.get("skill_array") or []}
         owned_groups = {self.skill_to_group_id.get(skill_id, skill_id // 10) for skill_id in owned}
@@ -327,6 +359,8 @@ class SkillBuyer:
             name = self.skill_names.get(red_id, "")
             base_name = strip_mark(name)
             if norm(name) in blacklist or norm(base_name) in blacklist:
+                continue
+            if not self._style_compatible(red_id, preset):
                 continue
             if red_id in self._failed_for_turn():
                 continue
@@ -426,6 +460,12 @@ class SkillBuyer:
         if not normal:
             row["skip_reason"] = "no_normal_skills"
             return row
+
+        style_compatible = [sid for sid in normal if self._style_compatible(sid, preset)]
+        if not style_compatible:
+            row["skip_reason"] = "running_style_mismatch"
+            return row
+        normal = style_compatible
 
         normal.sort(key=self._tier_sort_key)
         resolved = normal[0]

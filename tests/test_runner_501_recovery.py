@@ -149,7 +149,7 @@ class TestFinishCareer501Recovery(unittest.TestCase):
         self.assertTrue(runner.status.get("finished"),
                         "status.finished should be True after graceful 501 reconciliation")
 
-    def test_failed_finish_is_not_marked_as_successful(self):
+    def test_failed_scenario_is_distinct_from_successful_finish_transport(self):
         runner = _make_runner_with_stubs()
         client = RecordingClient()
         client.call = MagicMock(return_value={"data": {}})
@@ -170,9 +170,11 @@ class TestFinishCareer501Recovery(unittest.TestCase):
                 max_steps=10,
             )
 
-        self.assertFalse(runner.status.get("finished"))
+        self.assertTrue(runner.status.get("finished"))
         self.assertEqual(runner.status.get("last_action"), "career_failed")
-        self.assertIn("career failed", runner.status.get("last_error", ""))
+        self.assertEqual(runner.status.get("scenario_result"), "failed")
+        self.assertFalse(runner.status.get("scenario_cleared"))
+        self.assertEqual(runner.status.get("last_error", ""), "")
 
     def test_missing_transition_hash_records_runner_error(self):
         runner = _make_runner_with_stubs()

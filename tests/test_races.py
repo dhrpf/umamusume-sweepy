@@ -18,6 +18,8 @@ def _planner(tmp_path):
                     "1002": {"name": "Later Race", "race_instance_id": "100002", "ground": 1, "distance": 1600},
                     "2002": {"name": "G2 Race", "race_instance_id": "200002", "ground": 1, "distance": 1600},
                     "4001": {"name": "Open Race", "race_instance_id": "400001", "ground": 1, "distance": 1600},
+                    "9001": {"name": "Twinkle Star Climax Race 2", "race_instance_id": "920055", "ground": 1, "distance": 1800},
+                    "9002": {"name": "Junior Maiden Race", "race_instance_id": "902622", "ground": 1, "distance": 1600},
                 },
                 "instance": {"500": [1001, 2002]},
             }
@@ -91,3 +93,27 @@ def test_fallback_candidates_exclude_ineligible_and_rejected_races(tmp_path):
     planner.reject(12, 2002)
 
     assert planner.fallback_candidates(state, exclude={1001}) == [4001]
+
+
+def test_fallback_candidates_require_enabled_race_command(tmp_path):
+    planner = _planner(tmp_path)
+    state = _state(available=(4001,), race_enabled=False)
+
+    assert planner.fallback_candidates(state) == []
+
+
+def test_fallback_candidates_exclude_internal_scenario_variants(tmp_path):
+    planner = _planner(tmp_path)
+    state = _state(available=(9001, 4001))
+
+    assert planner.fallback_candidates(state) == [4001]
+
+
+def test_fallback_candidates_exclude_maiden_after_first_win(tmp_path):
+    planner = _planner(tmp_path)
+    state = _state(turn=20, available=(9002, 4001))
+    state["data"]["race_history"] = [
+        {"turn": 12, "program_id": 1001, "result_rank": 1}
+    ]
+
+    assert planner.fallback_candidates(state) == [4001]

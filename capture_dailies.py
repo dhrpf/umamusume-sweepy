@@ -456,10 +456,13 @@ JS_CAPTURE = r"""
         // Try immediate attach
         hookSockets('init');
         hookWinHttp('init');
-        // Also hook on module load (game may load ws2_32/winhttp later)
-        Process.on('module-load', function(mod) {
-            if (mod.name === 'ws2_32.dll') hookSockets('load');
-            if (mod.name === 'winhttp.dll') hookWinHttp('load');
+        // Also hook on module load (game may load ws2_32/winhttp later).
+        // Frida 17 uses attachModuleObserver; the legacy module-load event API is unsupported.
+        Process.attachModuleObserver({
+            onAdded: function(mod) {
+                if (mod.name === 'ws2_32.dll') hookSockets('load');
+                if (mod.name === 'winhttp.dll') hookWinHttp('load');
+            }
         });
         // --- DLL configure: push captured pointers to net_hook.dll ---
         // Hooks sockets/winhttp from inside the game process — immune to Frida stalls
@@ -548,9 +551,8 @@ def auto_save_loop():
         _shutdown.wait(timeout=30)
         if _shutdown.is_set():
             break
-        with save_lock:
-            if calls:
-                save()
+        if calls:
+            save()
 
 
 _dll_last_counts = (0, 0, 0, 0, 0, 0)  # tls_w, tls_r, send, recv, httpsend, httprecv

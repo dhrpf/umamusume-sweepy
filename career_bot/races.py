@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from career_bot.objectives import CareerObjectiveResolver, ObjectiveRaceDecision
+
 
 class RacePlanner:
     def __init__(self, base_dir):
@@ -9,7 +11,10 @@ class RacePlanner:
         self.program = {}
         self.instance = {}
         self.rejected = set()
+        self.objective_results = {}
+        self.last_objective_observation = None
         self._load()
+        self.objective_resolver = CareerObjectiveResolver(self.base_dir, self.program)
 
     def _load(self):
         path = self.base_dir / "data" / "race_map.json"
@@ -72,6 +77,349 @@ class RacePlanner:
             if pid:
                 available.add(pid)
         return available
+
+    def record_race_result(self, turn, program_id, rank):
+        """Cache committed results when a later API response omits history."""
+        turn = int(turn or 0)
+        program_id = int(program_id or 0)
+        if not program_id:
+            return
+        self.objective_results[(turn, program_id)] = {
+            "turn": turn,
+            "program_id": program_id,
+            "result_rank": int(rank or 0),
+        }
+
+    def current_objective_status(self, state):
+        # Tests and callers may replace ``program`` after construction.
+        self.objective_resolver.race_programs = self.program
+        return self.objective_resolver.current_status(
+            state,
+            cached_results=self.objective_results,
+        )
+
+    def objective_training_context(self, state, preset=None):
+        """Return the most urgent upcoming specific-race readiness deficit.
+
+        Character routes may contain several fixed races close together.  The
+        active objective alone is not enough: while preparing for a mile race,
+        the next objective can already be a 2,500m race.  Prefer the upcoming
+        race with the largest stamina deficit inside the configured lookahead.
+        """
+        preset = preset or {}
+        self.objective_resolver.race_programs = self.program
+        data = (state or {}).get("data") or {}
+        chara = data.get("chara_info") or {}
+        turn = int(chara.get("turn") or 0)
+        lookahead = int(preset.get("objective_training_lookahead", 12))
+        contexts = []
+
+        for status in self.objective_resolver.statuses(
+            state,
+            cached_results=self.objective_results,
+        ):
+            objective = status.definition
+            if status.completed or not status.supported:
+                continue
+            if objective.condition_type != 1 or int(objective.condition_value_1 or 0) <= 0:
+                continue
+            deadline = int(status.deadline_turn or 0)
+            turns_left = deadline - turn
+            if turns_left < 0 or turns_left > lookahead:
+                continue
+            program_id = int(objective.condition_id or 0)
+            info = self.program.get(program_id) or {}
+            distance = int(info.get("distance") or 0)
+            if not distance:
+                continue
+            stamina = int(chara.get("stamina") or 0)
+            stamina_floor = self._objective_stamina_floor(distance, preset)
+            deficit = max(0, stamina_floor - stamina)
+            contexts.append({
+                "objective_id": status.objective_id,
+                "program_id": program_id,
+                "name": str(info.get("name") or program_id),
+                "deadline_turn": deadline,
+                "turns_left": turns_left,
+                "distance": distance,
+                "required_rank": int(objective.condition_value_1 or 0),
+                "stamina": stamina,
+                "stamina_floor": stamina_floor,
+                "stamina_deficit": deficit,
+            })
+
+        if not contexts:
+            return None
+        contexts.sort(
+            key=lambda row: (
+                -int(row["stamina_deficit"]),
+                int(row["turns_left"]),
+                -int(row["distance"]),
+            )
+        )
+        return contexts[0]
+
+    def has_career_win(self, state):
+        history = self.objective_resolver.merged_history(
+            state,
+            cached_results=self.objective_results,
+        )
+        return any(int(row.get("result_rank") or 0) == 1 for row in history)
+
+    @staticmethod
+    def is_maiden_or_debut(info):
+        name = str((info or {}).get("name") or "").lower()
+        return "maiden race" in name or "make debut" in name
+
+    @staticmethod
+    def _objective_stamina_floor(distance, preset=None):
+        distance = int(distance or 0)
+        preset = preset or {}
+        if distance >= 3000:
+            return int(preset.get("objective_long_stamina_floor", 450))
+        if distance >= 2400:
+            return int(preset.get("objective_extended_stamina_floor", 350))
+        if distance >= 1800:
+            return int(preset.get("objective_middle_stamina_floor", 250))
+        return int(preset.get("objective_mile_stamina_floor", 180))
+
+    def _objective_candidate_info(self, chara, program_id, preset=None):
+        info = self.program.get(int(program_id or 0)) or {}
+        ground_aptitude, distance_aptitude = self.aptitude_values(chara, program_id)
+        distance = int(info.get("distance") or 0)
+        stamina = int((chara or {}).get("stamina") or 0)
+        stamina_floor = self._objective_stamina_floor(distance, preset)
+        aptitude_floor = int((preset or {}).get("objective_min_aptitude_floor", 6))
+        stamina_deficit = max(0, stamina_floor - stamina)
+        score = (
+            min(ground_aptitude, distance_aptitude) * 100
+            + distance_aptitude * 25
+            + ground_aptitude * 15
+            - stamina_deficit * 2
+        )
+        aptitude_ok = (
+            ground_aptitude >= aptitude_floor
+            and distance_aptitude >= aptitude_floor
+        )
+        stamina_ready = stamina >= stamina_floor
+        safe = aptitude_ok and stamina_ready
+        return {
+            "program_id": int(program_id or 0),
+            "name": str(info.get("name") or program_id),
+            "grade": self.objective_resolver.race_grade(program_id),
+            "distance": distance,
+            "ground_aptitude": ground_aptitude,
+            "distance_aptitude": distance_aptitude,
+            "stamina": stamina,
+            "stamina_floor": stamina_floor,
+            "aptitude_ok": aptitude_ok,
+            "stamina_ready": stamina_ready,
+            "safe": safe,
+            "score": float(score),
+        }
+
+    def _objective_opportunities(self, state, status, preset=None):
+        data = (state or {}).get("data") or {}
+        chara = data.get("chara_info") or {}
+        current_turn = int(chara.get("turn") or 0)
+        deadline = int(status.deadline_turn or 0)
+        opportunities = {}
+
+        # Generated meta rows represent concrete race occurrences and turns.
+        for row in self.meta.values():
+            turn = int((row or {}).get("turn") or 0)
+            program_id = int((row or {}).get("program_id") or 0)
+            if not program_id or turn < current_turn or turn > deadline:
+                continue
+            if (turn, program_id) in self.rejected:
+                continue
+            if not self.can_enter(chara, program_id):
+                continue
+            if not self.objective_resolver.qualifying_program_ids(status, [program_id]):
+                continue
+            candidate = self._objective_candidate_info(chara, program_id, preset)
+            candidate["turn"] = turn
+            opportunities[(turn, program_id)] = candidate
+
+        # Preserve races surfaced by the current API even if the local race map
+        # lacks an occurrence row.
+        for program_id in self.available_programs(state):
+            if not self.objective_resolver.qualifying_program_ids(status, [program_id]):
+                continue
+            if (current_turn, program_id) in self.rejected:
+                continue
+            candidate = self._objective_candidate_info(chara, program_id, preset)
+            candidate["turn"] = current_turn
+            opportunities[(current_turn, program_id)] = candidate
+
+        return sorted(
+            opportunities.values(),
+            key=lambda row: (row["turn"], -row["score"], row["program_id"]),
+        )
+
+    def objective_candidate(self, state, preset=None, best_training_gain=0):
+        """Return a progress-aware character-objective race decision.
+
+        This engine is shared by URA Finale and Unity Cup.  Scenario-final
+        races remain under the existing scenario lifecycle handlers.
+        """
+        preset = preset or {}
+        if not preset.get("objective_gate_enabled", True):
+            return None
+        if not self.race_command_enabled(state):
+            return None
+
+        status = self.current_objective_status(state)
+        if not status or status.completed or not status.supported:
+            return None
+
+        data = (state or {}).get("data") or {}
+        chara = data.get("chara_info") or {}
+        turn = int(chara.get("turn") or 0)
+        available = self.available_programs(state)
+        objective = status.definition
+        mode = str(preset.get("objective_gate_mode", "enforce") or "enforce").lower()
+        needed = max(0, int(status.required) - int(status.progress))
+        turns_left = max(0, int(status.deadline_turn) - turn)
+        detail = {
+            "objective": {
+                **status.as_dict(),
+                "needed": needed,
+                "turns_left": turns_left,
+            }
+        }
+
+        decision = None
+        if objective.condition_type == 1:
+            program_id = int(objective.condition_id or 0)
+            if program_id in available:
+                candidate = self._objective_candidate_info(chara, program_id, preset)
+                detail["race_candidate"] = candidate
+                decision = ObjectiveRaceDecision(
+                    program_id=program_id,
+                    forced=True,
+                    score=candidate["score"],
+                    reason=(
+                        f"objective {status.objective_id}: target race "
+                        f"{candidate['name']} progress={status.progress}/{status.required} "
+                        f"deadline={status.deadline_turn}"
+                    ),
+                    detail=detail,
+                )
+
+        elif objective.condition_type == 2:
+            current_ids = self.objective_resolver.qualifying_program_ids(status, available)
+            current_candidates = [
+                self._objective_candidate_info(chara, program_id, preset)
+                for program_id in current_ids
+                if (turn, int(program_id)) not in self.rejected
+                and self.can_enter(chara, program_id)
+            ]
+            current_candidates.sort(key=lambda row: (-row["safe"], -row["score"], row["program_id"]))
+            opportunities = self._objective_opportunities(state, status, preset)
+            viable_opportunities = [row for row in opportunities if row["aptitude_ok"]]
+            safe_future = [
+                row for row in viable_opportunities
+                if row["safe"] and row["turn"] > turn
+            ]
+            buffer_count = int(preset.get("objective_opportunity_buffer", 1))
+            lookahead = int(preset.get("objective_gate_lookahead", 8))
+            cutoff = float(preset.get("objective_training_gain_cutoff", 45))
+            hard_gate = len(viable_opportunities) <= needed + buffer_count
+            urgent = turns_left <= lookahead
+            detail["objective"].update({
+                "remaining_opportunities": len(viable_opportunities),
+                "safe_future_opportunities": len(safe_future),
+                "hard_gate": hard_gate,
+                "urgent": urgent,
+                "best_training_gain": float(best_training_gain or 0),
+            })
+
+            if current_candidates:
+                candidate = current_candidates[0]
+                choose = False
+                forced = False
+                if candidate["safe"]:
+                    choose = hard_gate or urgent or float(best_training_gain or 0) <= cutoff
+                    forced = hard_gate
+                else:
+                    # Avoid a risky current race when enough safer future races
+                    # remain.  Force it only when skipping would make the goal
+                    # mathematically impossible.
+                    safe_after_skip = len(safe_future)
+                    if hard_gate and safe_after_skip < needed:
+                        choose = True
+                        forced = True
+
+                if choose:
+                    detail["race_candidate"] = candidate
+                    decision = ObjectiveRaceDecision(
+                        program_id=candidate["program_id"],
+                        forced=forced,
+                        score=candidate["score"],
+                        reason=(
+                            f"objective {status.objective_id}: grade {objective.condition_id} "
+                            f"progress={status.progress}/{status.required} deadline={status.deadline_turn}; "
+                            f"selected {candidate['name']} safe={candidate['safe']} "
+                            f"opportunities={len(viable_opportunities)}"
+                        ),
+                        detail=detail,
+                    )
+
+        elif objective.condition_type == 3:
+            required = max(1, int(status.required or 0))
+            ratio = float(status.progress) / required
+            urgent = turns_left <= int(preset.get("objective_fan_lookahead", 4))
+            planned = self.planned_fan_completion(state, preset, status)
+            detail["objective"].update({
+                "fan_ratio": round(ratio, 4),
+                "urgent": urgent,
+                "planned_fan_race": planned or None,
+            })
+
+            if planned and int(planned["turn"]) > turn:
+                # A user-planned race before the deadline can both be entered
+                # and finish the fan target. Preserve the training turns and
+                # wait for that race instead of inserting an unplanned race.
+                decision = None
+            elif planned and int(planned["program_id"]) in available:
+                candidate = self._objective_candidate_info(chara, planned["program_id"], preset)
+                detail["race_candidate"] = candidate
+                decision = ObjectiveRaceDecision(
+                    program_id=candidate["program_id"],
+                    forced=True,
+                    score=candidate["score"],
+                    reason=(
+                        f"objective {status.objective_id}: fans "
+                        f"{status.progress}/{status.required}; using planned "
+                        f"{candidate['name']}"
+                    ),
+                    detail=detail,
+                )
+            elif urgent or ratio < float(preset.get("objective_fan_min_ratio", 0.0)):
+                candidates = self.fallback_candidates(state)
+                if candidates:
+                    scored = [self._objective_candidate_info(chara, pid, preset) for pid in candidates]
+                    scored.sort(key=lambda row: (-row["safe"], -row["score"], row["program_id"]))
+                    candidate = scored[0]
+                    detail["race_candidate"] = candidate
+                    decision = ObjectiveRaceDecision(
+                        program_id=candidate["program_id"],
+                        forced=urgent,
+                        score=candidate["score"],
+                        reason=(
+                            f"objective {status.objective_id}: fans "
+                            f"{status.progress}/{status.required}; selected {candidate['name']}"
+                        ),
+                        detail=detail,
+                    )
+
+        self.last_objective_observation = detail
+        if mode == "observe":
+            return None
+        if mode == "off":
+            return None
+        return decision
 
     def forced_program(self, state, preset=None):
         data = state.get("data") or {}
@@ -137,19 +485,28 @@ class RacePlanner:
         ground_aptitude, distance_aptitude = self.aptitude_values(chara, program_id)
         return ground_aptitude >= 6 and distance_aptitude >= 6
 
-    def maiden_candidates(self, state, exclude=None):
-        """Return available maiden races ordered by the horse's best aptitude."""
-        data = state.get("data") or {}
-        chara = data.get("chara_info") or {}
+    @staticmethod
+    def race_command_enabled(state):
+        data = (state or {}).get("data") or {}
         home = data.get("home_info") or {}
         commands = home.get("command_info_array") or []
-        race_enabled = any(
+        return any(
             cmd.get("command_type") == 4
             and cmd.get("command_id") == 401
             and cmd.get("is_enable", 0)
             for cmd in commands
         )
-        if not race_enabled:
+
+    @staticmethod
+    def is_internal_scenario_race(info):
+        name = str((info or {}).get("name") or "").lower()
+        return "twinkle star climax" in name or "ura finale" in name
+
+    def maiden_candidates(self, state, exclude=None):
+        """Return available maiden races ordered by the horse's best aptitude."""
+        data = state.get("data") or {}
+        chara = data.get("chara_info") or {}
+        if not self.race_command_enabled(state):
             return []
 
         turn = int(chara.get("turn") or 0)
@@ -194,10 +551,13 @@ class RacePlanner:
         return fans >= self.minimum_fans(program_id)
 
     def fallback_candidates(self, state, exclude=None):
+        if not self.race_command_enabled(state):
+            return []
         data = state.get("data") or {}
         chara = data.get("chara_info") or {}
         turn = int(chara.get("turn") or 0)
         excluded = {int(pid) for pid in (exclude or set())}
+        has_win = self.has_career_win(state)
         candidates = []
         for pid in self.available_programs(state):
             if pid in excluded or (turn, pid) in self.rejected:
@@ -207,6 +567,10 @@ class RacePlanner:
             if not self.check_aptitude(chara, pid):
                 continue
             info = self.program.get(pid) or {}
+            if has_win and self.is_maiden_or_debut(info):
+                continue
+            if self.is_internal_scenario_race(info):
+                continue
             grade_code = str(info.get("race_instance_id") or "9")[:1]
             try:
                 grade_rank = int(grade_code)
@@ -234,6 +598,55 @@ class RacePlanner:
             if program_id:
                 requirements.append(self.minimum_fans(program_id))
         return max(requirements, default=0)
+
+    def estimated_fan_reward(self, program_id):
+        """Conservative fan estimate used only for deferring extra races."""
+        grade = int(self.objective_resolver.race_grade(program_id) or 0)
+        return {
+            100: 5000,
+            200: 3000,
+            300: 2000,
+            400: 1000,
+        }.get(grade, 500)
+
+    def planned_fan_completion(self, state, preset, status):
+        """Find a planned race that can complete a fan goal by its deadline."""
+        data = (state or {}).get("data") or {}
+        chara = data.get("chara_info") or {}
+        turn = int(chara.get("turn") or 0)
+        fans = int(chara.get("fans") or 0)
+        required = int(getattr(status, "required", 0) or 0)
+        deadline = int(getattr(status, "deadline_turn", 0) or 0)
+        rows = []
+
+        for value in (preset or {}).get("extra_race_list") or []:
+            try:
+                occurrence_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            occurrence = self.meta.get(occurrence_id) or {}
+            program_id = int(occurrence.get("program_id") or 0)
+            occurrence_turn = int(occurrence.get("turn") or 0)
+            if not program_id or occurrence_turn < turn or occurrence_turn > deadline:
+                continue
+            if (occurrence_turn, program_id) in self.rejected:
+                continue
+            if not self.can_enter(chara, program_id):
+                continue
+            projected_fans = fans + self.estimated_fan_reward(program_id)
+            if projected_fans < required:
+                continue
+            info = self.program.get(program_id) or {}
+            rows.append({
+                "turn": occurrence_turn,
+                "program_id": program_id,
+                "name": str(info.get("name") or occurrence.get("name") or program_id),
+                "estimated_fan_reward": self.estimated_fan_reward(program_id),
+                "projected_fans": projected_fans,
+            })
+
+        rows.sort(key=lambda row: (row["turn"], -row["estimated_fan_reward"], row["program_id"]))
+        return rows[0] if rows else None
 
     def fan_building_candidate(self, state, preset, lookahead=1):
         data = state.get("data") or {}

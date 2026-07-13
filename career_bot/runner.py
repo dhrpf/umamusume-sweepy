@@ -13,6 +13,7 @@ from pathlib import Path
 from career_bot.scenarios.mant import MantStrategy
 from career_bot.scenarios.ura import UraStrategy
 from career_bot.scenarios.unity import UnityStrategy
+from career_bot.scenarios.base import Decision
 from career_bot.races import RacePlanner
 from career_bot.skills import SkillBuyer
 from career_bot.items import MantItemManager, ITEM_NAMES, SHOP_ITEM_COSTS, DISPLAY_TO_ID, display_to_slug
@@ -65,6 +66,7 @@ class CareerRunner:
         self.burn_clocks = False
         self._team_race_turn = None
         self._team_race_tries = 0
+        self._last_race_result = None
         self.race_planner = RacePlanner(base_dir)
         self.skill_buyer = SkillBuyer(base_dir)
         self.item_manager = MantItemManager()
@@ -118,6 +120,7 @@ class CareerRunner:
             self.burn_clocks = burn_clocks
             self._team_race_turn = None
             self._team_race_tries = 0
+            self._last_race_result = None
             self.dev_mode = dev_mode
             self._exhausted_events = set()
             self.race_planner = RacePlanner(self.base_dir)
@@ -187,6 +190,41 @@ class CareerRunner:
         if err_str.startswith("HTTP 5") or err_str.startswith("HTTP 429"):
             return True
         return False
+
+    def _scenario_outcome(self, state, preset):
+        data = (state or {}).get("data") or {}
+        chara = data.get("chara_info") or {}
+        scenario_id = int((preset or {}).get("scenario_id") or chara.get("scenario_id") or 0)
+        turn = int(chara.get("turn") or 0)
+        career_state = int(chara.get("state") or 0)
+        playing_state = int(chara.get("playing_state") or 0)
+
+        history = data.get("race_history") or []
+        latest = history[-1] if history else (getattr(self, "_last_race_result", None) or {})
+        reward = data.get("race_reward_info") or {}
+        program_id = int(latest.get("program_id") or 0)
+        try:
+            result_rank = int(reward.get("result_rank") or latest.get("result_rank") or 0)
+        except (TypeError, ValueError):
+            result_rank = 0
+
+        hard_failure = career_state == 2 and playing_state == 5
+        if scenario_id in {1, 2}:
+            cleared = not hard_failure and turn >= 78 and result_rank == 1
+        else:
+            cleared = not hard_failure and career_state == 3
+
+        planner = getattr(self, "race_planner", None)
+        program_map = getattr(planner, "program", {}) if planner is not None else {}
+        info = program_map.get(program_id) or {}
+        race_name = str(info.get("name") or "").strip()
+        failed_at = None if cleared else (race_name or (f"turn {turn}" if turn else "career end"))
+        return {
+            "scenario_result": "cleared" if cleared else "failed",
+            "scenario_cleared": bool(cleared),
+            "failed_at": failed_at,
+            "result_rank": result_rank or None,
+        }
 
     def _run(self, client, preset, result, strategy, max_steps):
 
@@ -336,7 +374,12 @@ class CareerRunner:
                             continue
                     elif decision.action == "race":
                         self._record_action(decision, chara)
-                        state = self._race(client, state, preset, decision.payload)
+                        race_payload = dict(decision.payload)
+                        if race_payload.pop("_buy_skills_before_race", False):
+                            state = self._buy_skills(client, state, preset, True)
+                            data = state.get("data") or {}
+                            chara = data.get("chara_info") or chara
+                        state = self._race(client, state, preset, race_payload)
                     elif decision.action == "race_progress":
                         self._record_action(decision, chara)
                         state = self._race_progress(client, decision.payload, preset, strategy)
@@ -345,6 +388,9 @@ class CareerRunner:
                         state = self._team_race(client, strategy, state, preset, decision.payload)
                     elif decision.action == "finish":
                         self._record_action(decision, chara)
+                        outcome = self._scenario_outcome(state, preset)
+                        if self.report:
+                            self.report.update(outcome)
                         state = self._buy_skills(client, state, preset, True)
 
                         data = state.get("data") or {}
@@ -380,18 +426,20 @@ class CareerRunner:
                                     dna_sleep(2.0, 3.0)
                                     continue
                                 raise
-                        career_failed = bool(decision.payload.get("career_failed"))
-                        if career_failed:
-                            failure_message = str(decision.reason or "career failed")
-                            self._mark(
-                                last_action="career_failed",
-                                last_error=failure_message,
-                                finished=False,
+                        scenario_failed = outcome.get("scenario_result") == "failed"
+                        self._mark(
+                            last_action="career_failed" if scenario_failed else "finish",
+                            last_error="",
+                            finished=True,
+                            scenario_result=outcome.get("scenario_result"),
+                            scenario_cleared=outcome.get("scenario_cleared"),
+                        )
+                        if scenario_failed:
+                            self._log(
+                                "scenario_failed",
+                                decision.payload["current_turn"],
+                                f"{outcome.get('failed_at')} rank={outcome.get('result_rank')}",
                             )
-                            if self.report:
-                                set_error(self.report, RuntimeError(failure_message))
-                        else:
-                            self._mark(last_action="finish", finished=True)
                         break
                     else:
                         self._mark(last_action=decision.action)
@@ -548,7 +596,20 @@ class CareerRunner:
         }
         with self.lock:
             history = self.status.setdefault("action_history", [])
-            if history and history[-1].get("turn") == row["turn"] and history[-1].get("action") == row["action"] and history[-1].get("facility") == row["facility"]:
+            fallback_detail = payload.get("decision_detail") or {}
+            replace_rejected_race = bool(
+                history
+                and fallback_detail.get("fallback_from_program_id")
+                and history[-1].get("turn") == row["turn"]
+                and history[-1].get("action") == "race"
+                and row["action"] == "race"
+            )
+            if replace_rejected_race or (
+                history
+                and history[-1].get("turn") == row["turn"]
+                and history[-1].get("action") == row["action"]
+                and history[-1].get("facility") == row["facility"]
+            ):
                 history[-1] = row
             else:
                 history.append(row)
@@ -1457,19 +1518,17 @@ class CareerRunner:
                 self._log("race_skipped_history", current_turn, f"race {program_id} already completed")
                 return fresh
 
-            # 205 is usually a deterministic entry restriction (most often fan
-            # count). Try another eligible race on the same turn instead of
-            # training and immediately failing the scenario goal.
-            rejected_ids = {
-                int(pid)
-                for pid in (payload.get("_rejected_program_ids") or [])
-                if int(pid or 0)
-            }
-            rejected_ids.add(int(program_id or 0))
-            if "205" in err_str and hasattr(self.race_planner, "fallback_candidates"):
+            # 205 is usually a deterministic entry restriction. Try at most one
+            # eligible alternative on the same turn; never scan the full race list.
+            fallback_attempted = bool(payload.get("_fallback_attempted"))
+            if (
+                "205" in err_str
+                and not fallback_attempted
+                and hasattr(self.race_planner, "fallback_candidates")
+            ):
                 candidates = self.race_planner.fallback_candidates(
                     fresh,
-                    exclude=rejected_ids,
+                    exclude={int(program_id or 0)},
                 )
                 if candidates:
                     fallback_id = int(candidates[0])
@@ -1480,7 +1539,30 @@ class CareerRunner:
                     )
                     fallback_payload = dict(payload)
                     fallback_payload["program_id"] = fallback_id
-                    fallback_payload["_rejected_program_ids"] = sorted(rejected_ids)
+                    fallback_payload["_fallback_attempted"] = True
+                    fallback_reason = (
+                        f"fallback race {self.race_planner.label(fallback_id) or fallback_id} "
+                        f"after {program_id} was rejected"
+                    )
+                    fallback_decision = Decision(
+                        "race",
+                        {
+                            "program_id": fallback_id,
+                            "current_turn": current_turn,
+                            "decision_detail": {
+                                "fallback_from_program_id": int(program_id or 0),
+                                "actual_program_id": fallback_id,
+                                "reason": "race_entry_205",
+                            },
+                        },
+                        fallback_reason,
+                    )
+                    if self.report:
+                        add_decision(self.report, fresh, fallback_decision)
+                    self._record_action(
+                        fallback_decision,
+                        (fresh.get("data") or {}).get("chara_info") or {},
+                    )
                     return self._race(
                         client,
                         fresh,
@@ -1576,6 +1658,13 @@ class CareerRunner:
                 self._log("race_clock_failed", current_turn, str(e))
                 break
 
+        self._last_race_result = {
+            "turn": current_turn,
+            "program_id": int(program_id or 0),
+            "result_rank": int(rank or 0),
+        }
+        if self.race_planner and hasattr(self.race_planner, "record_race_result"):
+            self.race_planner.record_race_result(current_turn, program_id, rank)
         if strategy and hasattr(strategy, "record_race_result"):
             strategy.record_race_result(program_id, rank)
 

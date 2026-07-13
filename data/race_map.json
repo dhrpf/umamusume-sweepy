@@ -5851,6 +5851,7 @@
       "month": 2,
       "half": 2,
       "name": "February Stakes",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -5859,6 +5860,7 @@
       "month": 3,
       "half": 2,
       "name": "Takamatsunomiya Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -5867,6 +5869,7 @@
       "month": 3,
       "half": 2,
       "name": "Osaka Hai",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -5875,6 +5878,7 @@
       "month": 4,
       "half": 2,
       "name": "Tenno Sho (Spring)",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -5883,6 +5887,7 @@
       "month": 5,
       "half": 1,
       "name": "Victoria Mile",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -5891,6 +5896,7 @@
       "month": 1,
       "half": 1,
       "name": "Nikkei Shinshun Hai",
+      "grade": 200,
       "ground": 1,
       "distance": 2400
     },
@@ -5899,6 +5905,7 @@
       "month": 1,
       "half": 2,
       "name": "Tokai Stakes",
+      "grade": 200,
       "ground": 2,
       "distance": 1800
     },
@@ -5907,6 +5914,7 @@
       "month": 1,
       "half": 2,
       "name": "American JCC",
+      "grade": 200,
       "ground": 1,
       "distance": 2200
     },
@@ -5915,6 +5923,7 @@
       "month": 2,
       "half": 1,
       "name": "Kyoto Kinen",
+      "grade": 200,
       "ground": 1,
       "distance": 2200
     },
@@ -5923,6 +5932,7 @@
       "month": 2,
       "half": 2,
       "name": "Nakayama Kinen",
+      "grade": 200,
       "ground": 1,
       "distance": 1800
     },
@@ -5931,6 +5941,7 @@
       "month": 3,
       "half": 1,
       "name": "Kinko Sho",
+      "grade": 200,
       "ground": 1,
       "distance": 2000
     },
@@ -5939,6 +5950,7 @@
       "month": 3,
       "half": 2,
       "name": "Hanshin Daishoten",
+      "grade": 200,
       "ground": 1,
       "distance": 3000
     },
@@ -5947,6 +5959,7 @@
       "month": 3,
       "half": 2,
       "name": "Nikkei Sho",
+      "grade": 200,
       "ground": 1,
       "distance": 2500
     },
@@ -5955,6 +5968,7 @@
       "month": 4,
       "half": 1,
       "name": "Hanshin Umamusume Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1600
     },
@@ -5963,6 +5977,7 @@
       "month": 4,
       "half": 2,
       "name": "Milers Cup",
+      "grade": 200,
       "ground": 1,
       "distance": 1600
     },
@@ -5971,6 +5986,7 @@
       "month": 5,
       "half": 1,
       "name": "Keio Hai Spring Cup",
+      "grade": 200,
       "ground": 1,
       "distance": 1400
     },
@@ -5979,6 +5995,7 @@
       "month": 5,
       "half": 2,
       "name": "Meguro Kinen",
+      "grade": 200,
       "ground": 1,
       "distance": 2500
     },
@@ -5987,6 +6004,7 @@
       "month": 1,
       "half": 1,
       "name": "Kyoto Kimpai",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -5995,6 +6013,7 @@
       "month": 1,
       "half": 1,
       "name": "Nakayama Kimpai",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6003,6 +6022,7 @@
       "month": 1,
       "half": 1,
       "name": "Aichi Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6011,6 +6031,7 @@
       "month": 1,
       "half": 2,
       "name": "Silk Road Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6019,6 +6040,7 @@
       "month": 1,
       "half": 2,
       "name": "Negishi Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1400
     },
@@ -6027,6 +6049,7 @@
       "month": 2,
       "half": 1,
       "name": "Tokyo Shimbun Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -6035,6 +6058,7 @@
       "month": 2,
       "half": 2,
       "name": "Kyoto Umamusume Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1400
     },
@@ -6043,6 +6067,7 @@
       "month": 2,
       "half": 2,
       "name": "Diamond Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 3400
     },
@@ -6051,6 +6076,7 @@
       "month": 2,
       "half": 2,
       "name": "Kokura Daishoten",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -6059,6 +6085,7 @@
       "month": 2,
       "half": 2,
       "name": "Hankyu Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 1400
     },
@@ -6067,6 +6094,7 @@
       "month": 3,
       "half": 1,
       "name": "Ocean Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6075,6 +6103,7 @@
       "month": 3,
       "half": 1,
       "name": "Nakayama Umamusume Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -6083,6 +6112,7 @@
       "month": 3,
       "half": 2,
       "name": "March Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1800
     },
@@ -6091,6 +6121,7 @@
       "month": 4,
       "half": 1,
       "name": "Lord Derby Challenge Trophy",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -6099,6 +6130,7 @@
       "month": 4,
       "half": 1,
       "name": "Antares Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1800
     },
@@ -6107,6 +6139,7 @@
       "month": 4,
       "half": 2,
       "name": "Fukushima Umamusume Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -6115,6 +6148,7 @@
       "month": 5,
       "half": 1,
       "name": "Niigata Daishoten",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6123,6 +6157,7 @@
       "month": 5,
       "half": 2,
       "name": "Heian Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1900
     },
@@ -6131,6 +6166,7 @@
       "month": 1,
       "half": 1,
       "name": "Manyo Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 3000
     },
@@ -6139,6 +6175,7 @@
       "month": 1,
       "half": 1,
       "name": "Yodo Tankyori Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6147,6 +6184,7 @@
       "month": 1,
       "half": 1,
       "name": "Pollux Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -6155,6 +6193,7 @@
       "month": 1,
       "half": 1,
       "name": "January Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6163,6 +6202,7 @@
       "month": 1,
       "half": 1,
       "name": "New Year Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6171,6 +6211,7 @@
       "month": 1,
       "half": 2,
       "name": "Subaru Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6179,6 +6220,7 @@
       "month": 1,
       "half": 1,
       "name": "Carbuncle Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6187,6 +6229,7 @@
       "month": 1,
       "half": 2,
       "name": "Shirafuji Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -6195,6 +6238,7 @@
       "month": 2,
       "half": 1,
       "name": "Yamato Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6203,6 +6247,7 @@
       "month": 2,
       "half": 1,
       "name": "Rakuyo Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6211,6 +6256,7 @@
       "month": 2,
       "half": 1,
       "name": "Aldebaran Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1900
     },
@@ -6219,6 +6265,7 @@
       "month": 2,
       "half": 1,
       "name": "Valentine Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6227,6 +6274,7 @@
       "month": 2,
       "half": 2,
       "name": "Sobu Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -6235,6 +6283,7 @@
       "month": 3,
       "half": 1,
       "name": "Osakajo Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -6243,6 +6292,7 @@
       "month": 3,
       "half": 1,
       "name": "Polaris Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6251,6 +6301,7 @@
       "month": 3,
       "half": 1,
       "name": "Nigawa Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 2000
     },
@@ -6259,6 +6310,7 @@
       "month": 3,
       "half": 1,
       "name": "Kochi Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6267,6 +6319,7 @@
       "month": 3,
       "half": 2,
       "name": "Chiba Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6275,6 +6328,7 @@
       "month": 3,
       "half": 2,
       "name": "Rokko Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6283,6 +6337,7 @@
       "month": 4,
       "half": 1,
       "name": "Coral Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6291,6 +6346,7 @@
       "month": 4,
       "half": 1,
       "name": "Keiyo Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6299,6 +6355,7 @@
       "month": 4,
       "half": 1,
       "name": "Shunrai Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6307,6 +6364,7 @@
       "month": 4,
       "half": 1,
       "name": "Fukushima Mimpo Hai",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -6315,6 +6373,7 @@
       "month": 4,
       "half": 2,
       "name": "Oasis Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1600
     },
@@ -6323,6 +6382,7 @@
       "month": 4,
       "half": 2,
       "name": "Tennozan Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6331,6 +6391,7 @@
       "month": 5,
       "half": 1,
       "name": "Tanigawadake Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6339,6 +6400,7 @@
       "month": 5,
       "half": 1,
       "name": "Metropolitan Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2400
     },
@@ -6347,6 +6409,7 @@
       "month": 5,
       "half": 1,
       "name": "Kurama Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6355,6 +6418,7 @@
       "month": 5,
       "half": 1,
       "name": "Brilliant Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 2100
     },
@@ -6363,6 +6427,7 @@
       "month": 5,
       "half": 1,
       "name": "Miyakooji Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -6371,6 +6436,7 @@
       "month": 5,
       "half": 1,
       "name": "Ritto Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6379,6 +6445,7 @@
       "month": 5,
       "half": 2,
       "name": "May Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -6387,6 +6454,7 @@
       "month": 5,
       "half": 2,
       "name": "Idaten Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1000
     },
@@ -6395,6 +6463,7 @@
       "month": 5,
       "half": 2,
       "name": "Keyaki Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6403,6 +6472,7 @@
       "month": 5,
       "half": 2,
       "name": "Azuchijo Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -6411,6 +6481,7 @@
       "month": 6,
       "half": 1,
       "name": "Yasuda Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -6419,6 +6490,7 @@
       "month": 6,
       "half": 2,
       "name": "Takarazuka Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -6427,6 +6499,7 @@
       "month": 9,
       "half": 2,
       "name": "Sprinters Stakes",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -6435,6 +6508,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -6443,6 +6517,7 @@
       "month": 11,
       "half": 1,
       "name": "Queen Elizabeth II Cup",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -6451,6 +6526,7 @@
       "month": 11,
       "half": 2,
       "name": "Mile Championship",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -6459,6 +6535,7 @@
       "month": 11,
       "half": 2,
       "name": "Japan Cup",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -6467,6 +6544,7 @@
       "month": 12,
       "half": 1,
       "name": "Champions Cup",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -6475,6 +6553,7 @@
       "month": 12,
       "half": 2,
       "name": "Arima Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -6483,6 +6562,7 @@
       "month": 8,
       "half": 2,
       "name": "Sapporo Kinen",
+      "grade": 200,
       "ground": 1,
       "distance": 2000
     },
@@ -6491,6 +6571,7 @@
       "month": 9,
       "half": 1,
       "name": "Centaur Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1200
     },
@@ -6499,6 +6580,7 @@
       "month": 9,
       "half": 2,
       "name": "Kobe Shimbun Hai",
+      "grade": 200,
       "ground": 1,
       "distance": 2400
     },
@@ -6507,6 +6589,7 @@
       "month": 9,
       "half": 2,
       "name": "All Comers",
+      "grade": 200,
       "ground": 1,
       "distance": 2200
     },
@@ -6515,6 +6598,7 @@
       "month": 10,
       "half": 1,
       "name": "Mainichi Okan",
+      "grade": 200,
       "ground": 1,
       "distance": 1800
     },
@@ -6523,6 +6607,7 @@
       "month": 10,
       "half": 1,
       "name": "Kyoto Daishoten",
+      "grade": 200,
       "ground": 1,
       "distance": 2400
     },
@@ -6531,6 +6616,7 @@
       "month": 10,
       "half": 1,
       "name": "Fuchu Umamusume Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1800
     },
@@ -6539,6 +6625,7 @@
       "month": 10,
       "half": 2,
       "name": "Swan Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1400
     },
@@ -6547,6 +6634,7 @@
       "month": 11,
       "half": 1,
       "name": "Copa Republica Argentina",
+      "grade": 200,
       "ground": 1,
       "distance": 2500
     },
@@ -6555,6 +6643,7 @@
       "month": 12,
       "half": 1,
       "name": "Stayers Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 3600
     },
@@ -6563,6 +6652,7 @@
       "month": 12,
       "half": 2,
       "name": "Hanshin Cup",
+      "grade": 200,
       "ground": 1,
       "distance": 1400
     },
@@ -6571,6 +6661,7 @@
       "month": 6,
       "half": 1,
       "name": "Naruo Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6579,6 +6670,7 @@
       "month": 6,
       "half": 1,
       "name": "Mermaid Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6587,6 +6679,7 @@
       "month": 6,
       "half": 1,
       "name": "Epsom Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -6595,6 +6688,7 @@
       "month": 6,
       "half": 2,
       "name": "Hakodate Sprint Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6603,6 +6697,7 @@
       "month": 7,
       "half": 1,
       "name": "CBC Sho",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6611,6 +6706,7 @@
       "month": 7,
       "half": 1,
       "name": "Procyon Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1400
     },
@@ -6619,6 +6715,7 @@
       "month": 7,
       "half": 1,
       "name": "Tanabata Sho",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6627,6 +6724,7 @@
       "month": 7,
       "half": 1,
       "name": "Hakodate Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6635,6 +6733,7 @@
       "month": 7,
       "half": 2,
       "name": "Chukyo Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -6643,6 +6742,7 @@
       "month": 7,
       "half": 2,
       "name": "Ibis Summer Dash",
+      "grade": 300,
       "ground": 1,
       "distance": 1000
     },
@@ -6651,6 +6751,7 @@
       "month": 7,
       "half": 2,
       "name": "Queen Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -6659,6 +6760,7 @@
       "month": 8,
       "half": 1,
       "name": "Kokura Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6667,6 +6769,7 @@
       "month": 8,
       "half": 1,
       "name": "Sekiya Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -6675,6 +6778,7 @@
       "month": 8,
       "half": 1,
       "name": "Elm Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1700
     },
@@ -6683,6 +6787,7 @@
       "month": 8,
       "half": 2,
       "name": "Kitakyushu Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6691,6 +6796,7 @@
       "month": 8,
       "half": 2,
       "name": "Keeneland Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6699,6 +6805,7 @@
       "month": 9,
       "half": 1,
       "name": "Niigata Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6707,6 +6814,7 @@
       "month": 9,
       "half": 1,
       "name": "Keisei Hai Autumn Handicap",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -6715,6 +6823,7 @@
       "month": 9,
       "half": 2,
       "name": "Sirius Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 2000
     },
@@ -6723,6 +6832,7 @@
       "month": 10,
       "half": 2,
       "name": "Fuji Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1600
     },
@@ -6731,6 +6841,7 @@
       "month": 11,
       "half": 1,
       "name": "Miyako Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1800
     },
@@ -6739,6 +6850,7 @@
       "month": 11,
       "half": 1,
       "name": "Musashino Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1600
     },
@@ -6747,6 +6859,7 @@
       "month": 11,
       "half": 1,
       "name": "Fukushima Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6755,6 +6868,7 @@
       "month": 11,
       "half": 2,
       "name": "Keihan Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -6763,6 +6877,7 @@
       "month": 12,
       "half": 1,
       "name": "Challenge Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6771,6 +6886,7 @@
       "month": 12,
       "half": 1,
       "name": "Chunichi Shimbun Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -6779,6 +6895,7 @@
       "month": 12,
       "half": 1,
       "name": "Capella Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1200
     },
@@ -6787,6 +6904,7 @@
       "month": 12,
       "half": 1,
       "name": "Turquoise Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -6795,6 +6913,7 @@
       "month": 6,
       "half": 2,
       "name": "Akhalteke Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1600
     },
@@ -6803,6 +6922,7 @@
       "month": 6,
       "half": 1,
       "name": "Tempozan Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6811,6 +6931,7 @@
       "month": 6,
       "half": 2,
       "name": "Yonago Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6819,6 +6940,7 @@
       "month": 6,
       "half": 2,
       "name": "Onuma Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1700
     },
@@ -6827,6 +6949,7 @@
       "month": 6,
       "half": 2,
       "name": "Paradise Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -6835,6 +6958,7 @@
       "month": 7,
       "half": 1,
       "name": "Tomoe Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -6843,6 +6967,7 @@
       "month": 7,
       "half": 1,
       "name": "Marine Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1700
     },
@@ -6851,6 +6976,7 @@
       "month": 7,
       "half": 2,
       "name": "Fukushima TV Open",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6859,6 +6985,7 @@
       "month": 8,
       "half": 1,
       "name": "Sapporo Nikkei Open",
+      "grade": 400,
       "ground": 1,
       "distance": 2600
     },
@@ -6867,6 +6994,7 @@
       "month": 8,
       "half": 1,
       "name": "UHB Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6875,6 +7003,7 @@
       "month": 8,
       "half": 1,
       "name": "Aso Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1700
     },
@@ -6883,6 +7012,7 @@
       "month": 8,
       "half": 2,
       "name": "NST Sho",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6891,6 +7021,7 @@
       "month": 8,
       "half": 2,
       "name": "BSN Sho",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -6899,6 +7030,7 @@
       "month": 8,
       "half": 2,
       "name": "Kokura Nikkei Open",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -6907,6 +7039,7 @@
       "month": 8,
       "half": 2,
       "name": "Toki Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -6915,6 +7048,7 @@
       "month": 9,
       "half": 1,
       "name": "Tancho Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2600
     },
@@ -6923,6 +7057,7 @@
       "month": 9,
       "half": 1,
       "name": "Enif Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6931,6 +7066,7 @@
       "month": 9,
       "half": 1,
       "name": "Radio Nippon Sho",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -6939,6 +7075,7 @@
       "month": 9,
       "half": 2,
       "name": "Port Island Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -6947,6 +7084,7 @@
       "month": 10,
       "half": 1,
       "name": "Opal Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -6955,6 +7093,7 @@
       "month": 10,
       "half": 1,
       "name": "Green Channel Cup",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -6963,6 +7102,7 @@
       "month": 10,
       "half": 1,
       "name": "October Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -6971,6 +7111,7 @@
       "month": 10,
       "half": 1,
       "name": "Shinetsu Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -6979,6 +7120,7 @@
       "month": 10,
       "half": 2,
       "name": "Muromachi Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -6987,6 +7129,7 @@
       "month": 10,
       "half": 2,
       "name": "Brazil Cup",
+      "grade": 400,
       "ground": 2,
       "distance": 2100
     },
@@ -6995,6 +7138,7 @@
       "month": 10,
       "half": 2,
       "name": "Cassiopeia Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -7003,6 +7147,7 @@
       "month": 10,
       "half": 2,
       "name": "Lumiere Autumn Dash",
+      "grade": 400,
       "ground": 1,
       "distance": 1000
     },
@@ -7011,6 +7156,7 @@
       "month": 11,
       "half": 1,
       "name": "Oro Cup",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -7019,6 +7165,7 @@
       "month": 11,
       "half": 2,
       "name": "Andromeda Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -7027,6 +7174,7 @@
       "month": 11,
       "half": 2,
       "name": "Shimotsuki Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -7035,6 +7183,7 @@
       "month": 11,
       "half": 2,
       "name": "Fukushima Minyu Cup",
+      "grade": 400,
       "ground": 2,
       "distance": 1700
     },
@@ -7043,6 +7192,7 @@
       "month": 11,
       "half": 2,
       "name": "Capital Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -7051,6 +7201,7 @@
       "month": 11,
       "half": 2,
       "name": "Autumn Leaf Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -7059,6 +7210,7 @@
       "month": 12,
       "half": 1,
       "name": "Lapis Lazuli Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -7067,6 +7219,7 @@
       "month": 12,
       "half": 1,
       "name": "Shiwasu Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -7075,6 +7228,7 @@
       "month": 12,
       "half": 1,
       "name": "Rigel Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -7083,6 +7237,7 @@
       "month": 12,
       "half": 1,
       "name": "Tanzanite Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -7091,6 +7246,7 @@
       "month": 12,
       "half": 1,
       "name": "December Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -7099,6 +7255,7 @@
       "month": 12,
       "half": 2,
       "name": "Galaxy Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -7107,6 +7264,7 @@
       "month": 12,
       "half": 2,
       "name": "Betelgeuse Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -7115,6 +7273,7 @@
       "month": 4,
       "half": 1,
       "name": "Oka Sho",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -7123,6 +7282,7 @@
       "month": 4,
       "half": 1,
       "name": "Satsuki Sho",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -7131,6 +7291,7 @@
       "month": 5,
       "half": 1,
       "name": "NHK Mile Cup",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -7139,6 +7300,7 @@
       "month": 5,
       "half": 2,
       "name": "Japanese Oaks",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -7147,6 +7309,7 @@
       "month": 5,
       "half": 2,
       "name": "Tokyo Yushun (Japanese Derby)",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -7155,6 +7318,7 @@
       "month": 10,
       "half": 2,
       "name": "Shuka Sho",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -7163,6 +7327,7 @@
       "month": 10,
       "half": 2,
       "name": "Kikuka Sho",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -7171,6 +7336,7 @@
       "month": 3,
       "half": 1,
       "name": "Yayoi Sho",
+      "grade": 200,
       "ground": 1,
       "distance": 2000
     },
@@ -7179,6 +7345,7 @@
       "month": 3,
       "half": 1,
       "name": "Fillies' Revue",
+      "grade": 200,
       "ground": 1,
       "distance": 1400
     },
@@ -7187,6 +7354,7 @@
       "month": 3,
       "half": 2,
       "name": "Spring Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1800
     },
@@ -7195,6 +7363,7 @@
       "month": 4,
       "half": 1,
       "name": "New Zealand Trophy",
+      "grade": 200,
       "ground": 1,
       "distance": 1600
     },
@@ -7203,6 +7372,7 @@
       "month": 4,
       "half": 2,
       "name": "Flora Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 2000
     },
@@ -7211,6 +7381,7 @@
       "month": 4,
       "half": 2,
       "name": "Aoba Sho",
+      "grade": 200,
       "ground": 1,
       "distance": 2400
     },
@@ -7219,6 +7390,7 @@
       "month": 5,
       "half": 1,
       "name": "Kyoto Shimbun Hai",
+      "grade": 200,
       "ground": 1,
       "distance": 2200
     },
@@ -7227,6 +7399,7 @@
       "month": 9,
       "half": 1,
       "name": "Rose Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1800
     },
@@ -7235,6 +7408,7 @@
       "month": 9,
       "half": 2,
       "name": "St. Lite Kinen",
+      "grade": 200,
       "ground": 1,
       "distance": 2200
     },
@@ -7243,6 +7417,7 @@
       "month": 1,
       "half": 1,
       "name": "Shinzan Kinen",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -7251,6 +7426,7 @@
       "month": 1,
       "half": 1,
       "name": "Fairy Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -7259,6 +7435,7 @@
       "month": 1,
       "half": 1,
       "name": "Keisei Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -7267,6 +7444,7 @@
       "month": 2,
       "half": 1,
       "name": "Kisaragi Sho",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -7275,6 +7453,7 @@
       "month": 2,
       "half": 1,
       "name": "Queen Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -7283,6 +7462,7 @@
       "month": 2,
       "half": 1,
       "name": "Kyodo News Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -7291,6 +7471,7 @@
       "month": 4,
       "half": 1,
       "name": "Arlington Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -7299,6 +7480,7 @@
       "month": 3,
       "half": 1,
       "name": "Tulip Sho",
+      "grade": 200,
       "ground": 1,
       "distance": 1600
     },
@@ -7307,6 +7489,7 @@
       "month": 3,
       "half": 2,
       "name": "Falcon Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1400
     },
@@ -7315,6 +7498,7 @@
       "month": 3,
       "half": 2,
       "name": "Flower Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -7323,6 +7507,7 @@
       "month": 3,
       "half": 2,
       "name": "Mainichi Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -7331,6 +7516,7 @@
       "month": 6,
       "half": 2,
       "name": "Unicorn Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1600
     },
@@ -7339,6 +7525,7 @@
       "month": 7,
       "half": 1,
       "name": "Radio Nikkei Sho",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -7347,6 +7534,7 @@
       "month": 8,
       "half": 1,
       "name": "Leopard Stakes",
+      "grade": 300,
       "ground": 2,
       "distance": 1800
     },
@@ -7355,6 +7543,7 @@
       "month": 9,
       "half": 1,
       "name": "Shion Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -7363,6 +7552,7 @@
       "month": 1,
       "half": 1,
       "name": "Junior Cup",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -7371,6 +7561,7 @@
       "month": 1,
       "half": 1,
       "name": "Kobai Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -7379,6 +7570,7 @@
       "month": 1,
       "half": 2,
       "name": "Wakagoma Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -7387,6 +7579,7 @@
       "month": 1,
       "half": 2,
       "name": "Crocus Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -7395,6 +7588,7 @@
       "month": 2,
       "half": 1,
       "name": "Elfin Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -7403,6 +7597,7 @@
       "month": 2,
       "half": 2,
       "name": "Hyacinth Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1600
     },
@@ -7411,6 +7606,7 @@
       "month": 2,
       "half": 2,
       "name": "Sumire Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2200
     },
@@ -7419,6 +7615,7 @@
       "month": 3,
       "half": 1,
       "name": "Anemone Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -7427,6 +7624,7 @@
       "month": 3,
       "half": 1,
       "name": "Shoryu Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -7435,6 +7633,7 @@
       "month": 3,
       "half": 2,
       "name": "Wakaba Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -7443,6 +7642,7 @@
       "month": 2,
       "half": 2,
       "name": "Marguerite Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -7451,6 +7651,7 @@
       "month": 4,
       "half": 1,
       "name": "Fukuryu Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -7459,6 +7660,7 @@
       "month": 4,
       "half": 1,
       "name": "Wasurenagusa Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -7467,6 +7669,7 @@
       "month": 4,
       "half": 2,
       "name": "Tachibana Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -7475,6 +7678,7 @@
       "month": 4,
       "half": 2,
       "name": "Tango Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1400
     },
@@ -7483,6 +7687,7 @@
       "month": 4,
       "half": 2,
       "name": "Sweetpea Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -7491,6 +7696,7 @@
       "month": 5,
       "half": 1,
       "name": "Principal Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -7499,6 +7705,7 @@
       "month": 5,
       "half": 2,
       "name": "Aoi Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -7507,6 +7714,7 @@
       "month": 5,
       "half": 1,
       "name": "Seiryu Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1600
     },
@@ -7515,6 +7723,7 @@
       "month": 5,
       "half": 2,
       "name": "Hosu Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -7523,6 +7732,7 @@
       "month": 5,
       "half": 2,
       "name": "Shirayuri Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -7531,6 +7741,7 @@
       "month": 1,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -7539,6 +7750,7 @@
       "month": 3,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -7547,6 +7759,7 @@
       "month": 4,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -7555,6 +7768,7 @@
       "month": 1,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -7563,6 +7777,7 @@
       "month": 1,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7571,6 +7786,7 @@
       "month": 3,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7579,6 +7795,7 @@
       "month": 4,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7587,6 +7804,7 @@
       "month": 1,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -7595,6 +7813,7 @@
       "month": 3,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -7603,6 +7822,7 @@
       "month": 4,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -7611,6 +7831,7 @@
       "month": 3,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7619,6 +7840,7 @@
       "month": 1,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -7627,6 +7849,7 @@
       "month": 3,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -7635,6 +7858,7 @@
       "month": 4,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -7643,6 +7867,7 @@
       "month": 1,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2200
     },
@@ -7651,6 +7876,7 @@
       "month": 3,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2200
     },
@@ -7659,6 +7885,7 @@
       "month": 4,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2200
     },
@@ -7667,6 +7894,7 @@
       "month": 1,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7675,6 +7903,7 @@
       "month": 1,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7683,6 +7912,7 @@
       "month": 2,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -7691,6 +7921,7 @@
       "month": 2,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -7699,6 +7930,7 @@
       "month": 2,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -7707,6 +7939,7 @@
       "month": 2,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7715,6 +7948,7 @@
       "month": 2,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -7723,6 +7957,7 @@
       "month": 2,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7731,6 +7966,7 @@
       "month": 3,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7739,6 +7975,7 @@
       "month": 3,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -7747,6 +7984,7 @@
       "month": 3,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -7755,6 +7993,7 @@
       "month": 3,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -7763,6 +8002,7 @@
       "month": 3,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7771,6 +8011,7 @@
       "month": 3,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2200
     },
@@ -7779,6 +8020,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2400
     },
@@ -7787,6 +8029,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -7795,6 +8038,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -7803,6 +8047,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -7811,6 +8056,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7819,6 +8065,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7827,6 +8074,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -7835,6 +8083,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -7843,6 +8092,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -7851,6 +8101,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -7859,6 +8110,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -7867,6 +8119,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -7875,6 +8128,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -7883,6 +8137,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2400
     },
@@ -7891,6 +8146,7 @@
       "month": 7,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1150
     },
@@ -7899,6 +8155,7 @@
       "month": 7,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7907,6 +8164,7 @@
       "month": 7,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1700
     },
@@ -7915,6 +8173,7 @@
       "month": 7,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1150
     },
@@ -7923,6 +8182,7 @@
       "month": 7,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7931,6 +8191,7 @@
       "month": 7,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -7939,6 +8200,7 @@
       "month": 7,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7947,6 +8209,7 @@
       "month": 7,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -7955,6 +8218,7 @@
       "month": 7,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -7963,6 +8227,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -7971,6 +8236,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -7979,6 +8245,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7987,6 +8254,7 @@
       "month": 8,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -7995,6 +8263,7 @@
       "month": 8,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1000
     },
@@ -8003,6 +8272,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8011,6 +8281,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8019,6 +8290,7 @@
       "month": 8,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8027,6 +8299,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1000
     },
@@ -8035,6 +8308,7 @@
       "month": 9,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -8043,6 +8317,7 @@
       "month": 9,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -8051,6 +8326,7 @@
       "month": 9,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8059,6 +8335,7 @@
       "month": 9,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8067,6 +8344,7 @@
       "month": 9,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -8075,6 +8353,7 @@
       "month": 10,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -8083,6 +8362,7 @@
       "month": 10,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8091,6 +8371,7 @@
       "month": 10,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -8099,6 +8380,7 @@
       "month": 10,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8107,6 +8389,7 @@
       "month": 10,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8115,6 +8398,7 @@
       "month": 10,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8123,6 +8407,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -8131,6 +8416,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8139,6 +8425,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8147,6 +8434,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8155,6 +8443,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8163,6 +8452,7 @@
       "month": 12,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -8171,6 +8461,7 @@
       "month": 12,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -8179,6 +8470,7 @@
       "month": 12,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8187,6 +8479,7 @@
       "month": 12,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -8195,6 +8488,7 @@
       "month": 12,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8203,6 +8497,7 @@
       "month": 12,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8211,6 +8506,7 @@
       "month": 1,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8219,6 +8515,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -8227,6 +8524,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8235,6 +8533,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8243,6 +8542,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8251,6 +8551,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8259,6 +8560,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8267,6 +8569,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8275,6 +8578,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8283,6 +8587,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8291,6 +8596,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -8299,6 +8605,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -8307,6 +8614,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -8315,6 +8623,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -8323,6 +8632,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8331,6 +8641,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8339,6 +8650,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8347,6 +8659,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8355,6 +8668,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -8363,6 +8677,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -8371,6 +8686,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -8379,6 +8695,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -8387,6 +8704,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8395,6 +8713,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8403,6 +8722,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8411,6 +8731,7 @@
       "month": 6,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8419,6 +8740,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8427,6 +8749,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8435,6 +8758,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8443,6 +8767,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -8451,6 +8776,7 @@
       "month": 4,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -8459,6 +8785,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -8467,6 +8794,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 2100
     },
@@ -8475,6 +8803,7 @@
       "month": 5,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2300
     },
@@ -8483,6 +8812,7 @@
       "month": 2,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2400
     },
@@ -8491,6 +8821,7 @@
       "month": 5,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2400
     },
@@ -8499,6 +8830,7 @@
       "month": 6,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2400
     },
@@ -8507,6 +8839,7 @@
       "month": 8,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1000
     },
@@ -8515,6 +8848,7 @@
       "month": 8,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -8523,6 +8857,7 @@
       "month": 8,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8531,6 +8866,7 @@
       "month": 8,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8539,6 +8875,7 @@
       "month": 12,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -8547,6 +8884,7 @@
       "month": 8,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -8555,6 +8893,7 @@
       "month": 8,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8563,6 +8902,7 @@
       "month": 8,
       "half": 2,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2400
     },
@@ -8571,6 +8911,7 @@
       "month": 7,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1150
     },
@@ -8579,6 +8920,7 @@
       "month": 7,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -8587,6 +8929,7 @@
       "month": 7,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1700
     },
@@ -8595,6 +8938,7 @@
       "month": 7,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8603,6 +8947,7 @@
       "month": 7,
       "half": 1,
       "name": "Classic Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2600
     },
@@ -8611,6 +8956,7 @@
       "month": 12,
       "half": 1,
       "name": "Hanshin Juvenile Fillies",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -8619,6 +8965,7 @@
       "month": 12,
       "half": 1,
       "name": "Asahi Hai Futurity Stakes",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -8627,6 +8974,7 @@
       "month": 12,
       "half": 2,
       "name": "Hopeful Stakes",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -8635,6 +8983,7 @@
       "month": 11,
       "half": 1,
       "name": "Keio Hai Junior Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1400
     },
@@ -8643,6 +8992,7 @@
       "month": 11,
       "half": 1,
       "name": "Daily Hai Junior Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1600
     },
@@ -8651,6 +9001,7 @@
       "month": 7,
       "half": 2,
       "name": "Hakodate Junior Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -8659,6 +9010,7 @@
       "month": 8,
       "half": 2,
       "name": "Niigata Junior Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -8667,6 +9019,7 @@
       "month": 9,
       "half": 1,
       "name": "Sapporo Junior Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -8675,6 +9028,7 @@
       "month": 9,
       "half": 1,
       "name": "Kokura Junior Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1200
     },
@@ -8683,6 +9037,7 @@
       "month": 10,
       "half": 1,
       "name": "Saudi Arabia Royal Cup",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -8691,6 +9046,7 @@
       "month": 10,
       "half": 2,
       "name": "Artemis Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1600
     },
@@ -8699,6 +9055,7 @@
       "month": 11,
       "half": 1,
       "name": "Fantasy Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1400
     },
@@ -8707,6 +9064,7 @@
       "month": 11,
       "half": 2,
       "name": "Tokyo Sports Hai Junior Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 1800
     },
@@ -8715,6 +9073,7 @@
       "month": 11,
       "half": 2,
       "name": "Kyoto Junior Stakes",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -8723,6 +9082,7 @@
       "month": 7,
       "half": 2,
       "name": "Chukyo Junior Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1600
     },
@@ -8731,6 +9091,7 @@
       "month": 8,
       "half": 1,
       "name": "Dahlia Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -8739,6 +9100,7 @@
       "month": 8,
       "half": 1,
       "name": "Phoenix Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -8747,6 +9109,7 @@
       "month": 8,
       "half": 1,
       "name": "Cosmos Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -8755,6 +9118,7 @@
       "month": 8,
       "half": 2,
       "name": "Clover Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1500
     },
@@ -8763,6 +9127,7 @@
       "month": 9,
       "half": 1,
       "name": "Suzuran Sho",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -8771,6 +9136,7 @@
       "month": 9,
       "half": 1,
       "name": "Nojigiku Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -8779,6 +9145,7 @@
       "month": 9,
       "half": 2,
       "name": "Kikyo Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -8787,6 +9154,7 @@
       "month": 9,
       "half": 2,
       "name": "Fuyo Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 2000
     },
@@ -8795,6 +9163,7 @@
       "month": 9,
       "half": 2,
       "name": "Canna Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -8803,6 +9172,7 @@
       "month": 10,
       "half": 1,
       "name": "Momiji Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1400
     },
@@ -8811,6 +9181,7 @@
       "month": 10,
       "half": 2,
       "name": "Ivy Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -8819,6 +9190,7 @@
       "month": 10,
       "half": 2,
       "name": "Hagi Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -8827,6 +9199,7 @@
       "month": 11,
       "half": 1,
       "name": "Fukushima Junior Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -8835,6 +9208,7 @@
       "month": 12,
       "half": 2,
       "name": "Christmas Rose Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -8843,6 +9217,7 @@
       "month": 9,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -8851,6 +9226,7 @@
       "month": 12,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -8859,6 +9235,7 @@
       "month": 9,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -8867,6 +9244,7 @@
       "month": 12,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -8875,6 +9253,7 @@
       "month": 9,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8883,6 +9262,7 @@
       "month": 12,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -8891,6 +9271,7 @@
       "month": 9,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -8899,6 +9280,7 @@
       "month": 9,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8907,6 +9289,7 @@
       "month": 12,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -8915,6 +9298,7 @@
       "month": 9,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8923,6 +9307,7 @@
       "month": 12,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -8931,6 +9316,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1200
     },
@@ -8939,6 +9325,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1800
     },
@@ -8947,6 +9334,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -8955,6 +9343,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8963,6 +9352,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1300
     },
@@ -8971,6 +9361,7 @@
       "month": 6,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8979,6 +9370,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8987,6 +9379,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -8995,6 +9388,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -9003,6 +9397,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1400
     },
@@ -9011,6 +9406,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -9019,6 +9415,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -9027,6 +9424,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -9035,6 +9433,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -9043,6 +9442,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1600
     },
@@ -9051,6 +9451,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -9059,6 +9460,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -9067,6 +9469,7 @@
       "month": 10,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -9075,6 +9478,7 @@
       "month": 11,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -9083,6 +9487,7 @@
       "month": 11,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 2000
     },
@@ -9091,6 +9496,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 2,
       "distance": 1300
     },
@@ -9099,6 +9505,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 2,
       "distance": 1600
     },
@@ -9107,6 +9514,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -9115,6 +9523,7 @@
       "month": 8,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1000
     },
@@ -9123,6 +9532,7 @@
       "month": 8,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -9131,6 +9541,7 @@
       "month": 8,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1200
     },
@@ -9139,6 +9550,7 @@
       "month": 8,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1400
     },
@@ -9147,6 +9559,7 @@
       "month": 8,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1600
     },
@@ -9155,6 +9568,7 @@
       "month": 8,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -9163,6 +9577,7 @@
       "month": 8,
       "half": 2,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 2,
       "distance": 1800
     },
@@ -9171,6 +9586,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -9179,6 +9595,7 @@
       "month": 7,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1200
     },
@@ -9187,6 +9604,7 @@
       "month": 7,
       "half": 1,
       "name": "Junior Maiden Race",
+      "grade": 800,
       "ground": 1,
       "distance": 1800
     },
@@ -9195,6 +9613,7 @@
       "month": 6,
       "half": 2,
       "name": "Teio Sho",
+      "grade": 100,
       "ground": 2,
       "distance": 2000
     },
@@ -9203,6 +9622,7 @@
       "month": 7,
       "half": 1,
       "name": "Japan Dirt Derby",
+      "grade": 100,
       "ground": 2,
       "distance": 2000
     },
@@ -9211,6 +9631,7 @@
       "month": 11,
       "half": 1,
       "name": "JBC Ladies’ Classic",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -9219,6 +9640,7 @@
       "month": 11,
       "half": 1,
       "name": "JBC Sprint",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -9227,6 +9649,7 @@
       "month": 11,
       "half": 1,
       "name": "JBC Classic",
+      "grade": 100,
       "ground": 2,
       "distance": 2000
     },
@@ -9235,6 +9658,7 @@
       "month": 12,
       "half": 2,
       "name": "Tokyo Daishoten",
+      "grade": 100,
       "ground": 2,
       "distance": 2000
     },
@@ -9243,6 +9667,7 @@
       "month": 9,
       "half": 1,
       "name": "Aster Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9251,6 +9676,7 @@
       "month": 9,
       "half": 2,
       "name": "Saffron Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9259,6 +9685,7 @@
       "month": 10,
       "half": 1,
       "name": "Rindo Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1400
     },
@@ -9267,6 +9694,7 @@
       "month": 10,
       "half": 1,
       "name": "Shigiku Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 2000
     },
@@ -9275,6 +9703,7 @@
       "month": 10,
       "half": 1,
       "name": "Platanus Sho",
+      "grade": 700,
       "ground": 2,
       "distance": 1600
     },
@@ -9283,6 +9712,7 @@
       "month": 10,
       "half": 2,
       "name": "Nadeshiko Sho",
+      "grade": 700,
       "ground": 2,
       "distance": 1400
     },
@@ -9291,6 +9721,7 @@
       "month": 11,
       "half": 1,
       "name": "Hyakunichiso Tokubetsu",
+      "grade": 700,
       "ground": 1,
       "distance": 2000
     },
@@ -9299,6 +9730,7 @@
       "month": 11,
       "half": 1,
       "name": "Kimmokusei Tokubetsu",
+      "grade": 700,
       "ground": 1,
       "distance": 1800
     },
@@ -9307,6 +9739,7 @@
       "month": 11,
       "half": 1,
       "name": "Oxalis Sho",
+      "grade": 700,
       "ground": 2,
       "distance": 1400
     },
@@ -9315,6 +9748,7 @@
       "month": 11,
       "half": 1,
       "name": "Kigiku Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 2000
     },
@@ -9323,6 +9757,7 @@
       "month": 11,
       "half": 2,
       "name": "Mochinoki Sho",
+      "grade": 700,
       "ground": 2,
       "distance": 1800
     },
@@ -9331,6 +9766,7 @@
       "month": 11,
       "half": 2,
       "name": "Akamatsu Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9339,6 +9775,7 @@
       "month": 11,
       "half": 2,
       "name": "Shumeigiku Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1400
     },
@@ -9347,6 +9784,7 @@
       "month": 11,
       "half": 2,
       "name": "Cattleya Sho",
+      "grade": 700,
       "ground": 2,
       "distance": 1600
     },
@@ -9355,6 +9793,7 @@
       "month": 11,
       "half": 2,
       "name": "Begonia Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9363,6 +9802,7 @@
       "month": 11,
       "half": 2,
       "name": "Shiragiku Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9371,6 +9811,7 @@
       "month": 11,
       "half": 2,
       "name": "Habotan Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 2000
     },
@@ -9379,6 +9820,7 @@
       "month": 11,
       "half": 2,
       "name": "Koyamaki Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9387,6 +9829,7 @@
       "month": 12,
       "half": 1,
       "name": "Manryo Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1400
     },
@@ -9395,6 +9838,7 @@
       "month": 12,
       "half": 1,
       "name": "Kuromatsu Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1200
     },
@@ -9403,6 +9847,7 @@
       "month": 12,
       "half": 1,
       "name": "Erica Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 2000
     },
@@ -9411,6 +9856,7 @@
       "month": 12,
       "half": 1,
       "name": "Tsuwabuki Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1400
     },
@@ -9419,6 +9865,7 @@
       "month": 12,
       "half": 1,
       "name": "Hiiragi Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9427,6 +9874,7 @@
       "month": 12,
       "half": 1,
       "name": "Sazanka Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1200
     },
@@ -9435,6 +9883,7 @@
       "month": 12,
       "half": 1,
       "name": "Kantsubaki Sho",
+      "grade": 700,
       "ground": 2,
       "distance": 1400
     },
@@ -9443,6 +9892,7 @@
       "month": 12,
       "half": 2,
       "name": "Senryo Sho",
+      "grade": 700,
       "ground": 1,
       "distance": 1600
     },
@@ -9451,6 +9901,7 @@
       "month": 2,
       "half": 2,
       "name": "Kitakyushu Tankyori Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1200
     },
@@ -9459,6 +9910,7 @@
       "month": 4,
       "half": 1,
       "name": "Azumakofuji Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1700
     },
@@ -9467,6 +9919,7 @@
       "month": 6,
       "half": 1,
       "name": "Sleipnir Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 2100
     },
@@ -9475,6 +9928,7 @@
       "month": 6,
       "half": 2,
       "name": "Sannomiya Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -9483,6 +9937,7 @@
       "month": 8,
       "half": 1,
       "name": "Kanetsu Stakes",
+      "grade": 400,
       "ground": 1,
       "distance": 1800
     },
@@ -9491,6 +9946,7 @@
       "month": 9,
       "half": 2,
       "name": "Nagatsuki Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1200
     },
@@ -9499,6 +9955,7 @@
       "month": 10,
       "half": 1,
       "name": "Uzumasa Stakes",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -9507,6 +9964,7 @@
       "month": 7,
       "half": 1,
       "name": "Meitetsu Hai",
+      "grade": 400,
       "ground": 2,
       "distance": 1800
     },
@@ -9515,6 +9973,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -9523,6 +9982,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1600
     },
@@ -9531,6 +9991,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -9539,6 +10000,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -9547,6 +10009,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 2000
     },
@@ -9555,6 +10018,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1600
     },
@@ -9563,6 +10027,7 @@
       "month": 6,
       "half": 2,
       "name": "Takarazuka Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -9571,6 +10036,7 @@
       "month": 6,
       "half": 2,
       "name": "Takarazuka Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -9579,6 +10045,7 @@
       "month": 10,
       "half": 2,
       "name": "Kikuka Sho",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -9587,6 +10054,7 @@
       "month": 3,
       "half": 2,
       "name": "Spring Stakes",
+      "grade": 200,
       "ground": 1,
       "distance": 1800
     },
@@ -9595,6 +10063,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1600
     },
@@ -9603,6 +10072,7 @@
       "month": 4,
       "half": 2,
       "name": "Tenno Sho (Spring)",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -9611,6 +10081,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1200
     },
@@ -9619,6 +10090,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1800
     },
@@ -9627,6 +10099,7 @@
       "month": 4,
       "half": 2,
       "name": "Tenno Sho (Spring)",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -9635,6 +10108,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9643,6 +10117,7 @@
       "month": 11,
       "half": 2,
       "name": "Japan Cup",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -9651,6 +10126,7 @@
       "month": 12,
       "half": 2,
       "name": "Arima Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -9659,6 +10135,7 @@
       "month": 4,
       "half": 2,
       "name": "Tenno Sho (Spring)",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -9667,6 +10144,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9675,6 +10153,7 @@
       "month": 11,
       "half": 2,
       "name": "Japan Cup",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -9683,6 +10162,7 @@
       "month": 12,
       "half": 2,
       "name": "Arima Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -9691,6 +10171,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9699,6 +10180,7 @@
       "month": 11,
       "half": 2,
       "name": "Japan Cup",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -9707,6 +10189,7 @@
       "month": 12,
       "half": 2,
       "name": "Arima Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -9715,6 +10198,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1600
     },
@@ -9723,6 +10207,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1600
     },
@@ -9731,6 +10216,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1500
     },
@@ -9739,6 +10225,7 @@
       "month": 1,
       "half": 1,
       "name": "Keisei Hai",
+      "grade": 300,
       "ground": 1,
       "distance": 2000
     },
@@ -9747,6 +10234,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1600
     },
@@ -9755,6 +10243,7 @@
       "month": 4,
       "half": 1,
       "name": "Satsuki Sho",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9763,6 +10252,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1800
     },
@@ -9771,6 +10261,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9779,6 +10270,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9787,6 +10279,7 @@
       "month": 10,
       "half": 2,
       "name": "Tenno Sho (Autumn)",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9795,6 +10288,7 @@
       "month": 12,
       "half": 2,
       "name": "Arima Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -9803,6 +10297,7 @@
       "month": 12,
       "half": 2,
       "name": "Arima Kinen",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -9811,6 +10306,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1200
     },
@@ -9819,6 +10315,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 2,
       "distance": 1800
     },
@@ -9827,6 +10324,7 @@
       "month": 7,
       "half": 1,
       "name": "Japan Dirt Derby",
+      "grade": 100,
       "ground": 2,
       "distance": 2000
     },
@@ -9835,6 +10333,7 @@
       "month": 6,
       "half": 2,
       "name": "Junior Make Debut",
+      "grade": 900,
       "ground": 1,
       "distance": 1200
     },
@@ -9843,6 +10342,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -9851,6 +10351,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -9859,6 +10360,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -9867,6 +10369,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -9875,6 +10378,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -9883,6 +10387,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -9891,6 +10396,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -9899,6 +10405,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -9907,6 +10414,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -9915,6 +10423,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -9923,6 +10432,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -9931,6 +10441,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -9939,6 +10450,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -9947,6 +10459,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -9955,6 +10468,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -9963,6 +10477,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9971,6 +10486,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -9979,6 +10495,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -9987,6 +10504,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -9995,6 +10513,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10003,6 +10522,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10011,6 +10531,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10019,6 +10540,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10027,6 +10549,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10035,6 +10558,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10043,6 +10567,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -10051,6 +10576,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -10059,6 +10585,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -10067,6 +10594,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 3600
     },
@@ -10075,6 +10603,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -10083,6 +10612,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 3400
     },
@@ -10091,6 +10621,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -10099,6 +10630,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10107,6 +10639,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10115,6 +10648,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -10123,6 +10657,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10131,6 +10666,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -10139,6 +10675,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -10147,6 +10684,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -10155,6 +10693,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 2100
     },
@@ -10163,6 +10702,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Qualifier",
+      "grade": 100,
       "ground": 2,
       "distance": 1900
     },
@@ -10171,6 +10711,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10179,6 +10720,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10187,6 +10729,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10195,6 +10738,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10203,6 +10747,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10211,6 +10756,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10219,6 +10765,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10227,6 +10774,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10235,6 +10783,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10243,6 +10792,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10251,6 +10801,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10259,6 +10810,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10267,6 +10819,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10275,6 +10828,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10283,6 +10837,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10291,6 +10846,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10299,6 +10855,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10307,6 +10864,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10315,6 +10873,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10323,6 +10882,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10331,6 +10891,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10339,6 +10900,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10347,6 +10909,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10355,6 +10918,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10363,6 +10927,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10371,6 +10936,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -10379,6 +10945,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -10387,6 +10954,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -10395,6 +10963,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 3600
     },
@@ -10403,6 +10972,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -10411,6 +10981,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 3400
     },
@@ -10419,6 +10990,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -10427,6 +10999,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10435,6 +11008,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10443,6 +11017,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -10451,6 +11026,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10459,6 +11035,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -10467,6 +11044,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -10475,6 +11053,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -10483,6 +11062,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 2100
     },
@@ -10491,6 +11071,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Semifinal",
+      "grade": 100,
       "ground": 2,
       "distance": 1900
     },
@@ -10499,6 +11080,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10507,6 +11089,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10515,6 +11098,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10523,6 +11107,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10531,6 +11116,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10539,6 +11125,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10547,6 +11134,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10555,6 +11143,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10563,6 +11152,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10571,6 +11161,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10579,6 +11170,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10587,6 +11179,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10595,6 +11188,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10603,6 +11197,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10611,6 +11206,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10619,6 +11215,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10627,6 +11224,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10635,6 +11233,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10643,6 +11242,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10651,6 +11251,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10659,6 +11260,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10667,6 +11269,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10675,6 +11278,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10683,6 +11287,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10691,6 +11296,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10699,6 +11305,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -10707,6 +11314,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -10715,6 +11323,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -10723,6 +11332,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 3600
     },
@@ -10731,6 +11341,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -10739,6 +11350,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 3400
     },
@@ -10747,6 +11359,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -10755,6 +11368,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10763,6 +11377,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10771,6 +11386,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -10779,6 +11395,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -10787,6 +11404,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -10795,6 +11413,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -10803,6 +11422,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -10811,6 +11431,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 2100
     },
@@ -10819,6 +11440,7 @@
       "month": 1,
       "half": 2,
       "name": "URA Finale Finals",
+      "grade": 100,
       "ground": 2,
       "distance": 1900
     },
@@ -10827,6 +11449,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10835,6 +11458,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10843,6 +11467,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10851,6 +11476,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -10859,6 +11485,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10867,6 +11494,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10875,6 +11503,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -10883,6 +11512,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10891,6 +11521,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10899,6 +11530,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10907,6 +11539,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10915,6 +11548,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10923,6 +11557,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -10931,6 +11566,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10939,6 +11575,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -10947,6 +11584,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10955,6 +11593,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10963,6 +11602,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10971,6 +11611,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -10979,6 +11620,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -10987,6 +11629,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -10995,6 +11638,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11003,6 +11647,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11011,6 +11656,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -11019,6 +11665,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11027,6 +11674,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -11035,6 +11683,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -11043,6 +11692,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -11051,6 +11701,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 3600
     },
@@ -11059,6 +11710,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -11067,6 +11719,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 3400
     },
@@ -11075,6 +11728,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -11083,6 +11737,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11091,6 +11746,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11099,6 +11755,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -11107,6 +11764,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11115,6 +11773,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -11123,6 +11782,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -11131,6 +11791,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -11139,6 +11800,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 2100
     },
@@ -11147,6 +11809,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 1",
+      "grade": 100,
       "ground": 2,
       "distance": 1900
     },
@@ -11155,6 +11818,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -11163,6 +11827,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11171,6 +11836,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -11179,6 +11845,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -11187,6 +11854,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11195,6 +11863,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11203,6 +11872,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11211,6 +11881,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11219,6 +11890,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11227,6 +11899,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11235,6 +11908,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11243,6 +11917,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11251,6 +11926,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11259,6 +11935,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11267,6 +11944,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11275,6 +11953,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11283,6 +11962,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11291,6 +11971,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11299,6 +11980,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11307,6 +11989,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -11315,6 +11998,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11323,6 +12007,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11331,6 +12016,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11339,6 +12025,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -11347,6 +12034,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11355,6 +12043,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -11363,6 +12052,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -11371,6 +12061,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -11379,6 +12070,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 3600
     },
@@ -11387,6 +12079,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -11395,6 +12088,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 3400
     },
@@ -11403,6 +12097,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -11411,6 +12106,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11419,6 +12115,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11427,6 +12124,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -11435,6 +12133,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11443,6 +12142,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -11451,6 +12151,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -11459,6 +12160,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -11467,6 +12169,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 2100
     },
@@ -11475,6 +12178,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 2",
+      "grade": 100,
       "ground": 2,
       "distance": 1900
     },
@@ -11483,6 +12187,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -11491,6 +12196,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11499,6 +12205,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -11507,6 +12214,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1200
     },
@@ -11515,6 +12223,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11523,6 +12232,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11531,6 +12241,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1400
     },
@@ -11539,6 +12250,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11547,6 +12259,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11555,6 +12268,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11563,6 +12277,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11571,6 +12286,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11579,6 +12295,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1600
     },
@@ -11587,6 +12304,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11595,6 +12313,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 1800
     },
@@ -11603,6 +12322,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11611,6 +12331,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11619,6 +12340,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11627,6 +12349,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11635,6 +12358,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -11643,6 +12367,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11651,6 +12376,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11659,6 +12385,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2200
     },
@@ -11667,6 +12394,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2400
     },
@@ -11675,6 +12403,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2000
     },
@@ -11683,6 +12412,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 3200
     },
@@ -11691,6 +12421,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -11699,6 +12430,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -11707,6 +12439,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 3600
     },
@@ -11715,6 +12448,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 2500
     },
@@ -11723,6 +12457,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 3400
     },
@@ -11731,6 +12466,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 1,
       "distance": 3000
     },
@@ -11739,6 +12475,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11747,6 +12484,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11755,6 +12493,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1200
     },
@@ -11763,6 +12502,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1400
     },
@@ -11771,6 +12511,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1600
     },
@@ -11779,6 +12520,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -11787,6 +12529,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1800
     },
@@ -11795,6 +12538,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 2100
     },
@@ -11803,6 +12547,7 @@
       "month": 1,
       "half": 2,
       "name": "Twinkle Star Climax Race 3",
+      "grade": 100,
       "ground": 2,
       "distance": 1900
     }

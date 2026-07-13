@@ -112,6 +112,60 @@ def test_analyzer_separates_normal_and_unity_team_races(tmp_path):
     assert "2 race loss(es)" not in text
 
 
+def test_analyzer_uses_latest_race_history_row_and_reward_rank(tmp_path):
+    turns = [{
+        "turn": 76,
+        "api_calls": [
+            {
+                "direction": "RES",
+                "endpoint": "single_mode_team/race_end",
+                "data": {"data": {
+                    "race_history": [
+                        {"program_id": 1070, "result_rank": 1},
+                        {"program_id": 2111, "result_rank": 3},
+                    ],
+                    "race_reward_info": {"result_rank": 3, "gained_fans": 5827},
+                }},
+            },
+        ],
+    }]
+
+    normal, team = analyze_career_log.collect_race_results(turns)
+
+    assert team == []
+    assert normal == [{
+        "turn": 76,
+        "program_id": 2111,
+        "rank": 3,
+        "fans": 5827,
+    }]
+
+
+def test_analyzer_prints_finished_but_failed_scenario_result(tmp_path):
+    log_path = tmp_path / "career_log.json"
+    log_path.write_text(json.dumps({
+        "preset_name": "Unity",
+        "scenario_id": 2,
+        "status": "finished",
+        "scenario_result": "failed",
+        "scenario_cleared": False,
+        "failed_at": "URA Finale Semifinal",
+        "result_rank": 3,
+        "final_turn": 76,
+        "turns": [],
+    }), encoding="utf-8")
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        analyze_career_log.analyze(str(log_path))
+
+    text = out.getvalue()
+    assert "Status:    finished" in text
+    assert "Scenario result: failed" in text
+    assert "Failed at: URA Finale Semifinal (#3)" in text
+    assert "Scenario was not cleared" in text
+
+
 def test_analyzer_does_not_count_recreation_as_failed_training(tmp_path):
     log_path = tmp_path / "career_log.json"
     log_path.write_text(json.dumps({

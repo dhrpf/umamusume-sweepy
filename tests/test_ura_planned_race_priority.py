@@ -24,6 +24,32 @@ def test_planned_race_beats_low_vital_rest():
     assert decision.payload["program_id"] == 5
 
 
+def test_generic_alt_race_is_not_selected_after_first_win():
+    planner = RacePlanner("/nonexistent")
+    planner.program = {
+        4001: {"name": "Random Open Race", "race_instance_id": 400001, "ground": 1, "distance": 1600},
+    }
+    current = state(20, vital=80)
+    current["data"]["chara_info"].update({
+        "fans": 5000,
+        "proper_ground_turf": 7,
+        "proper_distance_mile": 7,
+    })
+    current["data"]["race_condition_array"] = [{"program_id": 4001}]
+    current["data"]["race_history"] = [
+        {"turn": 12, "program_id": 1070, "result_rank": 1},
+    ]
+    current["data"]["home_info"]["command_info_array"][0].update({
+        "params_inc_dec_info_array": [{"target_type": 1, "value": 20}],
+        "failure_rate": 0,
+    })
+
+    decision = UraStrategy(planner).next_decision(current, {"extra_race_list": []})
+
+    assert decision.action == "command"
+    assert decision.payload["command_id"] == 101
+
+
 def test_fan_building_race_beats_imminent_target_skip():
     planner = RacePlanner("/nonexistent")
     planner.meta = {

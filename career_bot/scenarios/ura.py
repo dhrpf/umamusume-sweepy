@@ -248,7 +248,12 @@ class UraStrategy(ScenarioStrategy):
                         )
                 return Decision(
                     "race",
-                    {"program_id": forced["program_id"], "current_turn": turn, "_strategy": self},
+                    {
+                        "program_id": forced["program_id"],
+                        "current_turn": turn,
+                        "_strategy": self,
+                        "_buy_skills_before_race": True,
+                    },
                     f"forced race {forced.get('name', '')}",
                 )
 
@@ -287,15 +292,43 @@ class UraStrategy(ScenarioStrategy):
             if fp and fp not in {r.get("program_id") for r in (data.get("race_history") or [])}:
                 return Decision(
                     "race",
-                    {"program_id": fp, "current_turn": turn, "_strategy": self},
+                    {
+                        "program_id": fp,
+                        "current_turn": turn,
+                        "_strategy": self,
+                        "_buy_skills_before_race": True,
+                    },
                     self.race_planner.label(fp) or f"forced {fp}",
                 )
+            objective_race = self.race_planner.objective_candidate(
+                state,
+                preset,
+                best_training_gain=self._best_training_gain(commands),
+            ) if hasattr(self.race_planner, "objective_candidate") else None
+            if objective_race:
+                return Decision(
+                    "race",
+                    {
+                        "program_id": objective_race.program_id,
+                        "current_turn": turn,
+                        "_strategy": self,
+                        "_buy_skills_before_race": bool(objective_race.forced),
+                        "decision_detail": objective_race.detail,
+                    },
+                    objective_race.reason,
+                )
+
             mandatory = self.race_planner.mandatory_available(state, preset) if hasattr(self.race_planner, "mandatory_available") else []
             if mandatory:
                 pid = mandatory[0]
                 return Decision(
                     "race",
-                    {"program_id": pid, "current_turn": turn, "_strategy": self},
+                    {
+                        "program_id": pid,
+                        "current_turn": turn,
+                        "_strategy": self,
+                        "_buy_skills_before_race": True,
+                    },
                     self.race_planner.label(pid) or f"mandatory {pid}",
                 )
             wanted = self.race_planner.wanted_available(state, preset) if hasattr(self.race_planner, "wanted_available") else []
@@ -348,15 +381,6 @@ class UraStrategy(ScenarioStrategy):
                         {"program_id": pid, "current_turn": turn, "_strategy": self},
                         self.race_planner.label(pid) or f"race {pid}",
                     )
-
-            # --- Fallback: any available race matching aptitude ---
-            alt_pid = self._find_alternative_race(state, chara, turn)
-            if alt_pid:
-                return Decision(
-                    "race",
-                    {"program_id": alt_pid, "current_turn": turn, "_strategy": self},
-                    f"alt race {alt_pid}",
-                )
 
         # --- Vital/mood/status checks ---
         in_camp = any(s <= turn <= e for s, e in SUMMER_CAMP_TURNS)
@@ -453,7 +477,21 @@ class UraStrategy(ScenarioStrategy):
             except Exception as exc:
                 pass  # avoid losing career run on MCTS impl bug
 
-        best, chosen_idx = self._best_training(commands, preset, chara, turn, is_camp, pre_camp)
+        objective_training_context = None
+        if self.race_planner and hasattr(self.race_planner, "objective_training_context"):
+            objective_training_context = self.race_planner.objective_training_context(
+                state,
+                preset,
+            )
+        best, chosen_idx = self._best_training(
+            commands,
+            preset,
+            chara,
+            turn,
+            is_camp,
+            pre_camp,
+            objective_context=objective_training_context,
+        )
         if best:
             if chosen_idx is not None:
                 self._training_counts[chosen_idx] = self._training_counts.get(chosen_idx, 0) + 1
@@ -707,7 +745,16 @@ class UraStrategy(ScenarioStrategy):
     # ------------------------------------------------------------------
     # Training selection — guide-informed
     # ------------------------------------------------------------------
-    def _best_training(self, commands, preset, chara, turn, is_camp, pre_camp):
+    def _best_training(
+        self,
+        commands,
+        preset,
+        chara,
+        turn,
+        is_camp,
+        pre_camp,
+        objective_context=None,
+    ):
         """Score trainings using URA strategy guide rules.
 
         Scoring (additive, not deficit-multiplied):
@@ -845,6 +892,32 @@ class UraStrategy(ScenarioStrategy):
             if deficit_bonus:
                 reasons.append(f"deficit +{deficit_bonus:.1f}")
 
+            objective_bonus = 0.0
+            if idx == 1 and objective_context:
+                readiness_deficit = int(objective_context.get("stamina_deficit") or 0)
+                if readiness_deficit > 0:
+                    lookahead = int(preset.get("objective_training_lookahead", 12))
+                    turns_left = int(objective_context.get("turns_left") or 0)
+                    urgency = max(0, lookahead - turns_left + 1)
+                    deficit_weight = float(
+                        preset.get("objective_stamina_deficit_weight", 0.8)
+                    )
+                    urgency_weight = float(
+                        preset.get("objective_stamina_urgency_weight", 15.0)
+                    )
+                    objective_bonus = (
+                        readiness_deficit * deficit_weight
+                        + urgency * urgency_weight
+                    )
+                    score += objective_bonus
+                    reasons.append(
+                        "objective readiness "
+                        f"{objective_context.get('name')} in {turns_left}t: "
+                        f"STA {objective_context.get('stamina')}/"
+                        f"{objective_context.get('stamina_floor')} "
+                        f"+{objective_bonus:.1f}"
+                    )
+
             # --- Fail penalty: EV multiplier (applies in camp too) ---
             if fail_pct > 0:
                 ev_mult = 1.0 - fail_pct / 100.0
@@ -870,6 +943,8 @@ class UraStrategy(ScenarioStrategy):
                 "target": target,
                 "deficit": deficit,
                 "failure_rate": fail_pct,
+                "objective_readiness_bonus": round(objective_bonus, 1),
+                "objective_context": dict(objective_context or {}),
                 "reasons": reasons,
             }
             detail.update(scenario_detail or {})

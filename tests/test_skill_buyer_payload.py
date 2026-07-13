@@ -253,3 +253,53 @@ def test_rebuy_owned_red_to_clear_debuff():
     assert buyer.last_selected[0]["skill_id"] == 200153
     assert buyer.last_selected[0]["clears_red"] is True
     assert all(c["skill_id"] != 200152 for c in buyer.last_selected)
+
+
+def test_running_style_filters_incompatible_skill_tags():
+    buyer = SkillBuyer("/nonexistent")
+    buyer.skill_names = {
+        201242: "Front Runner Straightaways ○",
+        201382: "Late Surger Straightaways ○",
+    }
+    buyer.skill_costs = {201242: 130, 201382: 130}
+    buyer.skill_rarities = {201242: 1, 201382: 1}
+    buyer.skill_grade_values = {201242: 217, 201382: 217}
+    buyer.skill_tags = {201242: {101, 401}, 201382: {103, 401}}
+    buyer.skill_id_exists = {201242, 201382}
+    buyer.group_to_skill_ids = {20124: [201242], 20138: [201382]}
+    buyer.skill_to_group_id = {201242: 20124, 201382: 20138}
+
+    chara = {
+        "skill_point": 500,
+        "skill_array": [],
+        "skill_tips_array": [
+            {"group_id": 20124, "rarity": 1, "level": 1},
+            {"group_id": 20138, "rarity": 1, "level": 1},
+        ],
+    }
+
+    candidates = buyer._candidates(chara, {"running_style": 3})
+
+    assert [row["skill_id"] for row in candidates] == [201382]
+
+
+def test_running_style_filter_keeps_neutral_skills():
+    buyer = SkillBuyer("/nonexistent")
+    buyer.skill_names = {200352: "Corner Recovery ○"}
+    buyer.skill_costs = {200352: 170}
+    buyer.skill_rarities = {200352: 1}
+    buyer.skill_grade_values = {200352: 217}
+    buyer.skill_tags = {200352: {402}}
+    buyer.skill_id_exists = {200352}
+    buyer.group_to_skill_ids = {20035: [200352]}
+    buyer.skill_to_group_id = {200352: 20035}
+
+    chara = {
+        "skill_point": 500,
+        "skill_array": [],
+        "skill_tips_array": [{"group_id": 20035, "rarity": 1, "level": 1}],
+    }
+
+    candidates = buyer._candidates(chara, {"running_style": 3})
+
+    assert [row["skill_id"] for row in candidates] == [200352]

@@ -160,6 +160,66 @@ def test_race_entry_205_rejects_race_and_refreshes_state():
     assert out["data"]["chara_info"]["turn"] == 4
 
 
+def test_race_entry_205_attempts_at_most_one_fallback(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "race_map.json").write_text(
+        __import__("json").dumps({
+            "meta": {},
+            "program": {
+                "1001": {"name": "Blocked G1", "race_instance_id": 100001, "ground": 1, "distance": 1600},
+                "4001": {"name": "Fallback One", "race_instance_id": 400001, "ground": 1, "distance": 1600},
+                "4002": {"name": "Fallback Two", "race_instance_id": 400002, "ground": 1, "distance": 1600},
+            },
+            "instance": {},
+        }),
+        encoding="utf-8",
+    )
+
+    class Client:
+        api_jitter = 0
+
+        def __init__(self):
+            self.entries = []
+
+        def race_entry(self, **payload):
+            self.entries.append(payload)
+            raise Exception("API error 205 on race entry")
+
+    runner = CareerRunner(tmp_path)
+    runner.status = {"scenario_id": 2, "turn": 24, "log": [], "clocks_used": 0}
+    fresh = {
+        "data": {
+            "chara_info": {
+                "turn": 24,
+                "fans": 5000,
+                "proper_ground_turf": 7,
+                "proper_distance_mile": 7,
+            },
+            "home_info": {"command_info_array": [
+                {"command_type": 4, "command_id": 401, "is_enable": 1},
+            ]},
+            "race_condition_array": [
+                {"program_id": 1001},
+                {"program_id": 4001},
+                {"program_id": 4002},
+            ],
+        },
+    }
+    runner._fresh_career_state = lambda client, strategy=None: fresh
+
+    client = Client()
+    out = runner._race(
+        client,
+        fresh,
+        {"scenario_id": 2},
+        {"program_id": 1001, "current_turn": 24},
+    )
+
+    assert [entry["program_id"] for entry in client.entries] == [1001, 4001]
+    assert out is fresh
+
+
 def test_race_entry_205_tries_eligible_fallback_on_same_turn(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -198,7 +258,14 @@ def test_race_entry_205_tries_eligible_fallback_on_same_turn(tmp_path):
 
     runner = CareerRunner(tmp_path)
     runner.burn_clocks = False
-    runner.status = {"scenario_id": 2, "turn": 24, "log": [], "clocks_used": 0}
+    runner.status = {
+        "scenario_id": 2,
+        "turn": 24,
+        "log": [],
+        "clocks_used": 0,
+        "action_history": [],
+    }
+    runner.report = {"turns": [], "final_turn": 0}
     runner._parse_race_rank = lambda _response: 1
     fresh = {
         "data": {
@@ -230,6 +297,11 @@ def test_race_entry_205_tries_eligible_fallback_on_same_turn(tmp_path):
     assert [entry["program_id"] for entry in client.entries] == [1001, 4001]
     assert all(entry["retry_205"] == 0 for entry in client.entries)
     assert out["data"]["chara_info"]["turn"] == 25
+    report_turn = runner.report["turns"][0]
+    assert report_turn["current_command"]["program_id"] == 4001
+    assert report_turn["decision_detail"]["fallback_from_program_id"] == 1001
+    assert len(runner.status["action_history"]) == 1
+    assert "Eligible Open" in runner.status["action_history"][0]["facility"]
 
 
 def test_race_result_is_reported_back_to_strategy():

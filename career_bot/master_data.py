@@ -15,6 +15,8 @@ DIRECT_TABLES = [
     "card_rarity_data",
     "available_skill_set",
     "support_card_data",
+    "single_mode_route",
+    "single_mode_route_race",
 ]
 
 TEXT_DATA_CATEGORIES = {
@@ -452,6 +454,7 @@ def synthesize_race_map(base_dir, master_data):
             "month": month,
             "half": half,
             "name": info["name"],
+            "grade": int(info["race"].get("grade") or 0),
             "ground": int(course.get("ground") or 0),
             "distance": int(course.get("distance") or 0),
         }
@@ -599,6 +602,71 @@ def synthesize_chara_aptitude(base_dir, master_data):
     return {"file": "chara_aptitude.json", "rows": len(out)}
 
 
+def synthesize_career_objectives(base_dir, master_data):
+    """Generate shared character-route objective definitions.
+
+    ``single_mode_route.scenario_id == 0`` routes are shared across URA Finale
+    and Unity Cup.  Scenario-final rows are preserved in the file, while the
+    runtime objective resolver intentionally gates only ``target_type == 1``.
+    """
+    data_dir = Path(base_dir) / "data"
+    existing = read_json(data_dir / "career_objectives.json", {})
+    route_rows = master_rows(master_data, "single_mode_route")
+    objective_rows = master_rows(master_data, "single_mode_route_race")
+    if not route_rows or not objective_rows:
+        return {
+            "file": "career_objectives.json",
+            "routes": len((existing.get("routes") or {})),
+            "preserved_existing": bool(existing),
+        }
+
+    objectives_by_set = {}
+    for raw in objective_rows:
+        race_set_id = int(raw.get("race_set_id") or 0)
+        objective_id = int(raw.get("id") or 0)
+        if not race_set_id or not objective_id:
+            continue
+        objectives_by_set.setdefault(race_set_id, []).append({
+            "id": objective_id,
+            "race_set_id": race_set_id,
+            "scenario_group_id": int(raw.get("scenario_group_id") or 0),
+            "target_type": int(raw.get("target_type") or 0),
+            "sort_id": int(raw.get("sort_id") or 0),
+            "turn": int(raw.get("turn") or 0),
+            "race_type": int(raw.get("race_type") or 0),
+            "condition_type": int(raw.get("condition_type") or 0),
+            "condition_id": int(raw.get("condition_id") or 0),
+            "condition_value_1": int(raw.get("condition_value_1") or 0),
+            "condition_value_2": int(raw.get("condition_value_2") or 0),
+            "determine_race": int(raw.get("determine_race") or 0),
+            "determine_race_flag": int(raw.get("determine_race_flag") or 0),
+        })
+
+    routes = {}
+    for raw in route_rows:
+        route_id = int(raw.get("id") or 0)
+        race_set_id = int(raw.get("race_set_id") or 0)
+        if not route_id or not race_set_id:
+            continue
+        objectives = sorted(
+            objectives_by_set.get(race_set_id, []),
+            key=lambda row: (row["sort_id"], row["id"]),
+        )
+        routes[str(route_id)] = {
+            "route_id": route_id,
+            "scenario_id": int(raw.get("scenario_id") or 0),
+            "chara_id": int(raw.get("chara_id") or 0),
+            "race_set_id": race_set_id,
+            "condition_set_id": int(raw.get("condition_set_id") or 0),
+            "priority": int(raw.get("priority") or 0),
+            "objectives": objectives,
+        }
+
+    output = {"routes": routes}
+    write_json(data_dir / "career_objectives.json", output)
+    return {"file": "career_objectives.json", "routes": len(routes)}
+
+
 def synthesize_legacy_jsons(base_dir, master_data):
     generated = [
         synthesize_skill_data(base_dir, master_data),
@@ -607,6 +675,7 @@ def synthesize_legacy_jsons(base_dir, master_data):
         synthesize_race_map(base_dir, master_data),
         synthesize_factor_map(base_dir, master_data),
         synthesize_chara_aptitude(base_dir, master_data),
+        synthesize_career_objectives(base_dir, master_data),
     ]
 
     return {"generated": generated, "preserved": []}

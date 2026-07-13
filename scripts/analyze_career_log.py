@@ -91,11 +91,11 @@ def collect_race_results(turns):
             elif action == "race_end":
                 history = inner.get("race_history") or []
                 reward = inner.get("race_reward_info") or {}
-                row = history[0] if history else {}
+                row = history[-1] if history else {}
                 normal_results.append({
                     "turn": turn.get("turn", 0),
                     "program_id": pid_start or row.get("program_id"),
-                    "rank": row.get("result_rank") or reward.get("result_rank"),
+                    "rank": reward.get("result_rank") or row.get("result_rank"),
                     "fans": reward.get("gained_fans", 0),
                 })
                 pid_start = None
@@ -142,6 +142,14 @@ def analyze(log_path):
     scenario_label = f"{scenario_id} ({scenario_name})" if scenario_name else str(scenario_id)
     print(f"  Scenario:  {scenario_label}")
     print(f"  Status:    {log.get('status', '?')}")
+    scenario_result = log.get("scenario_result")
+    if scenario_result:
+        print(f"  Scenario result: {scenario_result}")
+    failed_at = log.get("failed_at")
+    result_rank = log.get("result_rank")
+    if failed_at:
+        rank_text = f" (#{result_rank})" if result_rank else ""
+        print(f"  Failed at: {failed_at}{rank_text}")
     err = log.get("error")
     if err:
         print(f"  Error:     {err}")
@@ -426,6 +434,8 @@ def analyze(log_path):
             trained_stats.add(k.replace("☀",""))
     if trained_stats and len(trained_stats) <= 1:
         issues.append(f"⚠️ One-dimensional training: only {', '.join(trained_stats)}")
+    if log.get("scenario_result") == "failed" or log.get("scenario_cleared") is False and log.get("scenario_result") not in (None, "running"):
+        issues.append("🔴 Scenario was not cleared")
     if log.get("error"):
         issues.append(f"🔴 Career ended with error: {log['error']}")
 
