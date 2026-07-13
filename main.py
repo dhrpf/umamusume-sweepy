@@ -7,16 +7,18 @@ import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from pathlib import Path
 import random
 import time
 import threading
 import frida
+from account_snapshot import save_load_index_snapshot
 from career_bot import master_data
 from career_bot import affinity as affinity_calc
 from career_bot import advisor
 from career_bot import aptitude
+from career_bot.dailies import DailiesRunner
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
 from uma_api.client import UmaClient, runtime_output_root
@@ -229,6 +231,7 @@ turn_delay_restore_max_sec = 5.0
 turn_delay_disabled = False
 preset_store = PresetStore(DIR)
 career_runner = CareerRunner(DIR)
+dailies_runner = DailiesRunner(DIR)
 global_lock = threading.Lock()
 
 base_dir = Path(__file__).parent.absolute()
@@ -508,6 +511,7 @@ def normalize_friend_veterans(data):
             'power': int(row.get('power') or 0),
             'guts': int(row.get('guts') or 0),
             'wiz': int(row.get('wiz') or 0),
+            'aptitudes': get_trained_aptitudes(row),
             'wins': len(row.get('win_saddle_id_array') or []),
             'factors': factors,
             'parent_card_ids': parent_card_ids,
@@ -758,6 +762,17 @@ def get_trained_stats(chara):
     }
 
 
+def get_trained_aptitudes(chara):
+    return {
+        'turf': int(chara.get('proper_ground_turf') or 0),
+        'dirt': int(chara.get('proper_ground_dirt') or 0),
+        'sprint': int(chara.get('proper_distance_short') or 0),
+        'mile': int(chara.get('proper_distance_mile') or 0),
+        'medium': int(chara.get('proper_distance_middle') or 0),
+        'long': int(chara.get('proper_distance_long') or 0),
+    }
+
+
 def get_item_count(item_list, item_id):
     for item in item_list or []:
         if item.get('item_id') == item_id:
@@ -798,8 +813,8 @@ def _shared_races_for_setup(p1, p2):
     return races
 
 def _compat_tier(total):
-    if total >= 151: return '◎'
-    if total >= 101: return '◯'
+    if total > 150: return '◎'
+    if total >= 50: return '◯'
     return '△'
 
 def _pool_parents(pool):
@@ -1014,6 +1029,35 @@ class ApiDelayRequest(BaseModel):
 
 class MasterDataPathRequest(BaseModel):
     master_mdb_path: str
+
+class DailiesRunRequest(BaseModel):
+    team_trials: bool = False
+    daily_races: bool = False
+    legend_races: bool = False
+    daily_shop: bool = False
+    trained_chara_id: int = 0
+    opponent_strength: int = 1
+    legend_race_id: int = 0
+
+
+class InheritanceRecommendRequest(BaseModel):
+    target_card_id: int
+    pool: str = "both"
+    goal: dict = Field(default_factory=dict)
+    limit: int = 10
+
+    @field_validator("pool")
+    @classmethod
+    def validate_pool(cls, value):
+        normalized = str(value or "both").strip().lower()
+        if normalized not in {"owned", "veteran", "both"}:
+            raise ValueError("pool must be owned, veteran, or both")
+        return normalized
+
+    @field_validator("limit")
+    @classmethod
+    def clamp_limit(cls, value):
+        return max(1, min(int(value or 10), 50))
 
 
 @app.post("/api/inheritance/recommend")
@@ -1377,6 +1421,7 @@ def _build_dashboard_from_login_response(res):
     active_support_card_deck_array = []
     active_parent_cards = {}
     active_parent_rank_points = {}
+    active_parent_full = {}
     update_start_state(d)
     umas = []
     for card in d.get('card_list', []):
@@ -1447,6 +1492,7 @@ def _build_dashboard_from_login_response(res):
             'rank_score': chara.get('rank_score', 0),
             'acquired_at': chara.get('create_time') or chara.get('created_at') or chara.get('register_time') or chara.get('trained_chara_register_time') or chara.get('complete_time') or chara.get('end_time') or chara.get('updated_at') or 0,
             'stats': stats,
+            'aptitudes': get_trained_aptitudes(chara),
             'skills': skills,
             'factors': tree['self']['factors'],
             'wins': tree['self']['wins'],
@@ -1461,6 +1507,14 @@ def _build_dashboard_from_login_response(res):
         active_parent_rank_points[int(chara.get('trained_chara_id'))] = {'rank': chara.get('rank', 0), 'rank_score': chara.get('rank_score', 0)}
         active_parent_full[int(chara.get('trained_chara_id'))] = chara
     active_dashboard_data = {"success": True, "account": account, "umas": umas, "supports": supports, "decks": decks, "parents": parents}
+    try:
+        save_load_index_snapshot(
+            runtime_output_root(),
+            dashboard=active_dashboard_data,
+            load_index_data=d,
+        )
+    except Exception as exc:
+        print(f"[snapshot] unable to persist load/index cache: {exc}", flush=True)
     return active_dashboard_data
 
 
@@ -1558,6 +1612,8 @@ async def remove_veterans(req: VeteranRemoveRequest):
     global active_dashboard_data, active_account, active_selection
     if not active_client:
         raise HTTPException(status_code=401, detail="Not logged in")
+    if dailies_runner.running:
+        raise HTTPException(status_code=409, detail="Cannot remove veterans while dailies are active")
     ids = [int(v) for v in (req.trained_chara_id_array or []) if int(v)]
     if not ids:
         raise HTTPException(status_code=400, detail="No trained_chara_id_array provided")
@@ -1577,6 +1633,10 @@ async def remove_veterans(req: VeteranRemoveRequest):
 
 @app.get("/veteran", response_class=HTMLResponse)
 async def veteran_page():
+    return await root()
+
+@app.get("/dailies", response_class=HTMLResponse)
+async def dailies_page():
     return await root()
 
 @app.post("/api/capture-login")
@@ -1667,6 +1727,7 @@ def capture_login():
 @app.post("/api/logout")
 async def logout():
     global active_client, active_account, active_dashboard_data, active_start_state, active_parent_cards, active_parent_rank_points, raw_load_index_response, pending_game_auth_config, active_selection
+    dailies_runner.stop()
     active_client = None
     active_account = None
     active_dashboard_data = None
@@ -1685,6 +1746,8 @@ async def logout():
 
 @app.post("/api/career/start")
 async def start_career(req: StartCareerRequest):
+    if dailies_runner.running:
+        return {"success": False, "detail": "Dailies are running — stop them first"}
     try:
         started = start_career_from_request(req)
         if not started.get("success"):
@@ -1860,6 +1923,8 @@ def manage_career_loop(req, preset, initial_result):
 async def run_career(req: RunCareerRequest):
     global active_account, backend_loop_thread
     with global_lock:
+        if dailies_runner.running:
+            return {"success": False, "detail": "Dailies are running — stop them first"}
         if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
             return {"success": False, "detail": "Career runner loop already active"}
         preset_name = req.preset_name or "xguri parent"
@@ -1940,6 +2005,144 @@ async def run_career(req: RunCareerRequest):
 @app.get("/api/career/runner")
 async def career_runner_status():
     return {"success": True, "runner": career_runner.snapshot()}
+
+
+def _walk_dicts(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_dicts(child)
+
+
+def _legend_race_options(response):
+    rows = []
+    for node in _walk_dicts(response):
+        value = node.get("daily_legend_race_record_array")
+        if isinstance(value, list):
+            rows = value
+            break
+
+    options = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        boss_data = row.get("boss_data") if isinstance(row.get("boss_data"), dict) else {}
+        race_id = int(
+            row.get("daily_legend_race_id")
+            or row.get("legend_race_id")
+            or row.get("id")
+            or boss_data.get("daily_legend_race_id")
+            or 0
+        )
+        if not race_id or race_id in seen:
+            continue
+        seen.add(race_id)
+        card_id = int(
+            boss_data.get("card_id")
+            or boss_data.get("chara_id")
+            or row.get("card_id")
+            or row.get("chara_id")
+            or 0
+        )
+        boss_name = (
+            boss_data.get("name")
+            or boss_data.get("chara_name")
+            or row.get("boss_name")
+            or row.get("name")
+            or chara_map.get(str(card_id))
+            or chara_map.get(card_id)
+            or f"Boss #{race_id}"
+        )
+        options.append({
+            "id": race_id,
+            "boss": str(boss_name),
+            "is_played": bool(
+                row.get("is_played")
+                or row.get("is_played_today")
+                or row.get("play_count")
+            ),
+            "is_cleared": bool(
+                row.get("is_cleared")
+                or row.get("clear_flag")
+                or row.get("clear_count")
+            ),
+        })
+    return options
+
+
+@app.get("/api/dailies/status")
+async def dailies_status():
+    status = dailies_runner.snapshot()
+    return {"success": True, "running": bool(status.get("running")), "status": status}
+
+
+@app.post("/api/dailies/legend_options")
+async def dailies_legend_options():
+    if not active_client:
+        return {"success": False, "detail": "Not logged in", "legend_races": []}
+    if dailies_runner.running or career_runner.snapshot().get("running"):
+        return {"success": False, "detail": "Bot is busy", "legend_races": []}
+    try:
+        result = active_client.daily_legend_race_index()
+        options = _legend_race_options(result)
+        return {
+            "success": True,
+            "legend_races": options,
+            "detail": "" if options else "None available today",
+        }
+    except Exception as exc:
+        return {"success": False, "detail": str(exc), "legend_races": []}
+
+
+@app.post("/api/dailies/run")
+async def dailies_run(req: DailiesRunRequest):
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+
+    tasks = {
+        "team_trials": bool(req.team_trials),
+        "daily_races": bool(req.daily_races),
+        "legend_races": bool(req.legend_races),
+        "daily_shop": bool(req.daily_shop),
+    }
+    if not any(tasks.values()):
+        return {"success": False, "detail": "Select at least one daily to run"}
+    if (req.daily_races or req.legend_races) and not req.trained_chara_id:
+        return {"success": False, "detail": "Pick a veteran to race the daily/legend races"}
+    if req.legend_races and not req.legend_race_id:
+        return {"success": False, "detail": "Pick which Legend Race to run"}
+
+    with global_lock:
+        if dailies_runner.running:
+            return {"success": False, "detail": "Dailies are already running"}
+        if career_runner.snapshot().get("running") or (
+            backend_loop_thread and backend_loop_thread.is_alive()
+        ):
+            return {"success": False, "detail": "Cannot run dailies while a career is active"}
+        career = (active_account or {}).get("career") or {}
+        if career.get("active"):
+            return {"success": False, "detail": "Cannot run dailies while a career is active"}
+        started = dailies_runner.start(
+            active_client,
+            tasks,
+            trained_chara_id=req.trained_chara_id,
+            opponent_strength=req.opponent_strength,
+            legend_race_id=req.legend_race_id,
+        )
+    if not started:
+        return {"success": False, "detail": "Dailies are already running"}
+    return {"success": True, "status": dailies_runner.snapshot()}
+
+
+@app.post("/api/dailies/stop")
+async def dailies_stop():
+    dailies_runner.stop()
+    return {"success": True, "status": dailies_runner.snapshot()}
+
 
 @app.post("/api/tp/refill")
 async def tp_refill(req: TpRefillRequest):
@@ -2299,6 +2502,8 @@ async def delete_career(req: DeleteCareerRequest):
     with global_lock:
         if not active_client:
             return {"success": False, "detail": "Not logged in"}
+        if dailies_runner.running:
+            return {"success": False, "detail": "Cannot delete career while dailies are active"}
         if career_runner.snapshot().get("running") or (backend_loop_thread and backend_loop_thread.is_alive()):
             return {"success": False, "detail": "Cannot delete career while runner is active"}
 
@@ -2700,6 +2905,8 @@ if __name__ == "__main__":
         print("\nShutting down...", flush=True)
         if career_runner:
             career_runner.stop()
+        if dailies_runner:
+            dailies_runner.stop()
         # uvicorn will handle its own cleanup after this
 
     signal.signal(signal.SIGINT, _shutdown_handler)

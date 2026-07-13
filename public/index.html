@@ -51,6 +51,7 @@
 
             <div class="navbar-meta">
                 <button id="dashboard-nav-btn" class="btn btn-sm" type="button" style="display:none">DASHBOARD</button>
+                <button id="dailies-nav-btn" class="btn btn-sm" type="button" style="display:none">DAILIES</button>
                 <button id="veteran-nav-btn" class="btn btn-sm" type="button" style="display:none">VETERANS</button>
                 <button id="logout-btn" class="btn btn-sm logout-btn" style="display:none">LOGOUT</button>
             </div>
@@ -460,6 +461,77 @@
                     <div id="veteran-detail-content" class="veteran-detail-content"></div>
                 </aside>
             </div>
+            <div id="dailies-view" class="dailies-page" style="display:none">
+                <section class="dashboard-section dailies-shell">
+                    <div class="dailies-header">
+                        <div>
+                            <h2 class="dashboard-section-title">DAILIES</h2>
+                            <div class="friend-status">Run routine account content without opening each game screen.</div>
+                        </div>
+                        <div class="dailies-actions">
+                            <span id="dailies-live" class="dailies-live paused"><span class="dailies-live-dot"></span><span id="dailies-live-text">Idle</span></span>
+                            <button id="dailies-run" class="btn btn-primary" type="button">RUN DAILIES</button>
+                            <button id="dailies-stop" class="btn btn-sm btn-danger" type="button" style="display:none">STOP</button>
+                        </div>
+                    </div>
+
+                    <div class="dailies-grid">
+                        <label class="daily-task-card">
+                            <input id="daily-team-trials" type="checkbox" checked>
+                            <span class="daily-task-content">
+                                <strong>TEAM TRIALS</strong>
+                                <span>Race until RP is spent, skipping all five rounds.</span>
+                                <select id="daily-opponent" class="filter-select">
+                                    <option value="1">Strongest opponent</option>
+                                    <option value="2">Middle opponent</option>
+                                    <option value="3">Weakest opponent</option>
+                                </select>
+                            </span>
+                        </label>
+
+                        <label class="daily-task-card">
+                            <input id="daily-daily-races" type="checkbox">
+                            <span class="daily-task-content">
+                                <strong>DAILY RACES</strong>
+                                <span>Run today's available race up to the daily cap.</span>
+                            </span>
+                        </label>
+
+                        <label class="daily-task-card">
+                            <input id="daily-legend-races" type="checkbox">
+                            <span class="daily-task-content">
+                                <strong>LEGEND RACE</strong>
+                                <span>Run one selected Daily Legend Race boss.</span>
+                                <select id="daily-legend-id" class="filter-select">
+                                    <option value="0">Loading available bosses…</option>
+                                </select>
+                            </span>
+                        </label>
+
+                        <label class="daily-task-card">
+                            <input id="daily-shop" type="checkbox">
+                            <span class="daily-task-content">
+                                <strong>DAILY SHOP</strong>
+                                <span>Buy daily-reset goods with gold only, cheapest first.</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="dailies-veteran-row">
+                        <label for="daily-veteran">VETERAN FOR DAILY / LEGEND RACES</label>
+                        <select id="daily-veteran" class="filter-select">
+                            <option value="0">Loading veterans…</option>
+                        </select>
+                    </div>
+
+                    <div class="dailies-console-head">
+                        <span id="dailies-task"></span>
+                    </div>
+                    <div id="dailies-log" class="dailies-log">
+                        <div class="console-empty">Select tasks above and press Run Dailies.</div>
+                    </div>
+                </section>
+            </div>
         </main>
         <div id="career-modal" class="modal-backdrop">
             <div class="modal-panel">
@@ -512,7 +584,7 @@
             </div>
         </div>
     </div>
-    <script src="app.js?v=18"></script>
+    <script src="app.js?v=19"></script>
 </body>
 </html>
 

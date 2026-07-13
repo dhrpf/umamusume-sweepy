@@ -55,4 +55,4 @@ def test_frontend_exposes_unity_scenario_and_tuning_fields():
     assert 'const scenarioTypes = { 1: "Ura", 2: "Unity", 4: "Mant" };' in app_js
     assert "Number.isFinite(unityTrainingWeight)" in app_js
     assert "Number.isFinite(unityBurstWeight)" in app_js
-    assert '<script src="app.js?v=18"></script>' in index_html
+    assert '<script src="app.js?v=19"></script>' in index_html

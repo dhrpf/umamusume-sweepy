@@ -35,7 +35,22 @@ const els = {
     loginBtn: document.getElementById('login-btn'),
     logoutBtn: document.getElementById('logout-btn'),
     dashboardNavBtn: document.getElementById('dashboard-nav-btn'),
+    dailiesNavBtn: document.getElementById('dailies-nav-btn'),
     veteranNavBtn: document.getElementById('veteran-nav-btn'),
+    dailiesView: document.getElementById('dailies-view'),
+    dailiesRun: document.getElementById('dailies-run'),
+    dailiesStop: document.getElementById('dailies-stop'),
+    dailiesLive: document.getElementById('dailies-live'),
+    dailiesLiveText: document.getElementById('dailies-live-text'),
+    dailiesTask: document.getElementById('dailies-task'),
+    dailiesLog: document.getElementById('dailies-log'),
+    dailyTeamTrials: document.getElementById('daily-team-trials'),
+    dailyDailyRaces: document.getElementById('daily-daily-races'),
+    dailyLegendRaces: document.getElementById('daily-legend-races'),
+    dailyShop: document.getElementById('daily-shop'),
+    dailyVeteran: document.getElementById('daily-veteran'),
+    dailyOpponent: document.getElementById('daily-opponent'),
+    dailyLegendId: document.getElementById('daily-legend-id'),
     veteranView: document.getElementById('veteran-view'),
     veteranPageGrid: document.getElementById('veteran-page-grid'),
     veteranPageCount: document.getElementById('veteran-page-count'),
@@ -3080,15 +3095,157 @@ const els = {
                 </div>`;
             }).join('');
         }
+        let dailiesPoll = null;
+        let dailiesVetsLoaded = false;
+
+        function loadDailyVeterans() {
+            if (!els.dailyVeteran || !dashData) return;
+            const previous = els.dailyVeteran.value;
+            const veterans = (dashData.parents || [])
+                .filter(v => Number(v.instance_id || 0) > 0)
+                .slice()
+                .sort((a, b) => Number(b.rank_score || 0) - Number(a.rank_score || 0));
+            els.dailyVeteran.innerHTML = veterans.length
+                ? veterans.map(v => {
+                    const id = Number(v.instance_id || 0);
+                    const name = v.name || v.chara_name || `Veteran #${id}`;
+                    const score = Number(v.rank_score || 0).toLocaleString();
+                    return `<option value="${id}">${escapeHtml(name)} — ${score}</option>`;
+                }).join('')
+                : '<option value="0">No veterans available</option>';
+            if (previous && veterans.some(v => String(v.instance_id) === previous)) {
+                els.dailyVeteran.value = previous;
+            }
+            dailiesVetsLoaded = true;
+        }
+
+        function renderDailies(status) {
+            const st = status || {};
+            const running = !!st.running;
+            if (els.dailiesRun) els.dailiesRun.style.display = running ? 'none' : '';
+            if (els.dailiesStop) els.dailiesStop.style.display = running ? '' : 'none';
+            if (els.dailiesLive) els.dailiesLive.classList.toggle('paused', !running);
+            if (els.dailiesLiveText) {
+                els.dailiesLiveText.textContent = running ? 'Running' : st.finished ? 'Done' : 'Idle';
+            }
+            if (els.dailiesTask) els.dailiesTask.textContent = st.task || '';
+            if (!els.dailiesLog) return;
+            const lines = Array.isArray(st.log) ? st.log : [];
+            if (!lines.length) {
+                els.dailiesLog.innerHTML = '<div class="console-empty">Select tasks above and press Run Dailies.</div>';
+                return;
+            }
+            const atBottom = els.dailiesLog.scrollHeight - els.dailiesLog.scrollTop - els.dailiesLog.clientHeight < 48;
+            els.dailiesLog.innerHTML = lines.map(line => {
+                const date = new Date(Number(line.ts || 0) * 1000);
+                const timeText = [date.getHours(), date.getMinutes(), date.getSeconds()]
+                    .map(value => String(value).padStart(2, '0')).join(':');
+                const level = ['info', 'warning', 'error'].includes(line.level) ? line.level : 'info';
+                return `<div class="daily-log-line lvl-${level}"><span class="daily-log-time">${timeText}</span><span>${escapeHtml(line.msg || '')}</span></div>`;
+            }).join('');
+            if (atBottom) els.dailiesLog.scrollTop = els.dailiesLog.scrollHeight;
+        }
+
+        async function pollDailies() {
+            try {
+                const response = await fetch("/api/dailies/status");
+                const data = await response.json();
+                renderDailies(data.status || {});
+                if (data.running && !dailiesPoll) {
+                    dailiesPoll = setInterval(pollDailies, 2000);
+                } else if (!data.running && dailiesPoll) {
+                    clearInterval(dailiesPoll);
+                    dailiesPoll = null;
+                }
+            } catch (_) {}
+        }
+
+        async function loadLegendOptions() {
+            if (!els.dailyLegendId) return;
+            const previous = els.dailyLegendId.value;
+            els.dailyLegendId.innerHTML = '<option value="0">Loading available bosses…</option>';
+            try {
+                const response = await fetch("/api/dailies/legend_options", { method: 'POST' });
+                const data = await response.json();
+                const options = Array.isArray(data.legend_races) ? data.legend_races : [];
+                if (!options.length) {
+                    els.dailyLegendId.innerHTML = `<option value="0">${escapeHtml(data.detail || 'None available today')}</option>`;
+                    return;
+                }
+                els.dailyLegendId.innerHTML = options.map(option => {
+                    const suffix = option.is_played ? ' (done today)' : option.is_cleared ? ' (cleared)' : '';
+                    return `<option value="${Number(option.id || 0)}">${escapeHtml(option.boss || `Boss #${option.id}`)}${escapeHtml(suffix)}</option>`;
+                }).join('');
+                if (previous && options.some(option => String(option.id) === previous)) {
+                    els.dailyLegendId.value = previous;
+                }
+            } catch (_) {
+                els.dailyLegendId.innerHTML = '<option value="0">Failed to load</option>';
+            }
+        }
+
+        async function initDailies() {
+            if (!dailiesVetsLoaded) loadDailyVeterans();
+            await Promise.all([loadLegendOptions(), pollDailies()]);
+        }
+
+        async function runDailies() {
+            const body = {
+                team_trials: !!els.dailyTeamTrials?.checked,
+                daily_races: !!els.dailyDailyRaces?.checked,
+                legend_races: !!els.dailyLegendRaces?.checked,
+                daily_shop: !!els.dailyShop?.checked,
+                trained_chara_id: Number(els.dailyVeteran?.value || 0),
+                opponent_strength: Number(els.dailyOpponent?.value || 1),
+                legend_race_id: Number(els.dailyLegendId?.value || 0),
+            };
+            if (els.dailiesRun) els.dailiesRun.disabled = true;
+            try {
+                const response = await fetch("/api/dailies/run", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    renderDailies({
+                        finished: true,
+                        log: [{ ts: Date.now() / 1000, level: 'error', msg: data.detail || 'Failed to start dailies.' }],
+                    });
+                    return;
+                }
+                renderDailies(data.status || {});
+                if (!dailiesPoll) dailiesPoll = setInterval(pollDailies, 2000);
+            } catch (error) {
+                renderDailies({
+                    finished: true,
+                    log: [{ ts: Date.now() / 1000, level: 'error', msg: error.message || 'Dailies request failed.' }],
+                });
+            } finally {
+                if (els.dailiesRun) els.dailiesRun.disabled = false;
+            }
+        }
+
+        async function stopDailies() {
+            try {
+                const response = await fetch("/api/dailies/stop", { method: 'POST' });
+                const data = await response.json();
+                renderDailies(data.status || {});
+            } catch (_) {}
+        }
+
         function showDashboardView(data) {
             document.body.classList.add('dashboard-mode');
             document.body.classList.remove('veteran-mode');
+            document.body.classList.remove('dailies-mode');
             els.loginView.style.display = 'none';
             els.dashboardView.style.display = '';
             els.dashboardView.classList.add('active');
             if (els.veteranView) els.veteranView.style.display = 'none';
+            if (els.dailiesView) els.dailiesView.style.display = 'none';
             els.logoutBtn.style.display = 'block';
             if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'block';
+            if (els.dailiesNavBtn) els.dailiesNavBtn.style.display = 'block';
             if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'block';
             showNavbar();
             renderAccountStrip(data.account);
@@ -3101,11 +3258,33 @@ const els = {
             els.dashboardView.style.display = 'none';
             els.dashboardView.classList.remove('active');
             if (els.veteranView) els.veteranView.style.display = 'block';
+            if (els.dailiesView) els.dailiesView.style.display = 'none';
             document.body.classList.add('dashboard-mode');
             document.body.classList.add('veteran-mode');
+            document.body.classList.remove('dailies-mode');
             showNavbar();
             renderVeteranPage();
         }
+        function navigateDailiesPage(push = true) {
+            if (!dashData) return;
+            if (push) window.history.pushState({}, '', '/dailies');
+            closeVeteranDetail();
+            els.loginView.style.display = 'none';
+            els.dashboardView.style.display = 'none';
+            els.dashboardView.classList.remove('active');
+            if (els.veteranView) els.veteranView.style.display = 'none';
+            if (els.dailiesView) els.dailiesView.style.display = 'block';
+            document.body.classList.add('dashboard-mode');
+            document.body.classList.remove('veteran-mode');
+            document.body.classList.add('dailies-mode');
+            els.logoutBtn.style.display = 'block';
+            if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'block';
+            if (els.dailiesNavBtn) els.dailiesNavBtn.style.display = 'block';
+            if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'block';
+            showNavbar();
+            initDailies();
+        }
+
         function navigateDashboardPage(push = true) {
             if (!dashData) return;
             if (push) window.history.pushState({}, '', '/');
@@ -3245,13 +3424,31 @@ const els = {
             dashData.validDecks = data.decks.filter(isValidDeck);
             dashData.friends = data.friends || [];
             dashData.friendExcludeIds = data.friendExcludeIds || [];
-            if (options.keepRoute && window.location.pathname === '/veteran') {
+            const keptRoute = options.keepRoute ? window.location.pathname : '/';
+            if (keptRoute === '/veteran') {
                 els.loginView.style.display = 'none';
                 els.dashboardView.style.display = 'none';
                 if (els.veteranView) els.veteranView.style.display = 'block';
+                if (els.dailiesView) els.dailiesView.style.display = 'none';
+                document.body.classList.add('dashboard-mode');
                 document.body.classList.add('veteran-mode');
+                document.body.classList.remove('dailies-mode');
                 els.logoutBtn.style.display = 'block';
                 if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'block';
+                if (els.dailiesNavBtn) els.dailiesNavBtn.style.display = 'block';
+                if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'block';
+                showNavbar();
+            } else if (keptRoute === '/dailies') {
+                els.loginView.style.display = 'none';
+                els.dashboardView.style.display = 'none';
+                if (els.veteranView) els.veteranView.style.display = 'none';
+                if (els.dailiesView) els.dailiesView.style.display = 'block';
+                document.body.classList.add('dashboard-mode');
+                document.body.classList.remove('veteran-mode');
+                document.body.classList.add('dailies-mode');
+                els.logoutBtn.style.display = 'block';
+                if (els.dashboardNavBtn) els.dashboardNavBtn.style.display = 'block';
+                if (els.dailiesNavBtn) els.dailiesNavBtn.style.display = 'block';
                 if (els.veteranNavBtn) els.veteranNavBtn.style.display = 'block';
                 showNavbar();
             } else {
@@ -3311,8 +3508,10 @@ const els = {
             try {
                 const data = await apiJson('/api/session?t=' + Date.now());
                 if (data && data.success) {
-                    await renderDashboard(data, { animateIntro: true, waitForIntro: false, keepRoute: window.location.pathname === '/veteran' });
+                    const keepRoute = window.location.pathname === '/veteran' || window.location.pathname === '/dailies';
+                    await renderDashboard(data, { animateIntro: true, waitForIntro: false, keepRoute });
                     if (window.location.pathname === '/veteran') navigateVeteranPage(false);
+                    else if (window.location.pathname === '/dailies') navigateDailiesPage(false);
                 }
                 else {
                     hideNavbar();
@@ -3324,7 +3523,10 @@ const els = {
             }
         }
         els.veteranNavBtn?.addEventListener('click', navigateVeteranPage);
+        els.dailiesNavBtn?.addEventListener('click', navigateDailiesPage);
         els.dashboardNavBtn?.addEventListener('click', navigateDashboardPage);
+        els.dailiesRun?.addEventListener('click', runDailies);
+        els.dailiesStop?.addEventListener('click', stopDailies);
         els.veteranPageSearch?.addEventListener('input', () => {
             state.veteranPageQuery = els.veteranPageSearch.value || '';
             renderVeteranPage();
@@ -3352,6 +3554,7 @@ const els = {
         });
         window.addEventListener('popstate', () => {
             if (window.location.pathname === '/veteran') navigateVeteranPage(false);
+            else if (window.location.pathname === '/dailies') navigateDailiesPage(false);
             else navigateDashboardPage(false);
         });
         bindDelayControls();

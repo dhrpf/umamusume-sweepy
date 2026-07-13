@@ -7,6 +7,10 @@ gonna work on other tools for a bit
 > **Install Node with `winget install -e --id OpenJS.NodeJS`, then run `npm i` first.**      
 > **Then go install requirements.txt**
 
+## MCP agent control
+
+Sweepy includes a local multi-account MCP control plane for launching/stopping bot processes, reading state, and operating approved Career/Dailies workflows. See [MCP.md](MCP.md).
+
 ---
 
 ## click this button for comedic effect (8mins mant lmao)

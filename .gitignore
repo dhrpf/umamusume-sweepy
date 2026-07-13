@@ -11,6 +11,13 @@ graphify-out/
 experiments/
 accounts.json
 docs/
+!docs/
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/2026-07-14-sweepy-mcp-control-plane.md
 data/presets/
 stuck_career*
 ds-bundle/

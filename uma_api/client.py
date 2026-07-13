@@ -28,6 +28,17 @@ LAST_TICKET_GEN_RESULT = None
 LAST_SAVED_CONFIG = None
 
 
+def _cache_successful_load_index(data):
+    if not isinstance(data, dict):
+        return
+    try:
+        from account_snapshot import save_raw_load_index_snapshot
+
+        save_raw_load_index_snapshot(runtime_output_root(), data)
+    except Exception as exc:
+        print(f"[snapshot] unable to persist raw load/index cache: {exc}", flush=True)
+
+
 def runtime_output_root():
     override = os.environ.get("UMA_RUNTIME_DIR")
     if override:
@@ -945,6 +956,8 @@ class UmaClient:
             raise Exception(err_msg)
         if dh.get('sid') and isinstance(dh['sid'], str) and dh['sid'].strip():
             self.sid = next_sid(dh['sid'])
+        if ep == 'load/index':
+            _cache_successful_load_index(data)
         
         return res
 
@@ -1333,6 +1346,91 @@ class UmaClient:
             "res_ver": self.res_ver,
             "app_ver": self.app_ver,
         }
+
+    def trained_chara_load(self):
+        return self.call('trained_chara/load')
+
+    def team_stadium_index(self):
+        return self.call('team_stadium/index')
+
+    def team_stadium_opponent_list(self):
+        return self.call('team_stadium/opponent_list')
+
+    def team_stadium_decide_frame_order(self, opponent_info):
+        return self.call('team_stadium/decide_frame_order', {
+            'opponent_info': opponent_info,
+        })
+
+    def team_stadium_start(self, item_id_array=None):
+        return self.call('team_stadium/start', {
+            'item_id_array': list(item_id_array or []),
+        })
+
+    def team_stadium_replay_check(self, round=5):
+        return self.call('team_stadium/replay_check', {
+            'round': int(round),
+        })
+
+    def team_stadium_all_race_end(self):
+        return self.call('team_stadium/all_race_end')
+
+    def daily_race_index(self):
+        return self.call('daily_race/index')
+
+    def daily_race_race_entry(self, daily_race_id, trained_chara_id):
+        return self.call('daily_race/race_entry', {
+            'daily_race_id': int(daily_race_id),
+            'trained_chara_id': int(trained_chara_id),
+        })
+
+    def daily_race_reflect_item_effect(self, item_id_array=None):
+        return self.call('daily_race/reflect_item_effect', {
+            'item_id_array': list(item_id_array or []),
+        })
+
+    def daily_race_race_start(self, running_style, is_short=0):
+        return self.call('daily_race/race_start', {
+            'running_style': int(running_style),
+            'is_short': int(is_short),
+        })
+
+    def daily_race_replay_check(self, race_result_array):
+        return self.call('daily_race/replay_check', {
+            'race_result_array': race_result_array,
+        })
+
+    def daily_legend_race_index(self):
+        return self.call('daily_legend_race/index')
+
+    def daily_legend_race_race_entry(self, daily_legend_race_id, trained_chara_id):
+        return self.call('daily_legend_race/race_entry', {
+            'daily_legend_race_id': int(daily_legend_race_id),
+            'trained_chara_id': int(trained_chara_id),
+        })
+
+    def daily_legend_race_reflect_item_effect(self, item_id_array=None):
+        return self.call('daily_legend_race/reflect_item_effect', {
+            'item_id_array': list(item_id_array or []),
+        })
+
+    def daily_legend_race_race_start(self, running_style, is_short=0):
+        return self.call('daily_legend_race/race_start', {
+            'running_style': int(running_style),
+            'is_short': int(is_short),
+        })
+
+    def daily_legend_race_replay_check(self):
+        return self.call('daily_legend_race/replay_check', {})
+
+    def item_show_exchange(self):
+        return self.call('item/show_exchange')
+
+    def item_exchange_multi(self, exchange_item_info_array, use_item_info_array, get_list_time):
+        return self.call('item/exchange_multi', {
+            'exchange_item_info_array': exchange_item_info_array,
+            'use_item_info_array': use_item_info_array,
+            'get_list_time': get_list_time,
+        })
 
     def pre_single_mode(self, exclude_viewer_ids=None):
         payload = {}
