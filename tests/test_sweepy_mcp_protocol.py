@@ -42,9 +42,29 @@ def test_stdio_protocol_discovers_lifecycle_tools_and_confirmation_preview(tmp_p
                     "restart_bot",
                     "wait_until_ready",
                     "get_recent_operations",
+                    "find_friend_supports",
+                    "ensure_friend_support",
+                    "select_friend_support",
                 } <= names
 
                 tools_by_name = {tool.name: tool for tool in tools.tools}
+                campaign_schema = tools_by_name["create_parent_campaign"].inputSchema
+                spec_schema = campaign_schema["$defs"]["ParentCampaignSpec"]
+                assert {"trainee", "deck"} <= set(spec_schema["properties"])
+                assert campaign_schema["$defs"]["TraineeSelectionMode"]["enum"] == [
+                    "current",
+                    "named",
+                    "auto",
+                ]
+                assert campaign_schema["$defs"]["DeckSelectionMode"]["enum"] == [
+                    "current",
+                    "named",
+                    "auto",
+                ]
+                assert campaign_schema["$defs"]["TraineeSelectionPolicy"]["properties"][
+                    "objective"
+                ]["enum"] == ["best_score", "highest_affinity"]
+
                 for tool_name in (
                     "launch_bot",
                     "stop_bot",
@@ -62,6 +82,8 @@ def test_stdio_protocol_discovers_lifecycle_tools_and_confirmation_preview(tmp_p
                     "resume_parent_campaign",
                     "cancel_parent_campaign",
                     "select_parent_candidate",
+                    "ensure_friend_support",
+                    "select_friend_support",
                     "prepare_parent_campaign_run",
                     "run_parent_campaign_career",
                     "collect_parent_campaign_result",

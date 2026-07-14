@@ -85,6 +85,75 @@ def test_candidate_factor_does_not_satisfy_lineage_requirement():
     assert result["accepted"] is False
 
 
+def test_nine_star_lineage_target_sums_self_and_direct_parents_only():
+    goal = ParentGoal(
+        surface_targets=[],
+        distance_targets=[],
+        preferred_stats=["power"],
+        target_factors=[
+            {
+                "name": "power",
+                "minimum_stars": 9,
+                "scope": "lineage",
+                "aggregation": "sum",
+                "lineage_depth": "direct",
+            },
+        ],
+    )
+
+    accepted = evaluate_parent_candidate(
+        goal,
+        {
+            "rank": "S",
+            "stats": {"power": 700},
+            "direct_lineage_factors": [
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 3},
+            ],
+            "full_lineage_factors": [
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 2},
+            ],
+        },
+    )
+    rejected = evaluate_parent_candidate(
+        goal,
+        {
+            "rank": "S",
+            "stats": {"power": 1200},
+            "direct_lineage_factors": [
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 2},
+            ],
+            "full_lineage_factors": [
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 3},
+                {"name": "power", "stars": 2},
+                {"name": "power", "stars": 3},
+            ],
+        },
+    )
+
+    assert accepted["accepted"] is True
+    assert accepted["matched_targets"] == ["power:lineage"]
+    assert accepted["factor_evidence"][0] == {
+        "name": "power",
+        "scope": "lineage",
+        "aggregation": "sum",
+        "lineage_depth": "direct",
+        "observed_stars": 9,
+        "required_stars": 9,
+        "matched": True,
+    }
+    assert rejected["accepted"] is False
+    assert rejected["missing_targets"] == ["power:lineage"]
+    assert "(8/9★)" in rejected["weaknesses"][0]
+
+
 def test_rank_below_minimum_is_a_hard_rejection():
     result = evaluate_parent_candidate(
         medium_turf_goal(),

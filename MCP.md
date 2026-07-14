@@ -90,7 +90,12 @@ Keep the MCP server bound to loopback unless authentication and transport securi
 | `wait_until_ready` | Polls API readiness and can optionally require a logged-in session |
 | `get_recent_operations` | Lists durable mutation history for one account |
 | `get_cached_account_snapshot` | Reads the last successful `load/index` projection without calling the game API |
-| `list_cached_veterans` | Lists owned veterans from the offline snapshot |
+| `list_cached_veterans` | Lists owned veterans with decoded blue-factor summaries and legacy tags |
+| `find_cached_veterans` | Searches decoded factors, such as direct-lineage Power totaling 9★ |
+| `get_cached_veteran_details` | Returns one decoded factor tree with self, parents, and grandparents separated |
+| `find_friend_supports` | Finds friend supports by decoded name/type/card and exact limit break without exposing viewer IDs |
+| `ensure_friend_support` | Atomically finds one deterministic card variant, selects it, and verifies read-back |
+| `select_friend_support` | Updates only the current friend-support selection using an opaque candidate ID; requires confirmation |
 | `get_legacy_spark_rules` | Returns compatibility thresholds and configurable spark rules |
 | `scan_cached_legacy_loops` | Ranks four-character affinity-loop pools from cached lineage records |
 | `preview_shared_g1_agenda` | Builds an offline G1 agenda with summer-camp and race-chain guards |
@@ -112,7 +117,7 @@ Keep the MCP server bound to loopback unless authentication and transport securi
 | `advance_parent_campaign` | Reconciles campaign state after launch, login, or runner completion |
 | `pause_parent_campaign` / `resume_parent_campaign` | Pauses or resumes durable orchestration |
 | `cancel_parent_campaign` | Cancels a campaign and releases its lease |
-| `prepare_parent_campaign_run` | Chooses a supported lineage and updates the account selection |
+| `prepare_parent_campaign_run` | Resolves trainee, support deck, and supported lineage, then updates the account selection |
 | `run_parent_campaign_career` | Starts one budgeted Career run through the campaign |
 | `collect_parent_campaign_result` | Finds and evaluates the new veteran after Career completion |
 | `list_parent_candidates` | Lists candidate scores, reasons, and weaknesses |
@@ -217,7 +222,68 @@ The snapshot:
 - can be read while the bot web server is offline;
 - exposes `refreshed_at`, so Hermes must state that cached inventory may be stale.
 
-Reading `get_cached_account_snapshot`, `list_cached_veterans`, `scan_cached_legacy_loops`, or `sweepy://snapshot/{account}` does not call the game API.
+Reading `get_cached_account_snapshot`, `list_cached_veterans`, `find_cached_veterans`, `get_cached_veteran_details`, `scan_cached_legacy_loops`, or `sweepy://snapshot/{account}` does not call the game API.
+
+### Deterministic veteran factor queries
+
+Use decoded MCP fields rather than raw factor IDs:
+
+```text
+find_cached_veterans(
+  account="acct02",
+  blue_factor="Power",
+  minimum_lineage_stars=9,
+  scope="direct_lineage"
+)
+```
+
+`direct_lineage` has one fixed definition:
+
+```text
+self + direct parent 1 + direct parent 2
+```
+
+A `Power 9★` tag is emitted only when decoded category=`stat`, name=`Power` stars total exactly 9 across those three nodes. Final Power stat does not count. Race, skill, scenario, aptitude, and unique factors do not count. `get_cached_veteran_details` provides the decoded evidence for each lineage node; raw factor IDs should never be interpreted by an agent.
+
+## Friend support selection
+
+`find_friend_supports` calls Sweepy's existing friend-support loader and returns opaque candidate IDs. It supports decoded character name, support type, exact limit-break count, and exact support-card ID filters. `LB4` means `limit_break_count == 4`.
+
+The finder marks candidates unselectable when the support is already present in the selected deck or its support character matches the trainee. Multiple owners of one support-card variant are ranked deterministically by following status, favorite status, EXP, card ID, and candidate ID. Multiple distinct support-card variants are not auto-selected; the agent must ask the user to choose a type or exact card.
+
+When the user explicitly says to use a named support, prefer `ensure_friend_support`. It performs search, deterministic owner choice, `selection.friend` update, and `/api/session` read-back verification in one idempotent operation. `select_friend_support` remains available when the user first inspected candidates and chose one opaque `candidate_id`. Deck, trainee, parents, and preset remain unchanged. MCP output never exposes the underlying friend viewer ID.
+
+Example:
+
+```text
+ensure_friend_support(
+  account="alpha",
+  name="Super Creek",
+  support_type="Stamina",
+  limit_break=4,
+  confirm=true,
+  operation_id="..."
+)
+```
+
+## Deterministic factor targets
+
+A factor target separates a strongest-single-spark check from a lineage-star total. For a Power 9★ parent:
+
+```json
+{
+  "name": "power",
+  "minimum_stars": 9,
+  "scope": "lineage",
+  "aggregation": "sum",
+  "lineage_depth": "direct",
+  "required": true
+}
+```
+
+This sums decoded Power blue stars across exactly `self + direct parent 1 + direct parent 2`. `aggregation="max"` checks the strongest single matching node instead. `lineage_depth="full"` includes the four grandparents. Final stats never count as factor stars. During lineage preparation, required direct totals are feasibility-filtered: Power 9★ requires both selected direct parents to have self Power 3★, because a 3★+2★ pair can produce at most 8★ even if the new veteran rolls Power 3★.
+
+When aptitude is unrestricted, `surface_targets` and `distance_targets` may both be empty. Race-agenda preferences are separate from hard aptitude acceptance targets.
 
 ## Legacy affinity-loop previews
 
@@ -266,8 +332,48 @@ A parent campaign separates the user's goal from the underlying Career runs. Exa
     "use_clocks": false,
     "approval_mode": "ambiguity_only",
     "stop_when_target_reached": true
+  },
+  "trainee": {
+    "mode": "auto",
+    "objective": "highest_affinity"
+  },
+  "deck": {
+    "mode": "auto"
   }
 }
+```
+
+### Parent campaign run selection
+
+`ParentCampaignSpec.trainee` controls how the Career trainee is resolved:
+
+- `mode=current` preserves the previous behavior and requires a current selection.
+- `mode=named` resolves an owned trainee by `card_id` or name. Matching costume variants may all be evaluated before one is chosen.
+- `mode=auto` evaluates owned trainees instead of asking the user to select one in the Web UI, excluding trainees that conflict with the selected friend support.
+- `objective=highest_affinity` rejects friend-support conflicts and infeasible factor lineages first, then ranks by `compat_total`, lineage score, and finally trainee card ID for deterministic ties.
+- `objective=best_score` preserves the legacy score-first behavior.
+
+`ParentCampaignSpec.deck` controls support-deck resolution:
+
+- `mode=current` preserves the previous behavior.
+- `mode=named` resolves one existing deck by `deck_id` or unique name match.
+- `mode=auto` excludes decks that conflict with the selected friend support, then ranks the remaining decks by preferred-stat support count, total limit breaks, and deck ID.
+
+`prepare_parent_campaign_run` resolves trainee, deck, and parents, then writes one complete selection through the existing internal `/api/selection` endpoint. Friend support remains separate and should be selected through `ensure_friend_support`; the MCP surface does not expose a generic raw selection tool.
+
+Examples:
+
+```text
+"bikinin parent stamina 9*, pake Oguri"
+→ trainee.mode=named, trainee.name="Oguri Cap", trainee.objective=highest_affinity
+→ deck.mode=auto
+```
+
+```text
+"bikinin parent stamina 9*, parent bebas yang penting affinitynya tinggi"
+→ trainee.mode=auto, trainee.objective=highest_affinity
+→ deck.mode=auto
+→ Sweepy, not Hermes, chooses the highest-affinity feasible trainee + lineage.
 ```
 
 Minimum safe sequence:

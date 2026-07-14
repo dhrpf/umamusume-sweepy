@@ -528,7 +528,8 @@ class DailiesRunner:
             ):
                 continue
             open_count = int(good.get("open_count") or 0)
-            if open_count <= 0:
+            exchange_count = int(good.get("exchange_count") or 0)
+            if open_count <= 0 or exchange_count > 0:
                 continue
             plan.append(
                 {

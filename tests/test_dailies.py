@@ -249,6 +249,59 @@ class ShopClient:
         return {"data": {"reward_summary_info": {"add_item_list": [{"item_id": 91}]}}}
 
 
+def test_daily_shop_skips_goods_already_exchanged(tmp_path):
+    runner = DailiesRunner(tmp_path)
+    runner._load_shop_catalog = lambda: (
+        {501: 7001, 502: 7002},
+        {
+            7001: {
+                "pay_item": 59,
+                "pay_num": 100,
+                "limit": 1,
+                "reward_item": 91,
+                "reward_num": 1,
+            },
+            7002: {
+                "pay_item": 59,
+                "pay_num": 50,
+                "limit": 1,
+                "reward_item": 92,
+                "reward_num": 1,
+            },
+        },
+    )
+
+    class PartiallyClearedShopClient:
+        def __init__(self):
+            self.item_map = {59: 250}
+            self.purchase = None
+
+        def item_show_exchange(self):
+            return {
+                "data_headers": {"servertime": 1783958400},
+                "data": {
+                    "disabled_id_array": [],
+                    "limited_goods_info_array": [
+                        {"reward_id": 501, "exchange_count": 1, "open_count": 1},
+                        {"reward_id": 502, "exchange_count": 0, "open_count": 1},
+                    ],
+                },
+            }
+
+        def item_exchange_multi(self, exchange_items, balances, get_list_time):
+            self.purchase = exchange_items
+            return {"data": {"reward_summary_info": {"add_item_list": []}}}
+
+    client = PartiallyClearedShopClient()
+
+    result = runner._daily_shop(client)
+
+    assert result["bought"] == [7002]
+    assert client.purchase == [
+        {"exchange_id": 7002, "count": 1, "ex_param": {"open_count": 1}}
+    ]
+
+
 def test_daily_shop_keeps_same_exchange_id_for_each_open_count(tmp_path):
     runner = DailiesRunner(tmp_path)
     runner._load_shop_catalog = lambda: (

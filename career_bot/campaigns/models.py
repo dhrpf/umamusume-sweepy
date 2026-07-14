@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -16,6 +16,16 @@ class ApprovalMode(str, Enum):
 class FactorScope(str, Enum):
     CANDIDATE = "candidate"
     LINEAGE = "lineage"
+
+
+class FactorAggregation(str, Enum):
+    MAX = "max"
+    SUM = "sum"
+
+
+class LineageDepth(str, Enum):
+    DIRECT = "direct"
+    FULL = "full"
 
 
 class CampaignState(str, Enum):
@@ -38,9 +48,50 @@ class FactorTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    minimum_stars: int = Field(default=2, ge=1, le=3)
+    minimum_stars: int = Field(default=2, ge=1, le=21)
     scope: FactorScope = FactorScope.LINEAGE
+    aggregation: FactorAggregation = FactorAggregation.MAX
+    lineage_depth: LineageDepth = LineageDepth.FULL
     required: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_total_lineage_semantics(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        try:
+            minimum = int(payload.get("minimum_stars") or 0)
+        except (TypeError, ValueError):
+            minimum = 0
+        scope = str(payload.get("scope") or FactorScope.LINEAGE.value).strip().lower()
+        if (
+            scope == FactorScope.LINEAGE.value
+            and minimum > 3
+            and "aggregation" not in payload
+        ):
+            payload["aggregation"] = FactorAggregation.SUM.value
+            payload.setdefault("lineage_depth", LineageDepth.DIRECT.value)
+        return payload
+
+    @model_validator(mode="after")
+    def validate_star_semantics(self) -> "FactorTarget":
+        if self.scope is FactorScope.CANDIDATE:
+            if self.aggregation is not FactorAggregation.MAX or self.minimum_stars > 3:
+                raise ValueError(
+                    "candidate factor targets require max aggregation and cannot exceed 3 stars"
+                )
+            return self
+
+        if self.aggregation is FactorAggregation.MAX and self.minimum_stars > 3:
+            raise ValueError("max aggregation cannot require more than 3 stars")
+        if self.aggregation is FactorAggregation.SUM:
+            maximum = 9 if self.lineage_depth is LineageDepth.DIRECT else 21
+            if self.minimum_stars > maximum:
+                raise ValueError(
+                    f"{self.lineage_depth.value} lineage total cannot exceed {maximum} stars"
+                )
+        return self
 
     @field_validator("name")
     @classmethod
@@ -55,8 +106,8 @@ class ParentGoal(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     purpose: Literal["parent"] = "parent"
-    surface_targets: list[str] = Field(min_length=1)
-    distance_targets: list[str] = Field(min_length=1)
+    surface_targets: list[str] = Field(default_factory=list)
+    distance_targets: list[str] = Field(default_factory=list)
     minimum_rank: str = "S"
     preferred_stats: list[str] = Field(default_factory=lambda: ["speed", "stamina"])
     target_factors: list[FactorTarget] = Field(default_factory=list)
@@ -180,12 +231,65 @@ class ParentStrategy(BaseModel):
         return self
 
 
+class TraineeSelectionMode(str, Enum):
+    CURRENT = "current"
+    NAMED = "named"
+    AUTO = "auto"
+
+
+class DeckSelectionMode(str, Enum):
+    CURRENT = "current"
+    NAMED = "named"
+    AUTO = "auto"
+
+
+class TraineeSelectionPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: TraineeSelectionMode = TraineeSelectionMode.CURRENT
+    name: str = ""
+    card_id: int = Field(default=0, ge=0)
+    objective: Literal["best_score", "highest_affinity"] = "best_score"
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return str(value or "").strip()
+
+    @model_validator(mode="after")
+    def validate_named_selector(self) -> "TraineeSelectionPolicy":
+        if self.mode is TraineeSelectionMode.NAMED and not self.name and self.card_id <= 0:
+            raise ValueError("named trainee selection requires name or card_id")
+        return self
+
+
+class DeckSelectionPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: DeckSelectionMode = DeckSelectionMode.CURRENT
+    name: str = ""
+    deck_id: int = Field(default=0, ge=0)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return str(value or "").strip()
+
+    @model_validator(mode="after")
+    def validate_named_selector(self) -> "DeckSelectionPolicy":
+        if self.mode is DeckSelectionMode.NAMED and not self.name and self.deck_id <= 0:
+            raise ValueError("named deck selection requires name or deck_id")
+        return self
+
+
 class ParentCampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     account: str
     goal: ParentGoal
     strategy: ParentStrategy
+    trainee: TraineeSelectionPolicy = Field(default_factory=TraineeSelectionPolicy)
+    deck: DeckSelectionPolicy = Field(default_factory=DeckSelectionPolicy)
 
     @field_validator("account")
     @classmethod

@@ -3,8 +3,10 @@
 from .models import (
     ApprovalMode,
     CampaignState,
+    FactorAggregation,
     FactorScope,
     FactorTarget,
+    LineageDepth,
     ParentCampaignSpec,
     ParentGoal,
     ParentStrategy,
@@ -13,8 +15,10 @@ from .models import (
 __all__ = [
     "ApprovalMode",
     "CampaignState",
+    "FactorAggregation",
     "FactorScope",
     "FactorTarget",
+    "LineageDepth",
     "ParentCampaignSpec",
     "ParentGoal",
     "ParentStrategy",

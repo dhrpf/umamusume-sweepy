@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import FactorScope, ParentGoal
+from .models import FactorAggregation, FactorScope, LineageDepth, ParentGoal
 
 
 RANK_ORDER = [
@@ -70,8 +70,8 @@ def _aptitude_ratio(value: Any) -> float:
     return _clamp(score / 8.0)
 
 
-def _factor_map(rows: Any) -> dict[str, int]:
-    result: dict[str, int] = {}
+def _factor_values(rows: Any) -> dict[str, list[int]]:
+    result: dict[str, list[int]] = {}
     if not isinstance(rows, list):
         return result
     for row in rows:
@@ -84,8 +84,21 @@ def _factor_map(rows: Any) -> dict[str, int]:
             stars = int(row.get("stars") or row.get("star") or row.get("level") or 0)
         except (TypeError, ValueError):
             stars = 0
-        result[name] = max(result.get(name, 0), max(0, stars))
+        result.setdefault(name, []).append(max(0, stars))
     return result
+
+
+def _factor_stars(
+    values: dict[str, list[int]],
+    name: str,
+    aggregation: FactorAggregation,
+) -> int:
+    rows = values.get(name) or []
+    if not rows:
+        return 0
+    if aggregation is FactorAggregation.SUM:
+        return int(sum(rows))
+    return int(max(rows))
 
 
 def evaluate_parent_candidate(
@@ -101,28 +114,51 @@ def evaluate_parent_candidate(
     matched_targets: list[str] = []
     missing_targets: list[str] = []
 
-    candidate_factors = _factor_map(candidate.get("candidate_factors"))
-    lineage_factors = _factor_map(candidate.get("lineage_factors"))
+    candidate_factors = _factor_values(candidate.get("candidate_factors"))
+    lineage_factors = _factor_values(candidate.get("lineage_factors"))
+    direct_lineage_factors = _factor_values(candidate.get("direct_lineage_factors"))
+    full_lineage_factors = _factor_values(candidate.get("full_lineage_factors"))
     required_targets = [row for row in validated_goal.target_factors if row.required]
     factor_ratios: list[float] = []
+    factor_evidence: list[dict[str, Any]] = []
     extra_stars = 0
 
     for target in validated_goal.target_factors:
-        source = (
-            candidate_factors
-            if target.scope is FactorScope.CANDIDATE
-            else lineage_factors
-        )
-        stars = int(source.get(target.name, 0))
+        if target.scope is FactorScope.CANDIDATE:
+            source = candidate_factors
+        elif target.lineage_depth is LineageDepth.DIRECT:
+            source = direct_lineage_factors or lineage_factors
+        else:
+            source = full_lineage_factors or lineage_factors
+
+        stars = _factor_stars(source, target.name, target.aggregation)
         label = f"{target.name}:{target.scope.value}"
+        matched = stars >= target.minimum_stars
+        factor_evidence.append(
+            {
+                "name": target.name,
+                "scope": target.scope.value,
+                "aggregation": target.aggregation.value,
+                "lineage_depth": target.lineage_depth.value,
+                "observed_stars": stars,
+                "required_stars": target.minimum_stars,
+                "matched": matched,
+            }
+        )
         ratio = _clamp(stars / max(1, target.minimum_stars))
         factor_ratios.append(ratio)
-        if stars >= target.minimum_stars:
+        if matched:
             matched_targets.append(label)
             extra_stars += max(0, stars - target.minimum_stars)
-            reasons.append(
-                f"Matched {target.name} {target.scope.value} factor at {stars}★"
-            )
+            if target.aggregation is FactorAggregation.SUM:
+                reasons.append(
+                    f"Matched {target.name} {target.lineage_depth.value}-lineage total "
+                    f"at {stars}★"
+                )
+            else:
+                reasons.append(
+                    f"Matched {target.name} {target.scope.value} factor at {stars}★"
+                )
         else:
             if target.required:
                 missing_targets.append(label)
@@ -231,6 +267,7 @@ def evaluate_parent_candidate(
         "baseline_delta": baseline_delta,
         "matched_targets": matched_targets,
         "missing_targets": missing_targets,
+        "factor_evidence": factor_evidence,
         "components": {
             "factors": round(factor_score + factor_bonus, 2),
             "aptitudes": round(aptitude_score, 2),

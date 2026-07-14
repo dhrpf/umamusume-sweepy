@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import logging
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,9 +16,19 @@ from mcp.server.fastmcp import FastMCP
 
 from account_snapshot import compact_account_snapshot, load_account_snapshot
 from career_bot import master_data
+from career_bot.campaigns.friend_support import (
+    FriendSupportSelectionError,
+    candidate_id_for_friend,
+    find_friend_support_candidates,
+    resolve_friend_support_candidate,
+)
 from career_bot.campaigns.legacy.race_planner import build_shared_g1_agenda
 from career_bot.campaigns.legacy.rules import DEFAULT_SPARK_RULESET
 from career_bot.campaigns.legacy.scanner import scan_legacy_loop_pools
+from career_bot.campaigns.legacy.veteran_inventory import (
+    find_veterans,
+    summarize_veteran,
+)
 from career_bot.campaigns.lineage_planner import (
     LineagePlanningError,
     build_inheritance_request,
@@ -24,6 +36,11 @@ from career_bot.campaigns.lineage_planner import (
     resolve_lineage_selection,
 )
 from career_bot.campaigns.models import CampaignState, ParentCampaignSpec
+from career_bot.campaigns.run_setup import (
+    RunSetupSelectionError,
+    resolve_deck,
+    trainee_candidates,
+)
 from career_bot.campaigns.runner import CampaignRunner
 from career_bot.campaigns.store import CampaignStore
 from sweepy_jobs import LeaseConflict, OperationConflict, SweepyJobStore
@@ -69,6 +86,11 @@ TOOL_NAMES = (
     "get_recent_operations",
     "get_cached_account_snapshot",
     "list_cached_veterans",
+    "find_cached_veterans",
+    "get_cached_veteran_details",
+    "find_friend_supports",
+    "ensure_friend_support",
+    "select_friend_support",
     "get_legacy_spark_rules",
     "scan_cached_legacy_loops",
     "preview_shared_g1_agenda",
@@ -96,7 +118,14 @@ tool. Read runtime and bot state before starting work. Side-effecting tools requ
 confirm=true. Workflow stop tools are safe, but process launch/stop/restart still
 require confirmation. Never ask for or expose credentials, SID, auth keys, Steam
 tickets, device identifiers, IP addresses, or raw payloads. Do not start Career
-and Dailies concurrently on the same account.
+and Dailies concurrently on the same account. For veteran factor questions, use
+find_cached_veterans or get_cached_veteran_details. Never infer factors from final
+stats or raw factor IDs. For friend support selection, use find_friend_supports and
+select_friend_support; never construct viewer IDs manually. Parent campaigns may resolve
+trainee and support deck from their campaign spec. Do not require Web UI selection when
+the campaign uses named or auto selection policies. For automatic trainee selection,
+Sweepy chooses the highest-affinity feasible combination; the agent must not guess from
+character names.
 """.strip()
 
 logging.basicConfig(
@@ -137,7 +166,7 @@ class SweepyGateway:
         self.timeout = float(timeout or os.environ.get("SWEEPY_MCP_TIMEOUT", "20"))
         self._client = client
 
-    def request(
+    def _request_json(
         self,
         method: str,
         path: str,
@@ -166,7 +195,7 @@ class SweepyGateway:
                 )
             if not isinstance(data, dict):
                 raise RuntimeError(f"Unexpected Sweepy response type for {method} {path}")
-            return redact_sensitive(data)
+            return data
         except httpx.RequestError as exc:
             raise RuntimeError(
                 f"Cannot reach Sweepy at {self.base_url}. Start the bot web server first."
@@ -174,6 +203,24 @@ class SweepyGateway:
         finally:
             if own_client:
                 client.close()
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Public-safe request whose response is recursively redacted."""
+        return redact_sensitive(self._request_json(method, path, payload))
+
+    def request_internal(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Internal request for domain logic; callers must redact user-visible output."""
+        return self._request_json(method, path, payload)
 
 
 
@@ -270,6 +317,52 @@ def _snapshot_runtime_dir(account: str) -> Path:
     accounts_path = getattr(account_registry, "accounts_path", None)
     root = Path(accounts_path).resolve().parent if accounts_path else Path(__file__).resolve().parent
     return root / "uma_runtime" / account
+
+
+def _load_factor_map() -> dict[str, Any]:
+    path = Path(__file__).resolve().parent / "data" / "factor_map.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"Cannot read generated factor map: {path}") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Generated factor map is invalid: {path}")
+    return value
+
+
+def _cached_veteran_inputs(
+    snapshot: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[int, dict[str, Any]]]:
+    records = (snapshot.get("records") or {}).get("trained_chara") or []
+    normalized_records = [row for row in records if isinstance(row, dict)]
+    display_by_id: dict[int, dict[str, Any]] = {}
+    for row in snapshot.get("owned_veterans") or []:
+        if not isinstance(row, dict):
+            continue
+        trained_id = int(
+            row.get("instance_id") or row.get("trained_chara_id") or row.get("id") or 0
+        )
+        if trained_id > 0:
+            display_by_id[trained_id] = row
+    return normalized_records, display_by_id
+
+
+def _compact_decoded_veteran(summary: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "trained_chara_id",
+        "card_id",
+        "name",
+        "rank",
+        "rank_score",
+        "final_stats",
+        "self_blue_factors",
+        "direct_parent_blue_factors",
+        "direct_lineage_blue_totals",
+        "full_lineage_blue_totals",
+        "legacy_tags",
+        "matched_blue_stars",
+    )
+    return {key: summary[key] for key in keys if key in summary}
 
 
 def _compact_career(career: Any) -> dict[str, Any] | None:
@@ -734,8 +827,20 @@ def build_career_payload(
     return payload
 
 
+def _gateway_request_internal(
+    selected_gateway: SweepyGateway,
+    method: str,
+    path: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    request_internal = getattr(selected_gateway, "request_internal", None)
+    if callable(request_internal):
+        return request_internal(method, path, payload)
+    return selected_gateway.request(method, path, payload)
+
+
 def _get_session(selected_gateway: SweepyGateway) -> dict[str, Any]:
-    session = selected_gateway.request("GET", "/api/session")
+    session = _gateway_request_internal(selected_gateway, "GET", "/api/session")
     if not session.get("success"):
         raise RuntimeError("Sweepy is not logged in")
     return session
@@ -813,29 +918,390 @@ def list_cached_veterans(
     account: str = "",
     limit: int = 200,
 ) -> dict[str, Any]:
-    """List owned veterans from the last load/index cache while the bot may be offline."""
-    result = get_cached_account_snapshot(
-        account=account,
-        include_records=False,
-        veteran_limit=limit,
-    )
-    if not result.get("success"):
+    """List cached veterans with deterministic decoded blue-factor summaries."""
+    try:
+        account_name, _selected_gateway = account_registry.resolve(account)
+        snapshot = load_account_snapshot(_snapshot_runtime_dir(account_name))
+        if snapshot is None:
+            return {
+                "success": False,
+                "account": account_name,
+                "cached": False,
+                "detail": "No load/index snapshot exists for this account yet",
+                "veterans": [],
+            }
+        records, display_by_id = _cached_veteran_inputs(snapshot)
+        factor_map = _load_factor_map()
+        bounded_limit = max(1, min(int(limit or 200), 500))
+        summaries = [
+            summarize_veteran(
+                record,
+                factor_map=factor_map,
+                display=display_by_id.get(
+                    int(record.get("trained_chara_id") or record.get("instance_id") or 0)
+                ),
+            )
+            for record in records
+        ]
+        summaries.sort(
+            key=lambda row: (
+                -int(row.get("rank_score") or 0),
+                int(row.get("trained_chara_id") or 0),
+            )
+        )
+        return {
+            "success": True,
+            "account": account_name,
+            "cached": True,
+            "refreshed_at": snapshot.get("refreshed_at"),
+            "count": int((snapshot.get("counts") or {}).get("owned_veterans") or len(records)),
+            "returned": min(len(summaries), bounded_limit),
+            "veterans": redact_sensitive(
+                [_compact_decoded_veteran(row) for row in summaries[:bounded_limit]]
+            ),
+            "definitions": {
+                "blue_factor": "decoded category=stat factor from data/factor_map.json",
+                "direct_lineage": "self + direct parent 1 + direct parent 2",
+                "final_stats_are_not_factors": True,
+            },
+        }
+    except Exception as exc:
         return {
             "success": False,
-            "account": result.get("account", str(account or "")),
-            "cached": bool(result.get("cached")),
-            "detail": result.get("detail", "Cached account data unavailable"),
+            "account": str(account or ""),
+            "cached": False,
+            "detail": str(exc),
             "veterans": [],
         }
-    snapshot = result.get("snapshot") if isinstance(result.get("snapshot"), dict) else {}
+
+
+@mcp.tool()
+def find_cached_veterans(
+    account: str = "",
+    blue_factor: str = "",
+    minimum_lineage_stars: int = 0,
+    scope: str = "direct_lineage",
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Search cached veterans by decoded blue factors; never infer from final stats."""
+    try:
+        account_name, _selected_gateway = account_registry.resolve(account)
+        snapshot = load_account_snapshot(_snapshot_runtime_dir(account_name))
+        if snapshot is None:
+            return {
+                "success": False,
+                "account": account_name,
+                "cached": False,
+                "detail": "No load/index snapshot exists for this account yet",
+                "matches": [],
+            }
+        records, display_by_id = _cached_veteran_inputs(snapshot)
+        result = find_veterans(
+            records,
+            factor_map=_load_factor_map(),
+            display_by_id=display_by_id,
+            blue_factor=blue_factor,
+            minimum_lineage_stars=minimum_lineage_stars,
+            scope=scope,
+            limit=limit,
+        )
+        result["matches"] = [
+            _compact_decoded_veteran(row) for row in result.get("matches") or []
+        ]
+        return {
+            "success": True,
+            "account": account_name,
+            "cached": True,
+            "refreshed_at": snapshot.get("refreshed_at"),
+            **redact_sensitive(result),
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "account": str(account or ""),
+            "cached": False,
+            "detail": str(exc),
+            "matches": [],
+        }
+
+
+@mcp.tool()
+def get_cached_veteran_details(
+    account: str = "",
+    trained_chara_id: int = 0,
+) -> dict[str, Any]:
+    """Get one cached veteran with decoded factor tree and lineage totals."""
+    try:
+        account_name, _selected_gateway = account_registry.resolve(account)
+        snapshot = load_account_snapshot(_snapshot_runtime_dir(account_name))
+        if snapshot is None:
+            return {
+                "success": False,
+                "account": account_name,
+                "cached": False,
+                "detail": "No load/index snapshot exists for this account yet",
+            }
+        wanted = int(trained_chara_id or 0)
+        if wanted <= 0:
+            raise ValueError("trained_chara_id is required")
+        records, display_by_id = _cached_veteran_inputs(snapshot)
+        record = next(
+            (
+                row
+                for row in records
+                if int(row.get("trained_chara_id") or row.get("instance_id") or 0)
+                == wanted
+            ),
+            None,
+        )
+        if record is None:
+            return {
+                "success": False,
+                "account": account_name,
+                "cached": True,
+                "refreshed_at": snapshot.get("refreshed_at"),
+                "detail": f"Cached veteran not found: {wanted}",
+            }
+        veteran = summarize_veteran(
+            record,
+            factor_map=_load_factor_map(),
+            display=display_by_id.get(wanted),
+        )
+        return {
+            "success": True,
+            "account": account_name,
+            "cached": True,
+            "refreshed_at": snapshot.get("refreshed_at"),
+            "veteran": redact_sensitive(veteran),
+            "definitions": {
+                "direct_lineage_blue_totals": "self + direct parent 1 + direct parent 2",
+                "full_lineage_blue_totals": "self + all six lineage members",
+                "final_stats_are_not_factors": True,
+            },
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "account": str(account or ""),
+            "cached": False,
+            "detail": str(exc),
+        }
+
+
+def _load_friend_support_rows(
+    selected_gateway: SweepyGateway,
+    *,
+    force_refresh: bool,
+) -> tuple[list[dict[str, Any]], str]:
+    response = _gateway_request_internal(
+        selected_gateway,
+        "POST",
+        "/api/career/friends",
+        {
+            "exclude_viewer_ids": [],
+            "force_refresh": bool(force_refresh),
+        },
+    )
+    if response.get("success") is False:
+        raise RuntimeError(str(response.get("detail") or "Unable to load friend supports"))
+    friends = response.get("friends") if isinstance(response.get("friends"), list) else []
+    return [row for row in friends if isinstance(row, dict)], str(response.get("source") or "")
+
+
+@mcp.tool()
+def find_friend_supports(
+    account: str = "",
+    name: str = "",
+    support_type: str = "",
+    limit_break: int = 4,
+    support_card_id: int = 0,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    """Find selectable friend supports by decoded name, type, card, and exact limit break."""
+    try:
+        account_name, selected_gateway = account_registry.resolve(account)
+        if not str(name or "").strip() and int(support_card_id or 0) <= 0:
+            raise ValueError("name or support_card_id is required")
+        if int(limit_break) < 0 or int(limit_break) > 4:
+            raise ValueError("limit_break must be between 0 and 4")
+        session = _get_session(selected_gateway)
+        friends, source = _load_friend_support_rows(
+            selected_gateway,
+            force_refresh=bool(force_refresh),
+        )
+        result = find_friend_support_candidates(
+            friends,
+            session.get("selection") if isinstance(session.get("selection"), dict) else {},
+            name=name,
+            support_type=support_type,
+            limit_break=int(limit_break),
+            support_card_id=int(support_card_id or 0),
+        )
+        return {
+            "success": True,
+            "account": account_name,
+            "source": source,
+            **redact_sensitive(result),
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "account": str(account or ""),
+            "detail": str(exc),
+            "matches": [],
+        }
+
+
+def _apply_friend_support_candidate(
+    selected_gateway: SweepyGateway,
+    candidate_id: str,
+) -> dict[str, Any]:
+    session = _get_session(selected_gateway)
+    selection = session.get("selection") if isinstance(session.get("selection"), dict) else {}
+    friends, source = _load_friend_support_rows(selected_gateway, force_refresh=True)
+    resolved = resolve_friend_support_candidate(
+        friends,
+        selection,
+        candidate_id=candidate_id,
+    )
+    updated_selection = copy.deepcopy(selection)
+    updated_selection["friend"] = copy.deepcopy(resolved["selection_row"])
+    update = _gateway_request_internal(
+        selected_gateway,
+        "POST",
+        "/api/selection",
+        {"selection": updated_selection},
+    )
+    if update.get("success") is False:
+        raise RuntimeError(str(update.get("detail") or "Unable to update Sweepy selection"))
+
+    readback = _get_session(selected_gateway)
+    readback_selection = (
+        readback.get("selection") if isinstance(readback.get("selection"), dict) else {}
+    )
+    selected = (
+        readback_selection.get("friend")
+        if isinstance(readback_selection.get("friend"), dict)
+        else {}
+    )
+    try:
+        selected_candidate_id = candidate_id_for_friend(selected)
+    except FriendSupportSelectionError as exc:
+        raise RuntimeError("Friend support selection was not persisted") from exc
+    if selected_candidate_id != candidate_id:
+        raise RuntimeError("Friend support selection read-back does not match requested candidate")
     return {
         "success": True,
-        "account": result["account"],
-        "cached": True,
-        "refreshed_at": snapshot.get("refreshed_at"),
-        "count": int((snapshot.get("counts") or {}).get("owned_veterans") or 0),
-        "veterans": snapshot.get("owned_veterans") or [],
+        "source": source,
+        "selected_friend": resolved["public"],
+        "selection_verified": True,
     }
+
+
+@mcp.tool()
+def ensure_friend_support(
+    account: str = "",
+    name: str = "",
+    support_type: str = "",
+    limit_break: int = 4,
+    support_card_id: int = 0,
+    confirm: bool = False,
+    operation_id: str = "",
+) -> dict[str, Any]:
+    """Find and select one deterministic friend support in a single operation."""
+    try:
+        account_name, selected_gateway = account_registry.resolve(account)
+        if not str(name or "").strip() and int(support_card_id or 0) <= 0:
+            raise ValueError("name or support_card_id is required")
+        if int(limit_break) < 0 or int(limit_break) > 4:
+            raise ValueError("limit_break must be between 0 and 4")
+
+        session = _get_session(selected_gateway)
+        friends, source = _load_friend_support_rows(selected_gateway, force_refresh=True)
+        search = find_friend_support_candidates(
+            friends,
+            session.get("selection") if isinstance(session.get("selection"), dict) else {},
+            name=name,
+            support_type=support_type,
+            limit_break=int(limit_break),
+            support_card_id=int(support_card_id or 0),
+        )
+        public_search = redact_sensitive(search)
+        if int(search.get("selectable_count") or 0) <= 0:
+            return {
+                "success": False,
+                "account": account_name,
+                "source": source,
+                "detail": "No selectable friend support matches the requested query",
+                **public_search,
+            }
+        if search.get("requires_user_choice"):
+            return {
+                "success": False,
+                "account": account_name,
+                "source": source,
+                "requires_user_choice": True,
+                "detail": "Multiple support-card variants match; choose one exact card or type",
+                **public_search,
+            }
+        candidate = str(search.get("recommended_candidate_id") or "")
+        if not candidate:
+            raise RuntimeError("Friend support search did not produce a deterministic candidate")
+
+        details = {
+            "account": account_name,
+            "query": public_search.get("query"),
+            "candidate": (public_search.get("matches") or [None])[0],
+        }
+        if not confirm:
+            return _requires_confirmation("ensure_friend_support", details, operation_id)
+
+        return _execute_mutation(
+            account=account_name,
+            action="ensure_friend_support",
+            operation_id=operation_id,
+            arguments={
+                "account": account_name,
+                "name": str(name or ""),
+                "support_type": str(support_type or ""),
+                "limit_break": int(limit_break),
+                "support_card_id": int(support_card_id or 0),
+            },
+            callback=lambda: _apply_friend_support_candidate(selected_gateway, candidate),
+            selected_gateway=selected_gateway,
+        )
+    except Exception as exc:
+        return {
+            "success": False,
+            "account": str(account or ""),
+            "detail": str(exc),
+        }
+
+
+@mcp.tool()
+def select_friend_support(
+    account: str = "",
+    candidate_id: str = "",
+    confirm: bool = False,
+    operation_id: str = "",
+) -> dict[str, Any]:
+    """Select one opaque friend-support candidate without exposing viewer IDs."""
+    account_name, selected_gateway = account_registry.resolve(account)
+    candidate = str(candidate_id or "").strip()
+    if not candidate:
+        return {"success": False, "account": account_name, "detail": "candidate_id is required"}
+    details = {"account": account_name, "candidate_id": candidate}
+    if not confirm:
+        return _requires_confirmation("select_friend_support", details, operation_id)
+
+    return _execute_mutation(
+        account=account_name,
+        action="select_friend_support",
+        operation_id=operation_id,
+        arguments=details,
+        callback=lambda: _apply_friend_support_candidate(selected_gateway, candidate),
+        selected_gateway=selected_gateway,
+    )
 
 
 @mcp.tool()
@@ -1143,6 +1609,202 @@ def _parent_row_id(row: Any) -> int:
     )
 
 
+def _timestamp_sort_value(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def _account_carat_total(account: Any) -> int:
+    if not isinstance(account, dict):
+        return 0
+    carrots = account.get("carrots") if isinstance(account.get("carrots"), dict) else {}
+    try:
+        return int(carrots.get("total") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _campaign_runtime_preset_overrides(spec: ParentCampaignSpec) -> dict[str, Any]:
+    path = Path(__file__).resolve().parent / "public" / "assets" / "data" / "uma_race_data.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    rows = raw.get("races") if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        raise RuntimeError("uma_race_data.json has no races array")
+
+    terrain = spec.goal.surface_targets[0].title() if spec.goal.surface_targets else "Turf"
+    distances = (
+        [value.title() for value in spec.goal.distance_targets]
+        if spec.goal.distance_targets
+        else ["Mile", "Medium", "Long"]
+    )
+    agenda = build_shared_g1_agenda(
+        rows,
+        terrain=terrain,
+        distances=distances,
+        protect_summer_camp=True,
+        maximum_consecutive_races=3,
+        prefer_senior_repeats=True,
+    )
+    race_ids = [
+        int(row.get("id") or row.get("program_id") or 0)
+        for row in agenda.get("agenda") or []
+        if int(row.get("id") or row.get("program_id") or 0) > 0
+    ]
+    return {
+        "parent_run": True,
+        "tp_mode": spec.strategy.tp_mode,
+        "extra_race_list": race_ids,
+        "mandatory_race_list": [],
+    }
+
+
+def _resolve_campaign_run_setup(
+    spec: ParentCampaignSpec,
+    session: dict[str, Any],
+    selected_gateway: SweepyGateway,
+    *,
+    pool: str,
+) -> dict[str, Any]:
+    deck = resolve_deck(
+        session,
+        spec.deck,
+        preferred_stats=spec.goal.preferred_stats,
+    )
+    candidates = trainee_candidates(session, spec.trainee)
+    evaluated: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    for trainee in candidates:
+        candidate_session = copy.deepcopy(session)
+        candidate_selection = (
+            candidate_session.get("selection")
+            if isinstance(candidate_session.get("selection"), dict)
+            else {}
+        )
+        candidate_selection = copy.deepcopy(candidate_selection)
+        candidate_selection["trainee"] = copy.deepcopy(trainee)
+        candidate_selection["deck"] = copy.deepcopy(deck)
+        candidate_session["selection"] = candidate_selection
+
+        inheritance_payload = build_inheritance_request(
+            spec,
+            candidate_session,
+            pool=pool,
+        )
+        recommendation = selected_gateway.request(
+            "POST",
+            "/api/inheritance/recommend",
+            inheritance_payload,
+        )
+        try:
+            setup = choose_lineage_setup(
+                recommendation,
+                target_card_id=inheritance_payload["target_card_id"],
+                session=candidate_session,
+                target_factors=(inheritance_payload.get("goal") or {}).get("target_factors"),
+                ranking=(
+                    "affinity"
+                    if spec.trainee.objective == "highest_affinity"
+                    else "score"
+                ),
+            )
+        except LineagePlanningError as exc:
+            errors.append(f"{trainee.get('name') or trainee.get('id')}: {exc}")
+            continue
+
+        evaluated.append(
+            {
+                "trainee": copy.deepcopy(trainee),
+                "deck": copy.deepcopy(deck),
+                "session": candidate_session,
+                "inheritance_payload": inheritance_payload,
+                "recommendation": recommendation,
+                "setup": setup,
+            }
+        )
+
+    if not evaluated:
+        detail = "; ".join(errors[:5]) or "no trainee candidates were evaluated"
+        raise RunSetupSelectionError(
+            f"No feasible trainee and lineage combination found: {detail}"
+        )
+
+    if spec.trainee.objective == "highest_affinity":
+        evaluated.sort(
+            key=lambda row: (
+                -int((row["setup"] or {}).get("compat_total") or 0),
+                -float((row["setup"] or {}).get("score") or 0.0),
+                int((row["trainee"] or {}).get("id") or 0),
+            )
+        )
+    else:
+        evaluated.sort(
+            key=lambda row: (
+                -float((row["setup"] or {}).get("score") or 0.0),
+                -int((row["setup"] or {}).get("compat_total") or 0),
+                int((row["trainee"] or {}).get("id") or 0),
+            )
+        )
+    return evaluated[0]
+
+
+def _restore_prepared_run_selection(
+    session: dict[str, Any],
+    run_setup: dict[str, Any],
+) -> dict[str, Any]:
+    trainee_info = (
+        run_setup.get("trainee") if isinstance(run_setup.get("trainee"), dict) else {}
+    )
+    deck_info = run_setup.get("deck") if isinstance(run_setup.get("deck"), dict) else {}
+    trainee_id = int(trainee_info.get("card_id") or 0)
+    deck_id = int(deck_info.get("deck_id") or 0)
+
+    trainee = next(
+        (
+            copy.deepcopy(row)
+            for row in (session.get("umas") or [])
+            if isinstance(row, dict)
+            and int(row.get("id") or row.get("card_id") or 0) == trainee_id
+        ),
+        None,
+    )
+    deck = next(
+        (
+            copy.deepcopy(row)
+            for row in (session.get("decks") or [])
+            if isinstance(row, dict)
+            and int(row.get("id") or row.get("deck_id") or 0) == deck_id
+        ),
+        None,
+    )
+    if trainee is None:
+        raise LineagePlanningError(f"Prepared trainee is no longer owned: {trainee_id}")
+    if deck is None:
+        raise LineagePlanningError(f"Prepared support deck is no longer available: {deck_id}")
+
+    restored = copy.deepcopy(session)
+    selection = restored.get("selection") if isinstance(restored.get("selection"), dict) else {}
+    selection = copy.deepcopy(selection)
+    selection["trainee"] = trainee
+    selection["deck"] = deck
+    restored["selection"] = selection
+    return restored
+
+
 def _rank_label(value: Any) -> str:
     labels = [
         "G", "G+", "F", "F+", "E", "E+", "D", "D+", "C", "C+",
@@ -1183,12 +1845,19 @@ def _campaign_candidate_from_parent(
     tree = parent.get("tree") if isinstance(parent.get("tree"), dict) else {}
     self_node = tree.get("self") if isinstance(tree.get("self"), dict) else {}
     candidate_factors = _factor_rows(parent.get("factors") or self_node.get("factors"))
-    lineage_factors = []
+    direct_lineage_factors = []
+    for node_name in ("self", "p1", "p2"):
+        node = tree.get(node_name) if isinstance(tree.get(node_name), dict) else {}
+        direct_lineage_factors.extend(_factor_rows(node.get("factors")))
+    if not direct_lineage_factors:
+        direct_lineage_factors = list(candidate_factors)
+
+    full_lineage_factors = []
     for node in tree.values():
         if isinstance(node, dict):
-            lineage_factors.extend(_factor_rows(node.get("factors")))
-    if not lineage_factors:
-        lineage_factors = list(candidate_factors)
+            full_lineage_factors.extend(_factor_rows(node.get("factors")))
+    if not full_lineage_factors:
+        full_lineage_factors = list(direct_lineage_factors)
 
     raw_stats = parent.get("stats") if isinstance(parent.get("stats"), dict) else parent
     stats = {
@@ -1200,7 +1869,12 @@ def _campaign_candidate_from_parent(
     }
     aptitudes = parent.get("aptitudes") if isinstance(parent.get("aptitudes"), dict) else {}
     wins = parent.get("wins")
-    wins_count = len(wins) if isinstance(wins, list) else int(wins or 0)
+    if isinstance(wins, list):
+        wins_count = len(wins)
+    elif isinstance(wins, dict):
+        wins_count = int(wins.get("total") or 0)
+    else:
+        wins_count = int(wins or 0)
     compatibility = int(lineage_summary.get("compat_total") or 0)
     race_score = int(lineage_summary.get("race_score") or 0)
     return {
@@ -1210,7 +1884,9 @@ def _campaign_candidate_from_parent(
         "stats": stats,
         "aptitudes": aptitudes,
         "candidate_factors": candidate_factors,
-        "lineage_factors": lineage_factors,
+        "lineage_factors": full_lineage_factors,
+        "direct_lineage_factors": direct_lineage_factors,
+        "full_lineage_factors": full_lineage_factors,
         "compatibility_score": min(100, compatibility),
         "race_history_score": min(100, max(wins_count * 5, race_score * 2)),
     }
@@ -1319,6 +1995,8 @@ def get_parent_campaign_summary(campaign_id: str) -> dict[str, Any]:
         candidates = campaign_store.list_candidates(campaign_id, limit=1)
         best = candidates[0] if candidates else None
         strategy = campaign["spec"]["strategy"]
+        context = campaign.get("context") if isinstance(campaign.get("context"), dict) else {}
+        run_setup = context.get("run_setup") if isinstance(context.get("run_setup"), dict) else None
         best_summary = None
         if best:
             evaluation = best.get("evaluation") if isinstance(best.get("evaluation"), dict) else {}
@@ -1348,6 +2026,7 @@ def get_parent_campaign_summary(campaign_id: str) -> dict[str, Any]:
                 "maximum_runtime_hours": float(strategy["maximum_runtime_hours"]),
             },
             "best_candidate": best_summary,
+            "run_setup": redact_sensitive(copy.deepcopy(run_setup)) if run_setup else None,
             "error": campaign.get("error") or "",
         }
     except Exception as exc:
@@ -1629,18 +2308,41 @@ def prepare_parent_campaign_run(
                 f"Campaign {campaign_id} must be in SELECTING_LINEAGE, not {current['state']}"
             )
         session = _get_session(selected_gateway)
-        inheritance_payload = build_inheritance_request(
-            ParentCampaignSpec.model_validate(current["spec"]),
+        validated_spec = ParentCampaignSpec.model_validate(current["spec"])
+        previous_run_setup = current.get("context", {}).get("run_setup") or {}
+        if isinstance(previous_run_setup, dict) and previous_run_setup:
+            selection = (
+                session.get("selection")
+                if isinstance(session.get("selection"), dict)
+                else {}
+            )
+            needs_current_trainee = (
+                validated_spec.trainee.mode.value == "current"
+                and not isinstance(selection.get("trainee"), dict)
+            )
+            current_deck = selection.get("deck") if isinstance(selection.get("deck"), dict) else {}
+            needs_current_deck = (
+                validated_spec.deck.mode.value == "current"
+                and (not current_deck or not current_deck.get("cards"))
+            )
+            if needs_current_trainee or needs_current_deck:
+                restored = _restore_prepared_run_selection(session, previous_run_setup)
+                restored_selection = restored.get("selection") or {}
+                selection = copy.deepcopy(selection)
+                if needs_current_trainee:
+                    selection["trainee"] = copy.deepcopy(restored_selection.get("trainee"))
+                if needs_current_deck:
+                    selection["deck"] = copy.deepcopy(restored_selection.get("deck"))
+                session = {**session, "selection": selection}
+        prepared = _resolve_campaign_run_setup(
+            validated_spec,
             session,
+            selected_gateway,
             pool=pool,
         )
-        recommendation = selected_gateway.request(
-            "POST",
-            "/api/inheritance/recommend",
-            inheritance_payload,
-        )
-        setup = choose_lineage_setup(recommendation)
-        resolved = resolve_lineage_selection(session, setup)
+        setup = prepared["setup"]
+        inheritance_payload = prepared["inheritance_payload"]
+        resolved = resolve_lineage_selection(prepared["session"], setup)
         selection_result = selected_gateway.request(
             "POST",
             "/api/selection",
@@ -1656,10 +2358,29 @@ def prepare_parent_campaign_run(
                 if _parent_row_id(row) > 0
             }
         )
+        selected_trainee = prepared["trainee"]
+        selected_deck = prepared["deck"]
+        run_setup = {
+            "trainee": {
+                "card_id": int(selected_trainee.get("id") or 0),
+                "name": str(selected_trainee.get("name") or ""),
+                "mode": validated_spec.trainee.mode.value,
+                "objective": validated_spec.trainee.objective,
+                "compat_total": int(setup.get("compat_total") or 0),
+            },
+            "deck": {
+                "deck_id": int(
+                    selected_deck.get("id") or selected_deck.get("deck_id") or 0
+                ),
+                "name": str(selected_deck.get("name") or ""),
+                "mode": validated_spec.deck.mode.value,
+            },
+        }
         campaign_store.update_context(
             campaign_id,
             {
                 "baseline_parent_ids": baseline_parent_ids,
+                "run_setup": run_setup,
                 "lineage": {
                     "setup": setup,
                     "summary": resolved["summary"],
@@ -1671,6 +2392,7 @@ def prepare_parent_campaign_run(
         return {
             "success": True,
             "campaign": updated,
+            "run_setup": run_setup,
             "lineage": resolved["summary"],
         }
 
@@ -1714,12 +2436,59 @@ def run_parent_campaign_career(
             )
 
         campaign_store.assert_within_budget(campaign_id)
+        validated_spec = ParentCampaignSpec.model_validate(current["spec"])
         strategy = current["spec"]["strategy"]
         if current["usage"]["runs"] >= int(strategy["maximum_runs"]):
             raise ValueError("Campaign maximum_runs budget is exhausted")
 
         session = _get_session(selected_gateway)
-        resolved = resolve_lineage_selection(session, setup)
+        target_factors = (
+            (current.get("spec") or {}).get("goal", {}).get("target_factors") or []
+        )
+        try:
+            run_setup = current.get("context", {}).get("run_setup") or {}
+            if not isinstance(run_setup, dict) or not run_setup:
+                raise LineagePlanningError(
+                    "Campaign has no prepared run setup; call prepare_parent_campaign_run first"
+                )
+            session = _restore_prepared_run_selection(session, run_setup)
+            selection = (
+                session.get("selection")
+                if isinstance(session.get("selection"), dict)
+                else {}
+            )
+            trainee = (
+                selection.get("trainee")
+                if isinstance(selection.get("trainee"), dict)
+                else {}
+            )
+            target_card_id = int(trainee.get("id") or trainee.get("card_id") or 0)
+            setup = choose_lineage_setup(
+                {"success": True, "results": [setup]},
+                target_card_id=target_card_id,
+                session=session,
+                target_factors=target_factors,
+            )
+            resolved = resolve_lineage_selection(session, setup)
+        except LineagePlanningError as exc:
+            campaign_store.update_context(
+                campaign_id,
+                {
+                    "lineage": None,
+                    "run_setup": None,
+                    "last_invalid_lineage": {
+                        "detail": str(exc),
+                        "operation_id": resolved_operation_id,
+                    },
+                },
+            )
+            updated = campaign_store.set_next_action(campaign_id, "select_lineage")
+            return {
+                "success": False,
+                "detail": f"Prepared lineage is invalid and was cleared: {exc}",
+                "recovery_action": "prepare_parent_campaign_run",
+                "campaign": updated,
+            }
         selection_result = selected_gateway.request(
             "POST",
             "/api/selection",
@@ -1729,19 +2498,27 @@ def run_parent_campaign_career(
             return selection_result
 
         preset = _find_preset(strategy["preset_name"], selected_gateway)
+        runtime_preset_overrides = _campaign_runtime_preset_overrides(validated_spec)
+        effective_preset = {**preset, **runtime_preset_overrides}
+        starting_carats = _account_carat_total(session.get("account"))
         payload = build_career_payload(
             {**session, "selection": resolved["selection"]},
-            preset,
+            effective_preset,
             max_steps=2500,
             burn_clocks=bool(strategy.get("use_clocks")),
-            dev_mode=True,
+            dev_mode=False,
         )
         payload["tp_mode"] = strategy.get("tp_mode", "wait")
         payload["stop_on_empty_tp"] = False
+        payload["preset_overrides"] = runtime_preset_overrides
         response = selected_gateway.request("POST", "/api/career/run", payload)
         if response.get("success") is False:
             return response
 
+        ending_carats = _account_carat_total(response.get("account"))
+        carats_spent = max(0, starting_carats - ending_carats)
+        if carats_spent:
+            campaign_store.add_usage(campaign_id, carats=carats_spent)
         updated = campaign_runner.begin_run(campaign_id)
         campaign_store.update_context(
             campaign_id,
@@ -1749,6 +2526,8 @@ def run_parent_campaign_career(
                 "active_run": {
                     "operation_id": resolved_operation_id,
                     "preset_name": strategy["preset_name"],
+                    "runtime_preset_overrides": runtime_preset_overrides,
+                    "carats_spent": carats_spent,
                     "lineage_summary": resolved["summary"],
                 }
             },
@@ -1825,7 +2604,7 @@ def collect_parent_campaign_result(
             raise ValueError("No new trained veteran was found after the completed Career")
         new_rows.sort(
             key=lambda row: (
-                float(row.get("acquired_at") or 0),
+                _timestamp_sort_value(row.get("acquired_at")),
                 int(row.get("rank_score") or 0),
                 _parent_row_id(row),
             ),

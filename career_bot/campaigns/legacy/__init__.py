@@ -5,6 +5,7 @@ from .rules import (
     estimate_initial_blue_stats,
 )
 from .scanner import scan_legacy_loop_pools
+from .veteran_inventory import find_veterans, summarize_veteran
 
 __all__ = [
     "DEFAULT_SPARK_RULESET",
@@ -12,4 +13,6 @@ __all__ = [
     "compatibility_tier",
     "estimate_initial_blue_stats",
     "scan_legacy_loop_pools",
+    "find_veterans",
+    "summarize_veteran",
 ]

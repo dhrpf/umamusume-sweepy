@@ -93,6 +93,11 @@ def test_skill_frontmatter_and_required_workflow_tools_are_present():
     for tool_name in (
         "list_accounts",
         "get_cached_account_snapshot",
+        "find_cached_veterans",
+        "get_cached_veteran_details",
+        "find_friend_supports",
+        "ensure_friend_support",
+        "select_friend_support",
         "scan_cached_legacy_loops",
         "preview_shared_g1_agenda",
         "launch_bot",
@@ -105,3 +110,13 @@ def test_skill_frontmatter_and_required_workflow_tools_are_present():
         "list_parent_candidates",
     ):
         assert tool_name in content
+
+    assert "Never infer factor names or stars from raw factor IDs" in content
+    assert "Final stats are not blue factors" in content
+    assert "Do not use terminal, source search, or master.mdb" in content
+    assert 'trainee.mode="named"' in content
+    assert 'trainee.mode="auto"' in content
+    assert 'deck.mode="auto"' in content
+    assert "Do not ask the user to open Sweepy Web UI" in content
+    assert "highest-affinity feasible" in content
+    assert "The current Sweepy UI selection must include" not in content

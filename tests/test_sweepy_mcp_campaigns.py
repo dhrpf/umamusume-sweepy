@@ -72,6 +72,31 @@ def campaign_spec():
     )
 
 
+def headless_campaign_spec(*, trainee):
+    return ParentCampaignSpec(
+        account="alpha",
+        goal={
+            "surface_targets": [],
+            "distance_targets": [],
+            "preferred_stats": ["stamina"],
+            "target_factors": [
+                {
+                    "name": "stamina",
+                    "minimum_stars": 9,
+                    "scope": "lineage",
+                }
+            ],
+        },
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 20,
+            "maximum_runtime_hours": 24,
+        },
+        trainee=trainee,
+        deck={"mode": "auto"},
+    )
+
+
 def configure(monkeypatch, tmp_path, *, api_reachable=False, logged_in=False):
     gateway = FakeGateway()
     campaign_store = CampaignStore(tmp_path / "campaigns.sqlite3")
@@ -97,10 +122,83 @@ def test_preview_parent_campaign_returns_normalized_goal_and_budget(monkeypatch,
     assert result["account"] == "alpha"
     assert result["spec"]["goal"]["surface_targets"] == ["turf"]
     assert result["spec"]["goal"]["target_factors"] == [
-        {"name": "turf", "minimum_stars": 2, "scope": "lineage", "required": True},
-        {"name": "medium", "minimum_stars": 2, "scope": "lineage", "required": True},
+        {
+            "name": "turf",
+            "minimum_stars": 2,
+            "scope": "lineage",
+            "aggregation": "max",
+            "lineage_depth": "full",
+            "required": True,
+        },
+        {
+            "name": "medium",
+            "minimum_stars": 2,
+            "scope": "lineage",
+            "aggregation": "max",
+            "lineage_depth": "full",
+            "required": True,
+        },
     ]
     assert result["budget"]["maximum_runs"] == 20
+    assert result["spec"]["trainee"] == {
+        "mode": "current",
+        "name": "",
+        "card_id": 0,
+        "objective": "best_score",
+    }
+    assert result["spec"]["deck"] == {
+        "mode": "current",
+        "name": "",
+        "deck_id": 0,
+    }
+
+
+def test_preview_parent_campaign_reports_headless_selection_policies(monkeypatch, tmp_path):
+    configure(monkeypatch, tmp_path)
+    spec = headless_campaign_spec(
+        trainee={"mode": "auto", "objective": "highest_affinity"}
+    )
+
+    result = sweepy_mcp.preview_parent_campaign(spec=spec)
+
+    assert result["success"] is True
+    assert result["spec"]["trainee"]["mode"] == "auto"
+    assert result["spec"]["deck"]["mode"] == "auto"
+
+
+def test_preview_supports_aptitude_free_direct_lineage_power_nine(monkeypatch, tmp_path):
+    configure(monkeypatch, tmp_path)
+    spec = ParentCampaignSpec(
+        account="alpha",
+        goal={
+            "surface_targets": [],
+            "distance_targets": [],
+            "minimum_rank": "A+",
+            "preferred_stats": ["power"],
+            "target_factors": [
+                {
+                    "name": "power",
+                    "minimum_stars": 9,
+                    "scope": "lineage",
+                }
+            ],
+        },
+        strategy=campaign_spec().strategy,
+    )
+
+    result = sweepy_mcp.preview_parent_campaign(spec=spec)
+
+    assert result["success"] is True
+    assert result["spec"]["goal"]["surface_targets"] == []
+    assert result["spec"]["goal"]["distance_targets"] == []
+    assert result["spec"]["goal"]["target_factors"][0] == {
+        "name": "power",
+        "minimum_stars": 9,
+        "scope": "lineage",
+        "aggregation": "sum",
+        "lineage_depth": "direct",
+        "required": True,
+    }
 
 
 def test_create_campaign_is_idempotent(monkeypatch, tmp_path):
@@ -235,8 +333,44 @@ def full_campaign_session():
             },
             "veterans": [],
         },
+        "umas": [
+            {"id": 100101, "name": "Test Uma"},
+            {"id": 100601, "name": "Oguri Cap"},
+            {"id": 100301, "name": "Mejiro Ryan"},
+        ],
+        "decks": [
+            {
+                "id": 3,
+                "name": "Parent Deck",
+                "cards": [
+                    {"id": 301, "type": "Speed", "limit_break_count": 1},
+                    {"id": 302, "type": "Speed", "limit_break_count": 1},
+                    {"id": 303, "type": "Power", "limit_break_count": 1},
+                ],
+            },
+            {
+                "id": 4,
+                "name": "Stamina Parent",
+                "cards": [
+                    {"id": 501, "type": "Stamina", "limit_break_count": 4},
+                    {"id": 502, "type": "Stamina", "limit_break_count": 4},
+                    {"id": 503, "type": "Stamina", "limit_break_count": 4},
+                ],
+            },
+        ],
         "parents": [
-            {"instance_id": 7001, "name": "Owned A", "card_id": 1101},
+            {
+                "instance_id": 7001,
+                "name": "Owned A",
+                "card_id": 1101,
+                "tree": {
+                    "self": {
+                        "factors": [
+                            {"name": "Stamina", "category": "stat", "stars": 3}
+                        ]
+                    }
+                },
+            },
             {"instance_id": 7002, "name": "Owned B", "card_id": 1102},
         ],
         "friendVeterans": [
@@ -246,12 +380,19 @@ def full_campaign_session():
                 "viewer_id": 99001,
                 "name": "Rental A",
                 "card_id": 1201,
+                "tree": {
+                    "self": {
+                        "factors": [
+                            {"name": "Stamina", "category": "stat", "stars": 3}
+                        ]
+                    }
+                },
             }
         ],
     }
 
 
-def prepare_running_campaign(monkeypatch, tmp_path):
+def prepare_running_campaign(monkeypatch, tmp_path, *, spec=None):
     gateway, store, jobs = configure(
         monkeypatch,
         tmp_path,
@@ -295,7 +436,7 @@ def prepare_running_campaign(monkeypatch, tmp_path):
             },
         ],
     }
-    store.create(campaign_spec(), campaign_id="campaign-1")
+    store.create(spec or campaign_spec(), campaign_id="campaign-1")
     sweepy_mcp.start_parent_campaign(
         campaign_id="campaign-1",
         confirm=True,
@@ -330,6 +471,260 @@ def test_prepare_campaign_run_selects_supported_lineage_and_persists_context(
     reopened = store.get("campaign-1")
     assert reopened["context"]["lineage"]["summary"]["compat_total"] == 155
     assert reopened["context"]["baseline_parent_ids"] == [7001, 7002]
+
+
+def test_prepare_campaign_run_resolves_named_trainee_and_auto_deck_without_ui_selection(
+    monkeypatch, tmp_path
+):
+    gateway, store, _ = configure(monkeypatch, tmp_path, api_reachable=True, logged_in=True)
+    session = full_campaign_session()
+    session["selection"]["trainee"] = None
+    session["selection"]["deck"] = None
+    gateway.responses[("GET", "/api/session")] = session
+    gateway.responses[("POST", "/api/inheritance/recommend")] = {
+        "success": True,
+        "target_card_id": 100601,
+        "results": [
+            {
+                "rank": 1,
+                "score": 220,
+                "compat_total": 171,
+                "parent1": {
+                    "id": 7001,
+                    "source": "owned",
+                    "name": "Owned A",
+                    "card_id": 1101,
+                },
+                "parent2": {
+                    "id": 8001,
+                    "source": "veteran",
+                    "name": "Rental A",
+                    "card_id": 1201,
+                },
+            }
+        ],
+    }
+    store.create(
+        headless_campaign_spec(
+            trainee={
+                "mode": "named",
+                "name": "Oguri",
+                "objective": "highest_affinity",
+            }
+        ),
+        campaign_id="campaign-1",
+    )
+    sweepy_mcp.start_parent_campaign(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="start-headless-named",
+    )
+
+    result = sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-headless-named",
+    )
+
+    assert result["success"] is True
+    assert result["run_setup"]["trainee"]["card_id"] == 100601
+    assert result["run_setup"]["deck"]["deck_id"] == 4
+    persisted = store.get("campaign-1")["context"]["run_setup"]
+    assert persisted["trainee"]["name"] == "Oguri Cap"
+    assert persisted["deck"]["name"] == "Stamina Parent"
+    selection = gateway.responses[("GET", "/api/session")]["selection"]
+    assert selection["trainee"]["id"] == 100601
+    assert selection["deck"]["id"] == 4
+
+
+def test_prepare_campaign_run_auto_trainee_chooses_highest_affinity_feasible_candidate(
+    monkeypatch, tmp_path
+):
+    gateway, store, _ = configure(monkeypatch, tmp_path, api_reachable=True, logged_in=True)
+    session = full_campaign_session()
+    session["selection"]["trainee"] = None
+    session["selection"]["deck"] = None
+    gateway.responses[("GET", "/api/session")] = session
+
+    def request(method, path, payload=None):
+        gateway.calls.append((method, path, payload))
+        if method == "POST" and path == "/api/selection":
+            gateway.responses[("GET", "/api/session")]["selection"] = payload["selection"]
+            return {"success": True}
+        if method == "POST" and path == "/api/inheritance/recommend":
+            card_id = int(payload["target_card_id"])
+            if card_id == 100101:
+                return {"success": True, "target_card_id": card_id, "results": []}
+            if card_id == 100601:
+                return {
+                    "success": True,
+                    "target_card_id": card_id,
+                    "results": [
+                        {
+                            "rank": 1,
+                            "score": 300,
+                            "compat_total": 150,
+                            "parent1": {
+                                "id": 7001,
+                                "source": "owned",
+                                "card_id": 1101,
+                            },
+                            "parent2": {
+                                "id": 8001,
+                                "source": "veteran",
+                                "card_id": 1201,
+                            },
+                        }
+                    ],
+                }
+            return {
+                "success": True,
+                "target_card_id": card_id,
+                "results": [
+                    {
+                        "rank": 1,
+                        "score": 250,
+                        "compat_total": 180,
+                        "parent1": {
+                            "id": 7001,
+                            "source": "owned",
+                            "card_id": 1101,
+                        },
+                        "parent2": {
+                            "id": 8001,
+                            "source": "veteran",
+                            "card_id": 1201,
+                        },
+                    }
+                ],
+            }
+        return gateway.responses.get((method, path), {"success": True})
+
+    gateway.request = request
+    store.create(
+        headless_campaign_spec(
+            trainee={"mode": "auto", "objective": "highest_affinity"}
+        ),
+        campaign_id="campaign-1",
+    )
+    sweepy_mcp.start_parent_campaign(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="start-headless-auto",
+    )
+
+    result = sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-headless-auto",
+    )
+
+    assert result["success"] is True
+    assert result["run_setup"]["trainee"]["card_id"] == 100301
+    assert result["run_setup"]["trainee"]["compat_total"] == 180
+    assert result["lineage"]["compat_total"] == 180
+
+
+def test_run_campaign_invalidates_stale_same_character_lineage_before_start(
+    monkeypatch, tmp_path
+):
+    gateway, store, _ = prepare_running_campaign(monkeypatch, tmp_path)
+    session = full_campaign_session()
+    session["parents"][0].update(
+        {"name": "Target Alt", "card_id": 100102}
+    )
+    gateway.responses[("GET", "/api/session")] = session
+    store.update_context(
+        "campaign-1",
+        {
+            "lineage": {
+                "setup": {
+                    "rank": 1,
+                    "score": 999,
+                    "parent1": {"id": 7001, "source": "owned", "name": "Target Alt"},
+                    "parent2": {"id": 8001, "source": "veteran", "name": "Rental A"},
+                },
+                "summary": {"parents": []},
+            }
+        },
+    )
+    store.set_next_action("campaign-1", "start_career")
+
+    result = sweepy_mcp.run_parent_campaign_career(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="career-run-invalid-lineage",
+    )
+
+    assert result["success"] is False
+    assert result["recovery_action"] == "prepare_parent_campaign_run"
+    assert result["campaign"]["next_action"] == "select_lineage"
+    assert result["campaign"]["context"]["lineage"] is None
+    assert result["campaign"]["usage"]["runs"] == 0
+    assert not [call for call in gateway.calls if call[:2] == ("POST", "/api/career/run")]
+
+
+def test_prepare_campaign_reuses_persisted_current_trainee_and_deck_after_restart(
+    monkeypatch, tmp_path
+):
+    gateway, store, _ = prepare_running_campaign(monkeypatch, tmp_path)
+    first = sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-before-restart",
+    )
+    assert first["success"] is True
+
+    session = gateway.responses[("GET", "/api/session")]
+    session["selection"]["trainee"] = None
+    session["selection"]["deck"] = None
+
+    second = sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-after-restart",
+    )
+
+    assert second["success"] is True
+    assert second["run_setup"]["trainee"]["card_id"] == first["run_setup"]["trainee"]["card_id"]
+    assert second["run_setup"]["deck"]["deck_id"] == first["run_setup"]["deck"]["deck_id"]
+
+
+def test_run_campaign_restores_persisted_run_setup_before_revalidating_lineage(
+    monkeypatch, tmp_path
+):
+    gateway, store, _ = prepare_running_campaign(monkeypatch, tmp_path)
+    sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-run-1",
+    )
+    prepared = store.get("campaign-1")["context"]["run_setup"]
+
+    session = gateway.responses[("GET", "/api/session")]
+    session["selection"]["trainee"] = {"id": 100601, "name": "Oguri Cap"}
+    session["selection"]["deck"] = {
+        "id": 99,
+        "name": "Wrong Deck",
+        "cards": [{"id": 999}],
+    }
+    gateway.responses[("POST", "/api/career/run")] = {
+        "success": True,
+        "runner": {"running": True},
+    }
+
+    result = sweepy_mcp.run_parent_campaign_career(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="career-run-restored-setup",
+    )
+
+    assert result["success"] is True
+    career_call = next(
+        call for call in gateway.calls if call[:2] == ("POST", "/api/career/run")
+    )
+    assert career_call[2]["card_id"] == prepared["trainee"]["card_id"]
+    assert career_call[2]["deck_id"] == prepared["deck"]["deck_id"]
 
 
 def test_run_campaign_career_starts_once_and_consumes_one_run(monkeypatch, tmp_path):
@@ -369,7 +764,96 @@ def test_run_campaign_career_starts_once_and_consumes_one_run(monkeypatch, tmp_p
     assert payload["rental_trained_chara_id"] == 8001
     assert payload["preset_name"] == "MANT Parent"
     assert payload["tp_mode"] == "wait"
+    assert payload["dev_mode"] is False
+    assert payload["scenario_id"] == 4
+    assert "scenario_id" not in payload["preset_overrides"]
+    assert "scenario" not in payload["preset_overrides"]
+    assert payload["preset_overrides"]["parent_run"] is True
+    assert payload["preset_overrides"]["tp_mode"] == "wait"
+    assert payload["preset_overrides"]["mandatory_race_list"] == []
+    assert payload["preset_overrides"]["extra_race_list"]
     assert store.get("campaign-1")["context"]["active_run"]["operation_id"] == "career-run-1"
+    assert store.get("campaign-1")["context"]["active_run"]["runtime_preset_overrides"] == payload["preset_overrides"]
+
+
+def test_run_campaign_preserves_base_preset_scenario_instead_of_forcing_mant(
+    monkeypatch, tmp_path
+):
+    gateway, store, _ = prepare_running_campaign(monkeypatch, tmp_path)
+    gateway.responses[("GET", "/api/presets")]["presets"][0].update(
+        {"scenario_id": 1, "scenario": 1}
+    )
+    sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-run-ura",
+    )
+    gateway.responses[("POST", "/api/career/run")] = {
+        "success": True,
+        "runner": {"running": True, "preset_name": "MANT Parent"},
+    }
+
+    result = sweepy_mcp.run_parent_campaign_career(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="career-run-ura",
+    )
+
+    assert result["success"] is True
+    career_call = next(
+        call for call in gateway.calls if call[:2] == ("POST", "/api/career/run")
+    )
+    payload = career_call[2]
+    assert payload["scenario_id"] == 1
+    assert "scenario_id" not in payload["preset_overrides"]
+    assert "scenario" not in payload["preset_overrides"]
+    assert payload["preset_overrides"]["parent_run"] is True
+    assert payload["preset_overrides"]["extra_race_list"]
+
+
+def test_run_campaign_records_actual_carat_spend_from_account_balance_delta(
+    monkeypatch, tmp_path
+):
+    carat_spec = ParentCampaignSpec(
+        account="alpha",
+        goal={
+            "surface_targets": ["turf"],
+            "distance_targets": ["medium"],
+            "minimum_rank": "S",
+        },
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 20,
+            "maximum_carats": 100,
+            "maximum_runtime_hours": 24,
+            "tp_mode": "carat",
+        },
+    )
+    gateway, store, _ = prepare_running_campaign(monkeypatch, tmp_path, spec=carat_spec)
+    session = gateway.responses[("GET", "/api/session")]
+    session["account"]["carrots"] = {"free": 1000, "paid": 0, "total": 1000}
+    sweepy_mcp.prepare_parent_campaign_run(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="prepare-run-carats",
+    )
+    gateway.responses[("POST", "/api/career/run")] = {
+        "success": True,
+        "account": {
+            "carrots": {"free": 990, "paid": 0, "total": 990},
+            "tp": {"current": 26, "max": 100},
+        },
+        "runner": {"running": True, "preset_name": "MANT Parent"},
+    }
+
+    result = sweepy_mcp.run_parent_campaign_career(
+        campaign_id="campaign-1",
+        confirm=True,
+        operation_id="career-run-carats",
+    )
+
+    assert result["success"] is True
+    assert result["campaign"]["usage"] == {"runs": 1, "carats": 10, "clocks": 0}
 
 
 def test_collect_campaign_result_evaluates_new_veteran_and_completes(
@@ -405,6 +889,7 @@ def test_collect_campaign_result_evaluates_new_veteran_and_completes(
                 "name": "New Medium Turf Parent",
                 "rank": 15,
                 "rank_score": 15000,
+                "acquired_at": "2026-07-14 03:04:40",
                 "stats": {
                     "speed": 1200,
                     "stamina": 1100,
@@ -412,7 +897,7 @@ def test_collect_campaign_result_evaluates_new_veteran_and_completes(
                     "guts": 700,
                     "wisdom": 900,
                 },
-                "wins": 15,
+                "wins": {"g1": 0, "g2": 0, "g3": 0, "total": 0},
                 "tree": {
                     "self": {
                         "factors": [
@@ -486,8 +971,39 @@ def test_campaign_summary_is_compact_and_discord_friendly(monkeypatch, tmp_path)
             "matched_targets": ["turf:lineage", "medium:lineage"],
             "missing_targets": [],
         },
+        "run_setup": None,
         "error": "",
     }
+
+
+def test_campaign_summary_reports_resolved_headless_run_setup(monkeypatch, tmp_path):
+    _, store, _ = configure(monkeypatch, tmp_path)
+    store.create(campaign_spec(), campaign_id="campaign-1")
+    store.update_context(
+        "campaign-1",
+        {
+            "run_setup": {
+                "trainee": {
+                    "card_id": 100301,
+                    "name": "Mejiro Ryan",
+                    "mode": "auto",
+                    "objective": "highest_affinity",
+                    "compat_total": 180,
+                },
+                "deck": {
+                    "deck_id": 4,
+                    "name": "Stamina Parent",
+                    "mode": "auto",
+                },
+            }
+        },
+    )
+
+    result = sweepy_mcp.get_parent_campaign_summary("campaign-1")
+
+    assert result["run_setup"]["trainee"]["name"] == "Mejiro Ryan"
+    assert result["run_setup"]["trainee"]["compat_total"] == 180
+    assert result["run_setup"]["deck"]["name"] == "Stamina Parent"
 
 
 def test_cancel_campaign_releases_lease(monkeypatch, tmp_path):

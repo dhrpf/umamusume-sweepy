@@ -3,10 +3,14 @@ from pydantic import ValidationError
 
 from career_bot.campaigns.models import (
     ApprovalMode,
+    DeckSelectionMode,
+    FactorAggregation,
     FactorScope,
+    LineageDepth,
     ParentCampaignSpec,
     ParentGoal,
     ParentStrategy,
+    TraineeSelectionMode,
 )
 
 
@@ -40,6 +44,75 @@ def test_goal_separates_candidate_and_lineage_requirements():
 
     assert goal.candidate_factors[0].name == "speed"
     assert goal.lineage_factors[0].name == "medium"
+
+
+def test_goal_supports_aptitude_free_power_nine_direct_lineage_target():
+    goal = ParentGoal(
+        surface_targets=[],
+        distance_targets=[],
+        preferred_stats=["power"],
+        target_factors=[
+            {
+                "name": "power",
+                "minimum_stars": 9,
+                "scope": "lineage",
+                "aggregation": "sum",
+                "lineage_depth": "direct",
+            }
+        ],
+    )
+
+    target = goal.target_factors[0]
+    assert goal.surface_targets == []
+    assert goal.distance_targets == []
+    assert target.minimum_stars == 9
+    assert target.aggregation is FactorAggregation.SUM
+    assert target.lineage_depth is LineageDepth.DIRECT
+
+
+def test_factor_target_rejects_invalid_star_semantics():
+    with pytest.raises(ValidationError, match="candidate factor"):
+        ParentGoal(
+            surface_targets=[],
+            distance_targets=[],
+            target_factors=[
+                {
+                    "name": "power",
+                    "minimum_stars": 9,
+                    "scope": "candidate",
+                    "aggregation": "sum",
+                }
+            ],
+        )
+
+    with pytest.raises(ValidationError, match="max aggregation"):
+        ParentGoal(
+            surface_targets=[],
+            distance_targets=[],
+            target_factors=[
+                {
+                    "name": "power",
+                    "minimum_stars": 9,
+                    "scope": "lineage",
+                    "aggregation": "max",
+                }
+            ],
+        )
+
+
+def test_lineage_factor_target_allows_total_nine_stars():
+    goal = ParentGoal(
+        surface_targets=["turf"],
+        distance_targets=["mile"],
+        target_factors=[
+            {"name": "power", "minimum_stars": 9, "scope": "lineage"},
+        ],
+    )
+
+    target = goal.lineage_factors[0]
+    assert target.minimum_stars == 9
+    assert target.aggregation is FactorAggregation.SUM
+    assert target.lineage_depth is LineageDepth.DIRECT
 
 
 def test_strategy_requires_hard_positive_limits_and_safe_tp_policy():
@@ -93,6 +166,80 @@ def test_campaign_spec_is_account_scoped_and_serializable():
     assert dumped["account"] == "alpha"
     assert dumped["goal"]["target_factors"][0]["scope"] == "lineage"
     assert dumped["strategy"]["maximum_runs"] == 20
+
+
+def test_campaign_selection_policies_default_to_current_for_backward_compatibility():
+    spec = ParentCampaignSpec(
+        account="alpha",
+        goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 10,
+            "maximum_runtime_hours": 12,
+        },
+    )
+
+    assert spec.trainee.mode is TraineeSelectionMode.CURRENT
+    assert spec.trainee.name == ""
+    assert spec.trainee.card_id == 0
+    assert spec.trainee.objective == "best_score"
+    assert spec.deck.mode is DeckSelectionMode.CURRENT
+    assert spec.deck.name == ""
+    assert spec.deck.deck_id == 0
+
+
+def test_campaign_accepts_named_or_auto_headless_selection_policies():
+    named = ParentCampaignSpec(
+        account="alpha",
+        goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 10,
+            "maximum_runtime_hours": 12,
+        },
+        trainee={"mode": "named", "name": " Oguri Cap "},
+        deck={"mode": "named", "name": " Parent Stamina "},
+    )
+    automatic = ParentCampaignSpec(
+        account="alpha",
+        goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        strategy=named.strategy,
+        trainee={"mode": "auto", "objective": "highest_affinity"},
+        deck={"mode": "auto"},
+    )
+
+    assert named.trainee.mode is TraineeSelectionMode.NAMED
+    assert named.trainee.name == "Oguri Cap"
+    assert named.deck.mode is DeckSelectionMode.NAMED
+    assert named.deck.name == "Parent Stamina"
+    assert automatic.trainee.mode is TraineeSelectionMode.AUTO
+    assert automatic.deck.mode is DeckSelectionMode.AUTO
+
+
+def test_named_selection_policy_requires_name_or_numeric_id():
+    with pytest.raises(ValidationError, match="named trainee selection"):
+        ParentCampaignSpec(
+            account="alpha",
+            goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+            strategy={
+                "preset_name": "MANT Parent",
+                "maximum_runs": 10,
+                "maximum_runtime_hours": 12,
+            },
+            trainee={"mode": "named"},
+        )
+
+    with pytest.raises(ValidationError, match="named deck selection"):
+        ParentCampaignSpec(
+            account="alpha",
+            goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+            strategy={
+                "preset_name": "MANT Parent",
+                "maximum_runs": 10,
+                "maximum_runtime_hours": 12,
+            },
+            deck={"mode": "named"},
+        )
 
 
 def test_invalid_surface_distance_stat_and_factor_scope_are_rejected():

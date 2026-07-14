@@ -74,22 +74,20 @@ def test_snapshot_tools_read_cache_without_gateway_requests(monkeypatch, tmp_pat
     assert compact["snapshot"]["refreshed_at"] == 123.0
     assert "records" not in compact["snapshot"]
     assert detailed["snapshot"]["records"]["trained_chara"][0]["trained_chara_id"] == 900001
-    assert veterans == {
-        "success": True,
-        "account": "alpha",
-        "cached": True,
-        "refreshed_at": 123.0,
-        "count": 1,
-        "veterans": [
-            {
-                "instance_id": 900001,
-                "card_id": "100101",
-                "name": "Legacy Alpha",
-                "rank": 14,
-                "rank_score": 20000,
-            }
-        ],
-    }
+    assert veterans["success"] is True
+    assert veterans["account"] == "alpha"
+    assert veterans["cached"] is True
+    assert veterans["refreshed_at"] == 123.0
+    assert veterans["count"] == 1
+    assert veterans["returned"] == 1
+    veteran = veterans["veterans"][0]
+    assert veteran["trained_chara_id"] == 900001
+    assert veteran["card_id"] == 100101
+    assert veteran["name"] == "Legacy Alpha"
+    assert veteran["rank"] == 14
+    assert veteran["rank_score"] == 20000
+    assert "direct_lineage_blue_totals" in veteran
+    assert veterans["definitions"]["final_stats_are_not_factors"] is True
 
 
 def test_legacy_rules_and_scan_use_cached_records_only(monkeypatch, tmp_path):

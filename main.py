@@ -526,6 +526,14 @@ def normalize_friend_veterans(data):
     return out, 'ok'
 
 
+def _base_chara_id(card_id):
+    try:
+        value = int(card_id or 0)
+    except (TypeError, ValueError):
+        return 0
+    return affinity_calc.card_to_chara_id(value) if value > 0 else 0
+
+
 def validate_start_selection(req):
     support_ids = [int(card_id) for card_id in req.support_card_ids]
     friend_card_id = int(req.friend_card_id)
@@ -548,7 +556,16 @@ def validate_start_selection(req):
 
     parent1_cards = active_parent_cards.get(int(req.parent_id_1), [])
     parent2_cards = active_parent_cards.get(int(req.parent_id_2), [])
-    if parent1_cards and parent2_cards and int(req.card_id) in (parent1_cards[0], parent2_cards[0]):
+    trainee_base = _base_chara_id(req.card_id)
+    direct_parent_cards = [
+        cards[0]
+        for cards in (parent1_cards, parent2_cards)
+        if cards
+    ]
+    if trainee_base and any(
+        _base_chara_id(card_id) == trainee_base
+        for card_id in direct_parent_cards
+    ):
         return "Selected direct parent is same character as trainee"
 
     return None
@@ -796,6 +813,72 @@ def _factor_goal_hits(parent, goal):
                 hits.append({'name': name, 'stars': stars, 'source': node_key})
     return score, hits
 
+def _normalized_factor_name(value):
+    return re.sub(r'[^a-z0-9]+', '', str(value or '').strip().lower())
+
+
+def _self_factor_stars(parent, factor_name):
+    wanted = _normalized_factor_name(factor_name)
+    if not wanted:
+        return 0
+    node = ((parent.get('tree') or {}).get('self') or {}) if isinstance(parent, dict) else {}
+    best = 0
+    for factor in node.get('factors') or []:
+        if not isinstance(factor, dict):
+            continue
+        category = str(factor.get('category') or '').strip().lower()
+        if category and category not in {'stat', 'blue'}:
+            continue
+        if _normalized_factor_name(factor.get('name')) != wanted:
+            continue
+        try:
+            best = max(best, int(factor.get('stars') or 0))
+        except (TypeError, ValueError):
+            continue
+    return best
+
+
+def _direct_lineage_target_evidence(p1, p2, goal):
+    rows = goal.get('target_factors') if isinstance(goal, dict) else []
+    evidence = []
+    score = 0
+    feasible = True
+    for target in rows or []:
+        if not isinstance(target, dict):
+            continue
+        if str(target.get('scope') or '').strip().lower() != 'lineage':
+            continue
+        if str(target.get('aggregation') or '').strip().lower() != 'sum':
+            continue
+        if str(target.get('lineage_depth') or '').strip().lower() != 'direct':
+            continue
+        name = str(target.get('name') or '').strip().lower()
+        if not name:
+            continue
+        try:
+            required = int(target.get('minimum_stars') or 0)
+        except (TypeError, ValueError):
+            required = 0
+        parent1_stars = _self_factor_stars(p1, name)
+        parent2_stars = _self_factor_stars(p2, name)
+        maximum_candidate_stars = 3
+        maximum_total = parent1_stars + parent2_stars + maximum_candidate_stars
+        matched = maximum_total >= required
+        if bool(target.get('required', True)) and not matched:
+            feasible = False
+        score += (parent1_stars + parent2_stars) * 25
+        evidence.append({
+            'name': name,
+            'required_stars': required,
+            'parent1_stars': parent1_stars,
+            'parent2_stars': parent2_stars,
+            'maximum_candidate_stars': maximum_candidate_stars,
+            'maximum_total_stars': maximum_total,
+            'feasible': matched,
+        })
+    return score, evidence, feasible
+
+
 def _shared_races_for_setup(p1, p2):
     wins = []
     for p in (p1, p2):
@@ -961,6 +1044,32 @@ class StartCareerRequest(BaseModel):
     boost_story_event_id: int = 0
     burn_clocks: bool = False
 
+RUNTIME_PRESET_OVERRIDE_KEYS = frozenset({
+    "scenario_id",
+    "scenario",
+    "parent_run",
+    "tp_mode",
+    "extra_race_list",
+    "mandatory_race_list",
+})
+
+
+def apply_runtime_preset_overrides(preset, overrides):
+    merged = dict(preset or {})
+    if not isinstance(overrides, dict):
+        return merged
+    for key in RUNTIME_PRESET_OVERRIDE_KEYS:
+        if key not in overrides:
+            continue
+        value = overrides[key]
+        if isinstance(value, list):
+            value = list(value)
+        elif isinstance(value, dict):
+            value = dict(value)
+        merged[key] = value
+    return merged
+
+
 class RunCareerRequest(BaseModel):
     card_id: int = 0
     support_card_ids: list[int] = []
@@ -985,6 +1094,7 @@ class RunCareerRequest(BaseModel):
     run_delay_min_min: int = 0
     run_delay_max_min: int = 0
     tp_mode: str = "carat"
+    preset_overrides: dict = Field(default_factory=dict)
 
 class SaveRacesRequest(BaseModel):
     preset_name: str
@@ -1064,12 +1174,26 @@ class InheritanceRecommendRequest(BaseModel):
 async def inheritance_recommend(req: InheritanceRecommendRequest):
     if not active_dashboard_data:
         return {"success": False, "detail": "Login/load account first"}
-    parents = [p for p in _pool_parents(req.pool) if p.get('tree')]
+    target_base_chara_id = _base_chara_id(req.target_card_id)
+    all_parents = [p for p in _pool_parents(req.pool) if p.get('tree')]
+    parents = []
+    excluded_same_as_trainee = 0
+    for parent in all_parents:
+        parent_base = _base_chara_id(parent.get('card_id'))
+        if target_base_chara_id and parent_base == target_base_chara_id:
+            excluded_same_as_trainee += 1
+            continue
+        parents.append(parent)
     results = []
+    excluded_same_parent_character_pairs = 0
+    excluded_factor_infeasible_pairs = 0
     mdb = master_data.status(base_dir).get('master_mdb_path')
     for i, p1 in enumerate(parents):
         for p2 in parents[i+1:]:
-            if str(p1.get('card_id')) == str(p2.get('card_id')):
+            p1_base = _base_chara_id(p1.get('card_id'))
+            p2_base = _base_chara_id(p2.get('card_id'))
+            if p1_base and p1_base == p2_base:
+                excluded_same_parent_character_pairs += 1
                 continue
             compat = {'total': 0, 'race_compat': 0}
             if mdb and p1.get('source') == 'owned' and p2.get('source') == 'owned':
@@ -1082,24 +1206,60 @@ async def inheritance_recommend(req: InheritanceRecommendRequest):
                         compat = {'total': 0, 'race_compat': 0}
             s1, h1 = _factor_goal_hits(p1, req.goal or {})
             s2, h2 = _factor_goal_hits(p2, req.goal or {})
+            target_factor_score, target_factor_evidence, target_factor_feasible = (
+                _direct_lineage_target_evidence(p1, p2, req.goal or {})
+            )
+            if not target_factor_feasible:
+                excluded_factor_infeasible_pairs += 1
+                continue
             races = _shared_races_for_setup(p1, p2)
             race_score = min(40, sum(r['count'] for r in races) * 2)
-            score = (compat.get('total') or 0) * 0.45 + s1 + s2 + race_score + (int(p1.get('rank_score') or 0) + int(p2.get('rank_score') or 0)) / 20000
+            score = (
+                (compat.get('total') or 0) * 0.45
+                + s1
+                + s2
+                + target_factor_score
+                + race_score
+                + (int(p1.get('rank_score') or 0) + int(p2.get('rank_score') or 0)) / 20000
+            )
             results.append({
-                'parent1': {'id': p1.get('instance_id'), 'name': p1.get('name'), 'source': p1.get('source')},
-                'parent2': {'id': p2.get('instance_id'), 'name': p2.get('name'), 'source': p2.get('source')},
+                'parent1': {
+                    'id': p1.get('instance_id'),
+                    'card_id': p1.get('card_id'),
+                    'base_chara_id': p1_base,
+                    'name': p1.get('name'),
+                    'source': p1.get('source'),
+                },
+                'parent2': {
+                    'id': p2.get('instance_id'),
+                    'card_id': p2.get('card_id'),
+                    'base_chara_id': p2_base,
+                    'name': p2.get('name'),
+                    'source': p2.get('source'),
+                },
                 'score': score,
                 'compat_total': compat.get('total') or 0,
                 'compat_tier': _compat_tier(compat.get('total') or 0),
                 'race_score': race_score,
                 'races': races[:8],
                 'spark_hits': (h1 + h2)[:12],
+                'target_factor_feasible': target_factor_feasible,
+                'target_factor_evidence': target_factor_evidence,
             })
     results.sort(key=lambda x: x['score'], reverse=True)
     limit = max(1, min(int(req.limit or 10), 50))
     for idx, row in enumerate(results[:limit], 1):
         row['rank'] = idx
-    return {'success': True, 'parent_count': len(parents), 'results': results[:limit]}
+    return {
+        'success': True,
+        'target_card_id': int(req.target_card_id),
+        'target_base_chara_id': target_base_chara_id,
+        'parent_count': len(parents),
+        'excluded_same_as_trainee': excluded_same_as_trainee,
+        'excluded_same_parent_character_pairs': excluded_same_parent_character_pairs,
+        'excluded_factor_infeasible_pairs': excluded_factor_infeasible_pairs,
+        'results': results[:limit],
+    }
 
 @app.get("/api/settings/turn-delay")
 async def get_turn_delay_settings():
@@ -1931,6 +2091,7 @@ async def run_career(req: RunCareerRequest):
         preset = preset_store.read_one(preset_name)
         if not preset:
             return {"success": False, "detail": f"{preset_name} preset missing"}
+        preset = apply_runtime_preset_overrides(preset, req.preset_overrides)
 
     # Apply preset-level turn delay to the global delay module
     _apply_preset_turn_delay(preset)
