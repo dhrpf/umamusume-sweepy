@@ -101,10 +101,7 @@ class FakeStore:
     def reserve_prepared_run_start(self, campaign_id, operation_id, *, prepared_run=None):
         with self.lock:
             run_start = self.campaign.setdefault("context", {}).get("run_start")
-            if run_start and (
-                run_start["status"] == "STARTING"
-                or (run_start["operation_id"] == operation_id and run_start["status"] == "STARTED")
-            ):
+            if run_start and run_start["status"] in {"STARTING", "STARTED"}:
                 return {"acquired": False, "run_start": deepcopy(run_start)}
             run_start = {"operation_id": operation_id, "status": "STARTING"}
             self.campaign["context"]["run_start"] = run_start
@@ -238,7 +235,14 @@ def test_create_campaign_enforces_web_workflow(change, match):
     "change,match",
     [
         ({"final_uma": {"card_id": True}}, "final_uma.card_id"),
+        ({"trainee": {"card_id": True}}, "trainee.card_id"),
+        ({"deck": {"deck_id": True}}, "deck.deck_id"),
+        ({"final_parent": {"chara_id": True}}, "final_parent.chara_id"),
+        ({"final_parent": {"trained_chara_id": True}}, "final_parent.trained_chara_id"),
+        ({"loop_members": [{"chara_id": True, "deck_id": 1}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}, {"chara_id": 4, "deck_id": 4}]}, "chara_id"),
         ({"loop_members": [{"chara_id": 1, "deck_id": True}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}, {"chara_id": 4, "deck_id": 4}]}, "deck_id"),
+        ({"strategy": {**valid_spec()["strategy"], "maximum_runs": True}}, "maximum_runs"),
+        ({"spark_targets": [{"category": "blue", "name": "stamina", "minimum_stars": True}]}, "minimum_stars"),
     ],
 )
 def test_create_rejects_boolean_integer_fields_before_pydantic(change, match):
@@ -272,6 +276,17 @@ def test_prepare_defaults_to_review_and_persists_before_return():
     assert context["pending_review"]["kind"] == "prepared_run"
     assert context["review_required"] is True
     assert runner.calls[-1] == ("require_user_input", "cmp1", "approve_run")
+
+
+def test_prepare_next_run_resets_previous_run_start_reservation():
+    svc, store, *_ = service()
+    store.campaign["context"]["run_start"] = {
+        "operation_id": "old-operation",
+        "status": "STARTED",
+        "result": {"job_id": "old-job"},
+    }
+    svc.prepare_next_run("cmp1")
+    assert store.campaign["context"]["run_start"] is None
 
 
 def test_activate_uses_fresh_snapshot_and_runner_start():
@@ -346,6 +361,16 @@ def test_approve_delegates_one_persisted_request_exactly_once():
     assert second == first
     assert len(started) == 1
     assert started[0]["race_overrides"] == [303]
+
+
+def test_second_approval_with_different_allowed_override_never_starts_twice():
+    svc, _, _, started = service()
+    svc.prepare_next_run("cmp1")
+    first = svc.approve_run("cmp1", {"race_overrides": [303]})
+    second = svc.approve_run("cmp1", {"race_overrides": [404]})
+    assert first == {"started": True}
+    assert second == first
+    assert len(started) == 1
 
 
 def test_approve_rejects_unknown_or_identity_overrides():
@@ -481,8 +506,31 @@ def test_record_replay_does_not_duplicate_candidate():
     assert len([row for row in store.candidates if row["candidate_id"] == "result-1"]) == 1
 
 
+def test_changed_payload_replay_returns_stored_evaluation_only():
+    svc, store, *_ = service()
+    candidate, pairings = completed_candidate(affinity=100, required=8)
+    candidate["candidate_id"] = "result-stable"
+    first = svc.record_completed_veteran("cmp1", candidate, pairings)
+    changed = {**candidate, "spark_totals": {("blue", "stamina"): 9}}
+    second = svc.record_completed_veteran(
+        "cmp1",
+        changed,
+        [{"key": "pair", "affinity": 200, "rental": False}],
+    )
+    stored = first["candidate"]["evaluation"]
+    assert second["decision"] == stored["decision"]
+    assert second["targets"] == stored["targets"]
+    assert second["final_setup"] == stored["final_setup"]
+    assert len(store.candidates) == 1
+
+
 def test_select_candidate_uses_stored_final_setup_semantics():
     svc, store, runner, _ = service()
+    store.campaign["state"] = "NEEDS_USER_INPUT"
+    store.campaign["next_action"] = "select_candidate"
+    store.campaign["context"] = {
+        "pending_review": {"kind": "candidate_tradeoff", "candidate_id": "candidate-ready"}
+    }
     store.candidates.append({
         "candidate_id": "candidate-ready",
         "score": 1,
@@ -493,6 +541,28 @@ def test_select_candidate_uses_stored_final_setup_semantics():
     assert result["campaign"]["state"] == "COMPLETED"
     assert result["candidate"]["selected"] is True
     assert runner.calls == []
+
+
+@pytest.mark.parametrize(
+    "state,next_action,review",
+    [
+        ("COMPLETED", "", {"kind": "candidate_tradeoff", "candidate_id": "candidate-ready"}),
+        ("NEEDS_USER_INPUT", "approve_run", {"kind": "prepared_run"}),
+        ("NEEDS_USER_INPUT", "select_candidate", {"kind": "candidate_tradeoff", "candidate_id": "other"}),
+    ],
+)
+def test_select_candidate_rejects_unrelated_state_or_review(state, next_action, review):
+    svc, store, *_ = service()
+    store.campaign.update({"state": state, "next_action": next_action})
+    store.campaign["context"] = {"pending_review": review}
+    store.candidates.append({
+        "candidate_id": "candidate-ready",
+        "score": 1,
+        "selected": False,
+        "evaluation": {"accepted": True, "final_setup": {"status": "READY"}},
+    })
+    with pytest.raises(ValueError, match="candidate selection review"):
+        svc.select_candidate("cmp1", "candidate-ready")
 
 
 def test_simple_runner_delegations():

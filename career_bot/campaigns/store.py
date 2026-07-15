@@ -510,10 +510,7 @@ class CampaignStore:
                 raise CampaignNotFound(f"Campaign not found: {campaign_id}")
             context = _json_loads(row["context_json"]) or {}
             current = context.get("run_start") if isinstance(context.get("run_start"), dict) else {}
-            if current.get("status") == "STARTING" or (
-                current.get("operation_id") == operation_id
-                and current.get("status") == "STARTED"
-            ):
+            if current.get("status") in {"STARTING", "STARTED"}:
                 connection.execute("COMMIT")
                 return {"acquired": False, "run_start": current}
             run_start = {

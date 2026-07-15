@@ -327,6 +327,17 @@ def test_prepared_run_reservation_is_atomic_and_failed_start_can_retry(tmp_path)
     assert replay == {"acquired": False, "run_start": started}
 
 
+def test_started_prepared_run_rejects_different_override_operation(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    store.reserve_prepared_run_start("campaign-1", "operation-a")
+    started = store.finish_prepared_run_start(
+        "campaign-1", "operation-a", status="STARTED", result={"job_id": "job-1"}
+    )
+    replay = store.reserve_prepared_run_start("campaign-1", "operation-b")
+    assert replay == {"acquired": False, "run_start": started}
+
+
 def test_candidate_result_transaction_replays_without_duplicate_and_selects_completion(tmp_path):
     store = CampaignStore(tmp_path / "campaigns.sqlite3")
     campaign = _evaluating_campaign(store)

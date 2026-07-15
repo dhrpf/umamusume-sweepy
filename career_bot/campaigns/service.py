@@ -66,12 +66,7 @@ class CampaignService:
 
     def create_campaign(self, spec: ParentCampaignSpec | Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(spec, Mapping):
-            final_uma = spec.get("final_uma")
-            if isinstance(final_uma, Mapping) and isinstance(final_uma.get("card_id"), bool):
-                raise ValueError("final_uma.card_id must be an integer")
-            for member in spec.get("loop_members") or []:
-                if isinstance(member, Mapping) and isinstance(member.get("deck_id"), bool):
-                    raise ValueError("loop member deck_id must be an integer")
+            self._reject_boolean_integer_fields(spec)
         validated = ParentCampaignSpec.model_validate(spec)
         if validated.final_uma.card_id <= 0:
             raise ValueError("final_uma.card_id must be positive for Web campaigns")
@@ -293,6 +288,15 @@ class CampaignService:
             context_updates=context_updates,
             expected_version=campaign.get("version"),
         )
+        if persisted.get("replayed"):
+            stored_evaluation = persisted["candidate"].get("evaluation") or {}
+            return {
+                "campaign": persisted["campaign"],
+                "candidate": persisted["candidate"],
+                "decision": stored_evaluation.get("decision", "accept"),
+                "targets": stored_evaluation.get("targets", {}),
+                "final_setup": stored_evaluation.get("final_setup", {}),
+            }
         return {
             "campaign": persisted["campaign"],
             "candidate": persisted["candidate"],
@@ -303,6 +307,15 @@ class CampaignService:
 
     def select_candidate(self, campaign_id: str, candidate_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
+        review = (campaign.get("context") or {}).get("pending_review")
+        if not (
+            campaign.get("state") == CampaignState.NEEDS_USER_INPUT.value
+            and campaign.get("next_action") == "select_candidate"
+            and isinstance(review, Mapping)
+            and review.get("kind", review.get("type")) == "candidate_tradeoff"
+            and review.get("candidate_id") == candidate_id
+        ):
+            raise ValueError("campaign has no matching candidate selection review")
         candidate = self.store.get_candidate(campaign_id, candidate_id)
         evaluation = candidate.get("evaluation") or {}
         final_status = (evaluation.get("final_setup") or {}).get("status")
@@ -326,6 +339,48 @@ class CampaignService:
 
     def _snapshot(self, account: str) -> dict[str, Any]:
         return self.runtime_snapshot(account)
+
+    @staticmethod
+    def _reject_boolean_integer_fields(spec: Mapping[str, Any]) -> None:
+        scalar_paths = (
+            ("spec_version",),
+            ("trainee", "card_id"),
+            ("deck", "deck_id"),
+            ("final_uma", "card_id"),
+            ("final_parent", "chara_id"),
+            ("final_parent", "trained_chara_id"),
+            ("strategy", "maximum_runs"),
+            ("strategy", "maximum_carats"),
+            ("strategy", "maximum_clocks"),
+        )
+        for path in scalar_paths:
+            value: Any = spec
+            for part in path:
+                if not isinstance(value, Mapping) or part not in value:
+                    break
+                value = value[part]
+            else:
+                if isinstance(value, bool):
+                    raise ValueError(f"{'.'.join(path)} must be an integer")
+        for collection, fields in (
+            ("loop_members", ("chara_id", "deck_id")),
+            ("spark_targets", ("minimum_stars",)),
+        ):
+            for index, row in enumerate(spec.get(collection) or []):
+                if not isinstance(row, Mapping):
+                    continue
+                for field in fields:
+                    if isinstance(row.get(field), bool):
+                        raise ValueError(
+                            f"{collection}[{index}].{field} must be an integer"
+                        )
+        goal = spec.get("goal")
+        if isinstance(goal, Mapping):
+            for index, row in enumerate(goal.get("target_factors") or []):
+                if isinstance(row, Mapping) and isinstance(row.get("minimum_stars"), bool):
+                    raise ValueError(
+                        f"goal.target_factors[{index}].minimum_stars must be an integer"
+                    )
 
     @staticmethod
     def _rotation(campaign: Mapping[str, Any]) -> RotationState:
