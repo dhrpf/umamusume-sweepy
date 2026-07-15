@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
 
 from career_bot.campaigns.models import CampaignState, ParentCampaignSpec
@@ -227,3 +230,49 @@ def test_reopen_completed_is_explicit_and_preserves_terminal_transition_rules(tm
     assert reopened["ended_at"] is None
     assert reopened["error"] == ""
     assert store.recent_events("campaign-1")[0]["event_type"] == "campaign_reopened"
+
+
+def test_transition_context_rolls_back_when_transition_is_invalid(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    store.update_context("campaign-1", {"pending_review": {"kind": "original"}})
+
+    with pytest.raises(InvalidTransition):
+        store.transition(
+            "campaign-1",
+            CampaignState.COMPLETED,
+            context_updates={"pending_review": {"kind": "replacement"}},
+        )
+
+    campaign = store.get("campaign-1")
+    assert campaign["state"] == CampaignState.DRAFT.value
+    assert campaign["context"]["pending_review"] == {"kind": "original"}
+
+
+def test_two_store_instances_cannot_activate_same_account_concurrently(tmp_path):
+    database = tmp_path / "campaigns.sqlite3"
+    first = CampaignStore(database)
+    second = CampaignStore(database)
+    first.create(sample_spec(), campaign_id="campaign-1")
+    first.create(sample_spec(), campaign_id="campaign-2")
+    first.transition("campaign-1", CampaignState.READY)
+    first.transition("campaign-2", CampaignState.READY)
+    barrier = Barrier(2)
+
+    def activate(store, campaign_id):
+        barrier.wait()
+        try:
+            store.transition(campaign_id, CampaignState.STARTING_BOT)
+            return "activated"
+        except CampaignError:
+            return "blocked"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda args: activate(*args),
+                ((first, "campaign-1"), (second, "campaign-2")),
+            )
+        )
+
+    assert sorted(results) == ["activated", "blocked"]

@@ -307,31 +307,23 @@ class CampaignRunner:
         next_action: str,
         review: dict[str, Any],
     ) -> dict[str, Any]:
-        self.store.update_context(campaign_id, {"pending_review": review})
         return self.store.transition(
             campaign_id,
             CampaignState.NEEDS_USER_INPUT,
             next_action=next_action,
+            context_updates={"pending_review": review},
         )
 
     def continue_for_preferred(self, campaign_id: str) -> dict[str, Any]:
-        campaign = self.store.get(campaign_id)
-        if CampaignState(campaign["state"]) is not CampaignState.COMPLETED:
-            raise InvalidTransition(
-                f"Campaign {campaign_id} must be COMPLETED to continue for preferred targets"
-            )
-        self.store.update_context(
-            campaign_id,
-            {
-                "required_target_achieved": True,
-                "pending_review": None,
-                "continue_preferred": True,
-            },
-        )
         return self.store.reopen_completed(
             campaign_id,
             CampaignState.SELECTING_LINEAGE,
             next_action="prepare_next_run",
+            context_updates={
+                "required_target_achieved": True,
+                "pending_review": None,
+                "continue_preferred": True,
+            },
         )
 
     def pause(self, campaign_id: str) -> dict[str, Any]:

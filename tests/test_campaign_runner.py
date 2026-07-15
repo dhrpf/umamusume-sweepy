@@ -2,12 +2,12 @@ import pytest
 
 from career_bot.campaigns.models import CampaignState, ParentCampaignSpec
 from career_bot.campaigns.runner import CampaignRunner
-from career_bot.campaigns.store import CampaignStore, InvalidTransition
+from career_bot.campaigns.store import CampaignError, CampaignStore, InvalidTransition
 
 
-def sample_spec(approval_mode="ambiguity_only", maximum_runs=3):
+def sample_spec(approval_mode="ambiguity_only", maximum_runs=3, account="alpha"):
     return ParentCampaignSpec(
-        account="alpha",
+        account=account,
         goal={
             "surface_targets": ["turf"],
             "distance_targets": ["medium"],
@@ -214,6 +214,48 @@ def test_require_user_input_persists_pending_review_before_transition(tmp_path):
     }
 
 
+def test_require_user_input_rolls_back_review_when_transition_fails(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    runner = CampaignRunner(store)
+
+    with pytest.raises(InvalidTransition):
+        runner.require_user_input(
+            "campaign-1",
+            "review_lineage",
+            {"kind": "pre_run"},
+        )
+
+    assert "pending_review" not in store.get("campaign-1")["context"]
+
+
+def test_repeated_require_user_input_updates_review_and_next_action(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    runner = CampaignRunner(store)
+    runner.start(
+        "campaign-1",
+        runtime={"api_reachable": True, "logged_in": True},
+        bot_state={"session": {"logged_in": True}},
+    )
+    runner.require_user_input(
+        "campaign-1",
+        "review_lineage",
+        {"kind": "lineage"},
+    )
+
+    updated = runner.require_user_input(
+        "campaign-1",
+        "review_support",
+        {"kind": "support"},
+    )
+
+    assert updated["next_action"] == "review_support"
+    assert updated["error"] == ""
+    assert updated["context"]["pending_review"] == {"kind": "support"}
+    assert store.recent_events("campaign-1")[0]["event_type"] == "state_updated"
+
+
 def test_continue_for_preferred_requires_completed_campaign(tmp_path):
     store = CampaignStore(tmp_path / "campaigns.sqlite3")
     store.create(sample_spec(), campaign_id="campaign-1")
@@ -253,4 +295,36 @@ def test_continue_for_preferred_reopens_completed_campaign(tmp_path):
         "required_target_achieved": True,
         "pending_review": None,
         "continue_preferred": True,
+    }
+
+
+def test_continue_for_preferred_conflict_leaves_completed_context_untouched(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="completed")
+    store.create(sample_spec(), campaign_id="active")
+    for state in (
+        CampaignState.READY,
+        CampaignState.STARTING_BOT,
+        CampaignState.SELECTING_LINEAGE,
+        CampaignState.RUNNING_CAREER,
+        CampaignState.EVALUATING_RESULT,
+        CampaignState.COMPLETED,
+    ):
+        store.transition("completed", state)
+    store.update_context(
+        "completed",
+        {"pending_review": {"kind": "keep"}, "continue_preferred": False},
+    )
+    store.transition("active", CampaignState.READY)
+    store.transition("active", CampaignState.STARTING_BOT)
+    runner = CampaignRunner(store)
+
+    with pytest.raises(CampaignError, match="active campaign"):
+        runner.continue_for_preferred("completed")
+
+    unchanged = store.get("completed")
+    assert unchanged["state"] == CampaignState.COMPLETED.value
+    assert unchanged["context"] == {
+        "pending_review": {"kind": "keep"},
+        "continue_preferred": False,
     }

@@ -478,7 +478,10 @@ class CampaignStore:
         *,
         next_action: str = "",
         error: str = "",
+        context_updates: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if context_updates is not None and not isinstance(context_updates, dict):
+            raise ValueError("campaign context updates must be a dict")
         target = CampaignState(new_state)
         now = float(self.clock())
         connection = self._connect()
@@ -491,10 +494,8 @@ class CampaignStore:
             if row is None:
                 raise CampaignNotFound(f"Campaign not found: {campaign_id}")
             current = CampaignState(row["state"])
-            if current == target:
-                connection.execute("COMMIT")
-                return self._campaign_from_row(row)
-            if target not in ALLOWED_TRANSITIONS[current]:
+            same_state = current == target
+            if not same_state and target not in ALLOWED_TRANSITIONS[current]:
                 raise InvalidTransition(
                     f"Campaign {campaign_id} cannot transition from {current.value} to {target.value}"
                 )
@@ -506,13 +507,17 @@ class CampaignStore:
                 target=target,
             )
 
+            context = _json_loads(row["context_json"]) or {}
+            if context_updates is not None:
+                context = _deep_merge(context, sanitize_for_storage(context_updates))
             started_at = row["started_at"]
             if started_at is None and target is not CampaignState.DRAFT:
                 started_at = now
             ended_at = now if target in TERMINAL_STATES else row["ended_at"]
             connection.execute(
                 "UPDATE campaigns SET state=?, updated_at=?, started_at=?, ended_at=?, "
-                "next_action=?, error_text=?, paused_from_state='', version=version+1 "
+                "next_action=?, error_text=?, context_json=?, paused_from_state='', "
+                "version=version+1 "
                 "WHERE campaign_id=?",
                 (
                     target.value,
@@ -521,18 +526,20 @@ class CampaignStore:
                     ended_at,
                     str(next_action or ""),
                     str(error or "")[:4096],
+                    _json_dumps(context),
                     str(campaign_id),
                 ),
             )
             self._insert_event(
                 connection,
                 str(campaign_id),
-                "state_changed",
+                "state_updated" if same_state else "state_changed",
                 {
                     "from": current.value,
                     "to": target.value,
                     "next_action": str(next_action or ""),
                     "error": str(error or "")[:4096],
+                    "context_keys": sorted(str(key) for key in (context_updates or {})),
                 },
             )
             updated = connection.execute(
@@ -554,7 +561,10 @@ class CampaignStore:
         state: CampaignState | str = CampaignState.SELECTING_LINEAGE,
         *,
         next_action: str = "",
+        context_updates: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if context_updates is not None and not isinstance(context_updates, dict):
+            raise ValueError("campaign context updates must be a dict")
         target = CampaignState(state)
         if target in TERMINAL_STATES or target is CampaignState.DRAFT:
             raise InvalidTransition(f"Cannot reopen a campaign into {target.value}")
@@ -579,10 +589,20 @@ class CampaignStore:
                 campaign_id=str(campaign_id),
                 target=target,
             )
+            context = _json_loads(row["context_json"]) or {}
+            if context_updates is not None:
+                context = _deep_merge(context, sanitize_for_storage(context_updates))
             connection.execute(
                 "UPDATE campaigns SET state=?, updated_at=?, ended_at=NULL, next_action=?, "
-                "error_text='', paused_from_state='', version=version+1 WHERE campaign_id=?",
-                (target.value, now, str(next_action or ""), str(campaign_id)),
+                "error_text='', context_json=?, paused_from_state='', version=version+1 "
+                "WHERE campaign_id=?",
+                (
+                    target.value,
+                    now,
+                    str(next_action or ""),
+                    _json_dumps(context),
+                    str(campaign_id),
+                ),
             )
             self._insert_event(
                 connection,
@@ -592,6 +612,7 @@ class CampaignStore:
                     "from": current.value,
                     "to": target.value,
                     "next_action": str(next_action or ""),
+                    "context_keys": sorted(str(key) for key in (context_updates or {})),
                 },
             )
             updated = connection.execute(
