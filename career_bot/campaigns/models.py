@@ -318,8 +318,8 @@ class FinalUmaSelection(BaseModel):
 class FinalParentTarget(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    chara_id: int = Field(ge=0)
-    trained_chara_id: int = Field(ge=0)
+    chara_id: int = Field(default=0, ge=0)
+    trained_chara_id: int = Field(default=0, ge=0)
 
 
 class CampaignLoopMember(BaseModel):
@@ -348,7 +348,7 @@ class ParentCampaignSpec(BaseModel):
     deck: DeckSelectionPolicy = Field(default_factory=DeckSelectionPolicy)
     final_uma: FinalUmaSelection = Field(default_factory=FinalUmaSelection)
     spark_targets: list[CampaignSparkTarget] = Field(default_factory=list)
-    final_parent: FinalParentTarget | None = None
+    final_parent: FinalParentTarget = Field(default_factory=FinalParentTarget)
     loop_members: list[CampaignLoopMember] = Field(default_factory=list)
     options: CampaignOptions = Field(default_factory=CampaignOptions)
 

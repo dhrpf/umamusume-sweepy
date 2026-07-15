@@ -8,6 +8,7 @@ from career_bot.campaigns.models import (
     FactorScope,
     LineageDepth,
     ParentCampaignSpec,
+    FinalParentTarget,
     ParentGoal,
     ParentStrategy,
     SparkCategory,
@@ -191,10 +192,18 @@ def test_campaign_selection_policies_default_to_current_for_backward_compatibili
     assert spec.spec_version == 2
     assert spec.final_uma.card_id == 0
     assert spec.spark_targets == []
-    assert spec.final_parent is None
+    assert spec.final_parent.chara_id == 0
+    assert spec.final_parent.trained_chara_id == 0
     assert spec.loop_members == []
     assert spec.options.allow_rental is False
     assert spec.options.auto_use_best_veteran is False
+
+
+def test_final_parent_target_defaults_to_zero_ids():
+    target = FinalParentTarget()
+
+    assert target.chara_id == 0
+    assert target.trained_chara_id == 0
 
 
 def test_campaign_spec_accepts_new_web_planner_shape():
