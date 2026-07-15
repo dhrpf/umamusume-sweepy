@@ -28,6 +28,9 @@ let parentRequestSequence = 0;
 let loopRequestSequence = 0;
 let parentController = null;
 let loopController = null;
+let campaignLoadSequence = 0;
+let campaignLoadController = null;
+let requestedCampaignId = '';
 const pendingMutations = new Set();
 
 const byId = (id) => document.getElementById(id);
@@ -359,11 +362,22 @@ function renderDetail() {
 }
 
 async function loadCampaign(id) {
-    const data = await apiJson(`/api/campaigns/${encodeURIComponent(id)}`);
-    state.selectedCampaign = { ...(data.campaign || {}) };
-    if (Array.isArray(data.events)) state.selectedCampaign.events = data.events;
-    if (Array.isArray(data.candidates)) state.selectedCampaign.candidates = data.candidates;
-    renderCampaignList(); renderDetail();
+    const normalizedId = String(id);
+    const sequence = ++campaignLoadSequence;
+    requestedCampaignId = normalizedId;
+    campaignLoadController?.abort();
+    campaignLoadController = new AbortController();
+    try {
+        const data = await apiJson(`/api/campaigns/${encodeURIComponent(normalizedId)}`, { signal: campaignLoadController.signal });
+        if (sequence !== campaignLoadSequence || requestedCampaignId !== normalizedId) return false;
+        state.selectedCampaign = { ...(data.campaign || {}) };
+        if (Array.isArray(data.events)) state.selectedCampaign.events = data.events;
+        if (Array.isArray(data.candidates)) state.selectedCampaign.candidates = data.candidates;
+        renderCampaignList(); renderDetail();
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 async function reloadCampaigns() {
@@ -429,7 +443,8 @@ async function campaignAction(action, payload, button) {
         try {
             await apiJson(`/api/campaigns/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: payload === undefined ? undefined : JSON.stringify(payload) });
             showMessage('Campaign updated.', 'success');
-            await reloadCampaigns(); await loadCampaign(id);
+            await reloadCampaigns();
+            if (requestedCampaignId === String(id)) await loadCampaign(id);
         } catch (_) {}
     });
 }
