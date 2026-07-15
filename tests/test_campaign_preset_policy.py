@@ -1,3 +1,5 @@
+import pytest
+
 from career_bot.campaigns.preset_policy import (
     build_campaign_base_preset,
     build_step_overrides,
@@ -109,3 +111,74 @@ def test_step_overrides_separate_core_and_optional_races():
         "extra_race_list": [3],
         "parent_run": False,
     }
+
+
+@pytest.mark.parametrize("running_style", [True, False, 0, 5, -1, "3", None])
+def test_base_preset_rejects_invalid_running_style(running_style):
+    with pytest.raises((TypeError, ValueError)):
+        build_campaign_base_preset(
+            name="Campaign / Invalid Style",
+            running_style=running_style,
+            scenario_id=4,
+            spark_targets=[],
+            core_races=[],
+            optional_races=[],
+        )
+
+
+@pytest.mark.parametrize("scenario_id", [True, False, 0, 3, 5, -1, "4", None])
+def test_base_preset_rejects_unsupported_scenario_id(scenario_id):
+    with pytest.raises((TypeError, ValueError)):
+        build_campaign_base_preset(
+            name="Campaign / Invalid Scenario",
+            running_style=3,
+            scenario_id=scenario_id,
+            spark_targets=[],
+            core_races=[],
+            optional_races=[],
+        )
+
+
+@pytest.mark.parametrize("parent_run", [1, 0, "true", None])
+def test_step_overrides_rejects_non_bool_parent_run(parent_run):
+    with pytest.raises((TypeError, ValueError)):
+        build_step_overrides(
+            core_races=[],
+            optional_races=[],
+            parent_run=parent_run,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_races"),
+    [
+        ("core_races", "1,2"),
+        ("optional_races", b"1,2"),
+        ("core_races", None),
+        ("optional_races", 12),
+        ("core_races", [0]),
+        ("optional_races", [-1]),
+        ("core_races", [True]),
+        ("optional_races", [False]),
+        ("core_races", ["1"]),
+        ("optional_races", [1.0]),
+        ("core_races", [1, None]),
+    ],
+)
+def test_builders_reject_invalid_race_lists(field, invalid_races):
+    arguments = {
+        "core_races": [1],
+        "optional_races": [2],
+    }
+    arguments[field] = invalid_races
+
+    with pytest.raises((TypeError, ValueError)):
+        build_campaign_base_preset(
+            name="Campaign / Invalid Races",
+            running_style=3,
+            scenario_id=4,
+            spark_targets=[],
+            **arguments,
+        )
+    with pytest.raises((TypeError, ValueError)):
+        build_step_overrides(**arguments)
