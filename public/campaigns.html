@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaigns · Sweepy改二</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/campaigns.css">
+</head>
+<body>
+<div id="app">
+    <header class="navbar campaign-navbar">
+        <div class="navbar-title"><h1 class="title">SWEEPY<span>改二</span></h1></div>
+        <nav class="campaign-nav" aria-label="Primary navigation">
+            <a class="btn btn-sm" href="/">Dashboard</a>
+            <a class="btn btn-sm" href="/veteran">Veterans</a>
+            <a class="btn btn-sm" href="/dailies">Dailies</a>
+            <a class="btn btn-sm is-active" href="/campaigns" aria-current="page">Campaigns</a>
+        </nav>
+    </header>
+
+    <main class="campaign-main">
+        <div id="campaign-message" class="campaign-message" role="status" aria-live="polite"></div>
+        <div class="campaign-layout">
+            <section id="campaign-list-view" class="campaign-panel" aria-labelledby="campaign-list-title">
+                <div class="campaign-heading-row">
+                    <div><p class="eyebrow">Parent Runs</p><h2 id="campaign-list-title">Campaigns</h2></div>
+                    <button id="new-campaign-btn" class="btn btn-sm btn-primary" type="button">New</button>
+                </div>
+                <div id="campaign-account" class="muted"></div>
+                <div id="campaign-list" class="campaign-list"></div>
+            </section>
+
+            <section id="campaign-create-view" class="campaign-panel" aria-labelledby="campaign-create-title">
+                <div class="campaign-heading-row">
+                    <div><p class="eyebrow">Campaign Builder</p><h2 id="campaign-create-title">Create Campaign</h2></div>
+                    <button id="close-create-btn" class="btn btn-sm" type="button">Close</button>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>1</span> Final Uma</h3>
+                    <label for="final-uma-select">Final Uma</label>
+                    <select id="final-uma-select" class="form-input"><option value="">Select Final Uma</option></select>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>2</span> Spark Targets</h3>
+                    <div id="spark-targets"></div>
+                    <div class="inline-actions">
+                        <button id="add-blue-target-btn" class="btn btn-sm" type="button">Add Blue</button>
+                        <button id="add-pink-target-btn" class="btn btn-sm" type="button">Add Pink</button>
+                    </div>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>3</span> Final Parent</h3>
+                    <button id="recommend-parent-btn" class="btn btn-primary" type="button">Recommend Final Parents</button>
+                    <div id="parent-recommendations" class="recommendation-grid"></div>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>4</span> Four-Member Loop</h3>
+                    <button id="recommend-loop-btn" class="btn btn-primary" type="button">Recommend Loops</button>
+                    <h4>Runnable</h4><div id="loop-recommendations" class="recommendation-grid"></div>
+                    <h4>Ideal Upgrades</h4><div id="loop-upgrades" class="recommendation-grid"></div>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>5</span> Manual Deck Assignment</h3>
+                    <div id="deck-assignments"></div>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>6</span> Strategy</h3>
+                    <div class="form-grid">
+                        <label>Base preset<select id="base-preset-select" class="form-input"><option value="">Select preset</option></select></label>
+                        <label>Maximum runs<input id="maximum-runs" class="form-input" type="number" min="1" max="1000" value="30"></label>
+                        <label>Maximum runtime hours<input id="maximum-runtime-hours" class="form-input" type="number" min="0.1" max="720" step="0.5" value="24"></label>
+                    </div>
+                    <label class="check-row"><input id="allow-rental" type="checkbox"> Allow rental</label>
+                    <label class="check-row"><input id="auto-use-best-veteran" type="checkbox"> Auto-use best veteran</label>
+                </div>
+
+                <div class="builder-step">
+                    <h3><span>7</span> Preview &amp; Save</h3>
+                    <pre id="campaign-preview" class="campaign-preview"></pre>
+                    <button id="save-campaign-btn" class="btn btn-primary" type="button">Save Campaign</button>
+                </div>
+            </section>
+
+            <section id="campaign-detail-view" class="campaign-panel" aria-labelledby="campaign-detail-title">
+                <div class="campaign-heading-row"><div><p class="eyebrow">Server State</p><h2 id="campaign-detail-title">Campaign Detail</h2></div></div>
+                <div id="campaign-detail"></div>
+            </section>
+        </div>
+    </main>
+</div>
+<script src="/campaigns.js" defer></script>
+</body>
+</html>
