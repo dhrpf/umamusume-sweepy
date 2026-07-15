@@ -307,15 +307,6 @@ class CampaignService:
 
     def select_candidate(self, campaign_id: str, candidate_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
-        review = (campaign.get("context") or {}).get("pending_review")
-        if not (
-            campaign.get("state") == CampaignState.NEEDS_USER_INPUT.value
-            and campaign.get("next_action") == "select_candidate"
-            and isinstance(review, Mapping)
-            and review.get("kind", review.get("type")) == "candidate_tradeoff"
-            and review.get("candidate_id") == candidate_id
-        ):
-            raise ValueError("campaign has no matching candidate selection review")
         candidate = self.store.get_candidate(campaign_id, candidate_id)
         evaluation = candidate.get("evaluation") or {}
         final_status = (evaluation.get("final_setup") or {}).get("status")

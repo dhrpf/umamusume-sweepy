@@ -1190,6 +1190,7 @@ class CampaignStore:
         state: CampaignState | str,
         next_action: str,
         context_updates: dict[str, Any] | None = None,
+        allowed_candidate_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         target = CampaignState(state)
         connection = self._connect()
@@ -1210,6 +1211,27 @@ class CampaignStore:
                     f"Candidate {candidate_id} not found in campaign {campaign_id}"
                 )
             current = CampaignState(campaign_row["state"])
+            current_context = _json_loads(campaign_row["context_json"]) or {}
+            review = current_context.get("pending_review")
+            review_type = (
+                review.get("kind", review.get("type"))
+                if isinstance(review, dict)
+                else None
+            )
+            allowed = {str(value) for value in (allowed_candidate_ids or set())}
+            if isinstance(review, dict):
+                if review.get("candidate_id") is not None:
+                    allowed.add(str(review["candidate_id"]))
+                allowed.update(str(value) for value in (review.get("candidate_ids") or []))
+            if not (
+                current is CampaignState.NEEDS_USER_INPUT
+                and campaign_row["next_action"] == "select_candidate"
+                and review_type == "candidate_tradeoff"
+                and str(candidate_id) in allowed
+            ):
+                raise InvalidTransition(
+                    f"Campaign {campaign_id} has no matching candidate selection review"
+                )
             if target != current and target not in ALLOWED_TRANSITIONS[current]:
                 raise InvalidTransition(
                     f"Campaign {campaign_id} cannot transition from {current.value} to {target.value}"
@@ -1224,7 +1246,7 @@ class CampaignStore:
                 (str(candidate_id),),
             )
             context = _deep_merge(
-                _json_loads(campaign_row["context_json"]) or {},
+                current_context,
                 context_updates or {},
             )
             ended_at = now if target in TERMINAL_STATES else campaign_row["ended_at"]

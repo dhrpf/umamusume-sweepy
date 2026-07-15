@@ -145,6 +145,18 @@ class FakeStore:
         return {"campaign": deepcopy(self.campaign), "candidate": deepcopy(row), "replayed": False}
 
     def apply_candidate_selection(self, campaign_id, candidate_id, *, state, next_action, context_updates):
+        review = self.campaign.get("context", {}).get("pending_review")
+        if not (
+            self.campaign.get("state") == "NEEDS_USER_INPUT"
+            and self.campaign.get("next_action") == "select_candidate"
+            and isinstance(review, dict)
+            and review.get("kind", review.get("type")) == "candidate_tradeoff"
+            and candidate_id in {
+                str(review.get("candidate_id")) if review.get("candidate_id") is not None else "",
+                *(str(value) for value in (review.get("candidate_ids") or [])),
+            }
+        ):
+            raise ValueError("campaign has no matching candidate selection review")
         row = next(row for row in self.candidates if row["candidate_id"] == candidate_id)
         for candidate in self.candidates:
             candidate["selected"] = candidate is row

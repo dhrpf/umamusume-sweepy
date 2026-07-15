@@ -375,7 +375,12 @@ def test_candidate_selection_transaction_uses_requested_outcome(tmp_path):
         select=False,
         state=CampaignState.NEEDS_USER_INPUT,
         next_action="select_candidate",
-        context_updates={"pending_review": {"kind": "candidate_tradeoff"}},
+        context_updates={
+            "pending_review": {
+                "kind": "candidate_tradeoff",
+                "candidate_id": "tradeoff-1",
+            }
+        },
         expected_version=campaign["version"],
     )
     result = store.apply_candidate_selection(
@@ -388,3 +393,48 @@ def test_candidate_selection_transaction_uses_requested_outcome(tmp_path):
     assert result["candidate"]["selected"] is True
     assert result["campaign"]["state"] == CampaignState.SELECTING_LINEAGE.value
     assert result["campaign"]["context"]["pending_review"] is None
+
+
+def test_candidate_selection_transaction_rejects_stale_review_after_preread(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    campaign = _evaluating_campaign(store)
+    stored = store.persist_candidate_result(
+        "campaign-1",
+        candidate_id="tradeoff-stale",
+        trained_chara_id=501,
+        name="Tradeoff",
+        score=900,
+        evaluation={"accepted": False, "final_setup": {"status": "IN_PROGRESS"}},
+        select=False,
+        state=CampaignState.NEEDS_USER_INPUT,
+        next_action="select_candidate",
+        context_updates={
+            "pending_review": {
+                "kind": "candidate_tradeoff",
+                "candidate_id": "tradeoff-stale",
+            }
+        },
+        expected_version=campaign["version"],
+    )
+    stale_candidate = store.get_candidate("campaign-1", "tradeoff-stale")
+    store.update_context(
+        "campaign-1",
+        {
+            "pending_review": {
+                "kind": "candidate_tradeoff",
+                "candidate_id": "replacement-review",
+            }
+        },
+    )
+
+    with pytest.raises(InvalidTransition, match="candidate selection review"):
+        store.apply_candidate_selection(
+            "campaign-1",
+            stale_candidate["candidate_id"],
+            state=CampaignState.SELECTING_LINEAGE,
+            next_action="prepare_next_run",
+            context_updates={"pending_review": None, "review_required": False},
+        )
+
+    assert stored["candidate"]["selected"] is False
+    assert store.get("campaign-1")["selected_candidate_id"] == ""
