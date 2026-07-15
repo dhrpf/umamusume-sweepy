@@ -35,14 +35,20 @@ class LegacyResolver:
         validated = [self._validate_candidate(row) for row in candidates]
         allowed = [row for row in validated if self.allow_rental or not row["rental"]]
         if slot.mode == "LOCKED":
-            for row in allowed:
-                if row["trained_chara_id"] == slot.trained_chara_id:
-                    return {
-                        **row,
-                        "status": "RESOLVED",
-                        "replacement": False,
-                        "reason": "locked campaign lineage",
-                    }
+            matches = [
+                row
+                for row in allowed
+                if row["trained_chara_id"] == slot.trained_chara_id
+            ]
+            if len(matches) > 1:
+                raise ValueError("duplicate locked veteran candidate")
+            if matches:
+                return {
+                    **matches[0],
+                    "status": "RESOLVED",
+                    "replacement": False,
+                    "reason": "locked campaign lineage",
+                }
             return {
                 "status": "UNRESOLVED",
                 "role": slot.role,

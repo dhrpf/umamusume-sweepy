@@ -231,3 +231,18 @@ def test_locked_rental_candidate_is_filtered_when_disabled():
         "role": "parent1",
         "reason": "locked veteran unavailable",
     }
+
+
+def test_locked_duplicate_matches_are_rejected_for_every_input_permutation():
+    resolver = LegacyResolver(allow_rental=True)
+    candidates = [
+        {"trained_chara_id": 41, "score": 10, "rental": False, "name": "A"},
+        {"trained_chara_id": 41, "score": 20, "rental": True, "name": "B"},
+    ]
+
+    for ordered in permutations(candidates):
+        with pytest.raises(ValueError, match="duplicate locked veteran candidate"):
+            resolver.resolve_slot(
+                LegacySlot(role="parent1", mode="LOCKED", trained_chara_id=41),
+                candidates=list(ordered),
+            )
