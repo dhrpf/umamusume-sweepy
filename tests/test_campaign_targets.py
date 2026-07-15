@@ -93,6 +93,38 @@ def test_required_and_preferred_progress_are_capped_and_missing_totals_are_zero(
     assert [row["ratio"] for row in result["rows"]] == [1.0, 1.0, 0.0]
 
 
+def test_duplicate_normalized_total_keys_use_max_without_double_counting():
+    result = evaluate_spark_targets(
+        [{"category": "blue", "name": "stamina", "minimum_stars": 9}],
+        {
+            ("blue", " stamina "): 5,
+            ("BLUE", "stamina"): 4,
+        },
+    )
+
+    assert result["rows"][0]["actual_stars"] == 5
+    assert result["rows"][0]["ratio"] == 5 / 9
+
+    result = evaluate_spark_targets(
+        [{"category": "blue", "name": "stamina", "minimum_stars": 9}],
+        {
+            ("BLUE", "stamina"): 4,
+            ("blue", " stamina "): 5,
+        },
+    )
+
+    assert result["rows"][0]["actual_stars"] == 5
+    assert result["rows"][0]["ratio"] == 5 / 9
+
+    result = evaluate_spark_targets(
+        [{"category": "blue", "name": "stamina", "minimum_stars": 9}],
+        {("BLUE", "stamina"): -3},
+    )
+
+    assert result["rows"][0]["actual_stars"] == 0
+    assert result["rows"][0]["ratio"] == 0.0
+
+
 def test_empty_target_groups_report_complete_progress():
     result = evaluate_spark_targets(
         [

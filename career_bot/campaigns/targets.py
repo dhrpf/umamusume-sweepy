@@ -52,14 +52,15 @@ def _average_progress(rows: Sequence[dict[str, Any]]) -> float:
 
 def _normalized_totals(totals: Mapping[Any, Any]) -> dict[SparkKey, int]:
     normalized: dict[SparkKey, int] = {}
-    for key, value in totals.items():
-        if not isinstance(key, tuple) or len(key) != 2:
+    for raw_key, value in totals.items():
+        if not isinstance(raw_key, tuple) or len(raw_key) != 2:
             continue
         try:
             stars = int(value or 0)
         except (TypeError, ValueError):
             stars = 0
-        normalized[spark_key(key[0], key[1])] = max(0, stars)
+        key = spark_key(raw_key[0], raw_key[1])
+        normalized[key] = max(normalized.get(key, 0), max(0, stars))
     return normalized
 
 
