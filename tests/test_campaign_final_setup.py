@@ -95,6 +95,23 @@ def test_passing_owned_pairing_wins_over_higher_affinity_rental():
     assert result["best_pairing"]["key"] == "owned-a"
 
 
+def test_pairing_same_key_affinity_tie_is_independent_of_input_order():
+    pairings = [
+        {"key": "owned-a", "affinity": 150, "variant": "z"},
+        {"key": "owned-a", "affinity": 150, "variant": "a"},
+    ]
+
+    forward = evaluate_final_setup(True, pairings, allow_rental=False)
+    reversed_result = evaluate_final_setup(
+        True,
+        list(reversed(pairings)),
+        allow_rental=False,
+    )
+
+    assert forward["best_pairing"] == reversed_result["best_pairing"]
+    assert forward["best_pairing"]["variant"] == "a"
+
+
 def test_no_pairings_returns_empty_in_progress_result():
     assert evaluate_final_setup(True, [], allow_rental=True) == {
         "status": "IN_PROGRESS",
@@ -138,3 +155,16 @@ def test_rank_ties_use_key_string_deterministically():
     )
 
     assert [row["key"] for row in ranked] == ["a", "b"]
+
+
+def test_rank_same_key_score_tie_is_independent_of_input_order():
+    rows = [
+        {"key": "same", "required_progress": 0.5, "variant": "z"},
+        {"key": "same", "required_progress": 0.5, "variant": "a"},
+    ]
+
+    forward = rank_final_parent_candidates(rows)
+    reversed_result = rank_final_parent_candidates(list(reversed(rows)))
+
+    assert forward == reversed_result
+    assert [row["variant"] for row in forward] == ["a", "z"]

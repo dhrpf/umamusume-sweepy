@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -56,6 +57,10 @@ def _key_string(row: Mapping[str, Any]) -> str:
     return str(sorted((str(key), str(value)) for key, value in row.items()))
 
 
+def _canonical_row(row: Mapping[str, Any]) -> str:
+    return json.dumps(row, sort_keys=True, default=repr, separators=(",", ":"))
+
+
 def evaluate_final_setup(
     required_complete: Any,
     pairings: Sequence[Mapping[str, Any]],
@@ -81,6 +86,7 @@ def evaluate_final_setup(
                 -_pairing_affinity(row),
                 _pairing_is_rental(row),
                 _key_string(row),
+                _canonical_row(row),
             ),
         )[0]
 
@@ -147,7 +153,14 @@ def rank_final_parent_candidates(rows: Sequence[Mapping[str, Any]]) -> list[dict
         payload = dict(row)
         payload["score"] = _candidate_score(payload)
         ranked.append(payload)
-    return sorted(ranked, key=lambda row: (-float(row["score"]), _key_string(row)))
+    return sorted(
+        ranked,
+        key=lambda row: (
+            -float(row["score"]),
+            _key_string(row),
+            _canonical_row(row),
+        ),
+    )
 
 
 __all__ = [
