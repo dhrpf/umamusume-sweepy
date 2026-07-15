@@ -34,6 +34,16 @@ TERMINAL_STATES = {
     CampaignState.CANCELLED,
 }
 
+ACTIVE_EXECUTION_STATES = {
+    CampaignState.STARTING_BOT,
+    CampaignState.WAITING_FOR_LOGIN,
+    CampaignState.SELECTING_LINEAGE,
+    CampaignState.RUNNING_CAREER,
+    CampaignState.EVALUATING_RESULT,
+    CampaignState.WAITING_FOR_TP,
+    CampaignState.NEEDS_USER_INPUT,
+}
+
 ALLOWED_TRANSITIONS: dict[CampaignState, set[CampaignState]] = {
     CampaignState.DRAFT: {CampaignState.READY, CampaignState.CANCELLED},
     CampaignState.READY: {
@@ -275,6 +285,31 @@ class CampaignStore:
             (campaign_id, event_type, float(self.clock()), _json_dumps(data or {})),
         )
 
+    @staticmethod
+    def _assert_account_has_no_active_campaign(
+        connection: sqlite3.Connection,
+        *,
+        account: str,
+        campaign_id: str,
+        target: CampaignState,
+    ) -> None:
+        if target not in ACTIVE_EXECUTION_STATES:
+            return
+        placeholders = ",".join("?" for _ in ACTIVE_EXECUTION_STATES)
+        row = connection.execute(
+            f"SELECT campaign_id FROM campaigns WHERE account=? AND campaign_id<>? "
+            f"AND state IN ({placeholders}) LIMIT 1",
+            (
+                account,
+                campaign_id,
+                *(state.value for state in ACTIVE_EXECUTION_STATES),
+            ),
+        ).fetchone()
+        if row is not None:
+            raise CampaignError(
+                f"Account {account} already has active campaign {row['campaign_id']}"
+            )
+
     def create(
         self,
         spec: ParentCampaignSpec | dict[str, Any],
@@ -464,6 +499,13 @@ class CampaignStore:
                     f"Campaign {campaign_id} cannot transition from {current.value} to {target.value}"
                 )
 
+            self._assert_account_has_no_active_campaign(
+                connection,
+                account=row["account"],
+                campaign_id=str(campaign_id),
+                target=target,
+            )
+
             started_at = row["started_at"]
             if started_at is None and target is not CampaignState.DRAFT:
                 started_at = now
@@ -491,6 +533,65 @@ class CampaignStore:
                     "to": target.value,
                     "next_action": str(next_action or ""),
                     "error": str(error or "")[:4096],
+                },
+            )
+            updated = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return self._campaign_from_row(updated)
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
+    def reopen_completed(
+        self,
+        campaign_id: str,
+        state: CampaignState | str = CampaignState.SELECTING_LINEAGE,
+        *,
+        next_action: str = "",
+    ) -> dict[str, Any]:
+        target = CampaignState(state)
+        if target in TERMINAL_STATES or target is CampaignState.DRAFT:
+            raise InvalidTransition(f"Cannot reopen a campaign into {target.value}")
+        now = float(self.clock())
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            current = CampaignState(row["state"])
+            if current is not CampaignState.COMPLETED:
+                raise InvalidTransition(
+                    f"Campaign {campaign_id} cannot reopen from {current.value}; COMPLETED required"
+                )
+            self._assert_account_has_no_active_campaign(
+                connection,
+                account=row["account"],
+                campaign_id=str(campaign_id),
+                target=target,
+            )
+            connection.execute(
+                "UPDATE campaigns SET state=?, updated_at=?, ended_at=NULL, next_action=?, "
+                "error_text='', paused_from_state='', version=version+1 WHERE campaign_id=?",
+                (target.value, now, str(next_action or ""), str(campaign_id)),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                "campaign_reopened",
+                {
+                    "from": current.value,
+                    "to": target.value,
+                    "next_action": str(next_action or ""),
                 },
             )
             updated = connection.execute(
@@ -564,6 +665,12 @@ class CampaignStore:
             target = CampaignState(target_value)
             if target in TERMINAL_STATES or target is CampaignState.PAUSED:
                 target = CampaignState.READY
+            self._assert_account_has_no_active_campaign(
+                connection,
+                account=row["account"],
+                campaign_id=str(campaign_id),
+                target=target,
+            )
             connection.execute(
                 "UPDATE campaigns SET state=?, paused_from_state='', updated_at=?, "
                 "next_action='', version=version+1 WHERE campaign_id=?",

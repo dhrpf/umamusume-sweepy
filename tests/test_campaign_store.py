@@ -1,7 +1,12 @@
 import pytest
 
 from career_bot.campaigns.models import CampaignState, ParentCampaignSpec
-from career_bot.campaigns.store import BudgetExceeded, CampaignStore, InvalidTransition
+from career_bot.campaigns.store import (
+    BudgetExceeded,
+    CampaignError,
+    CampaignStore,
+    InvalidTransition,
+)
 
 
 class FakeClock:
@@ -173,3 +178,52 @@ def test_campaign_listing_is_account_scoped(tmp_path):
     rows = store.list(account="alpha")
 
     assert [row["campaign_id"] for row in rows] == ["alpha-1"]
+
+
+def test_only_one_campaign_per_account_can_enter_active_execution(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec("alpha"), campaign_id="alpha-1")
+    store.create(sample_spec("alpha"), campaign_id="alpha-2")
+    store.create(sample_spec("beta"), campaign_id="beta-1")
+    for campaign_id in ("alpha-1", "alpha-2", "beta-1"):
+        store.transition(campaign_id, CampaignState.READY)
+
+    store.transition("alpha-1", CampaignState.STARTING_BOT)
+
+    with pytest.raises(CampaignError, match="active campaign"):
+        store.transition("alpha-2", CampaignState.STARTING_BOT)
+
+    beta = store.transition("beta-1", CampaignState.STARTING_BOT)
+    assert beta["state"] == CampaignState.STARTING_BOT.value
+    assert store.get("alpha-2")["state"] == CampaignState.READY.value
+
+    store.pause("alpha-1")
+    store.transition("alpha-2", CampaignState.STARTING_BOT)
+    with pytest.raises(CampaignError, match="active campaign"):
+        store.resume("alpha-1")
+
+
+def test_reopen_completed_is_explicit_and_preserves_terminal_transition_rules(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    store.transition("campaign-1", CampaignState.READY)
+    store.transition("campaign-1", CampaignState.STARTING_BOT)
+    store.transition("campaign-1", CampaignState.SELECTING_LINEAGE)
+    store.transition("campaign-1", CampaignState.RUNNING_CAREER)
+    store.transition("campaign-1", CampaignState.EVALUATING_RESULT)
+    completed = store.transition("campaign-1", CampaignState.COMPLETED)
+
+    with pytest.raises(InvalidTransition):
+        store.transition("campaign-1", CampaignState.SELECTING_LINEAGE)
+
+    reopened = store.reopen_completed(
+        "campaign-1",
+        next_action="prepare_next_run",
+    )
+
+    assert completed["ended_at"] is not None
+    assert reopened["state"] == CampaignState.SELECTING_LINEAGE.value
+    assert reopened["next_action"] == "prepare_next_run"
+    assert reopened["ended_at"] is None
+    assert reopened["error"] == ""
+    assert store.recent_events("campaign-1")[0]["event_type"] == "campaign_reopened"

@@ -1,6 +1,8 @@
+import pytest
+
 from career_bot.campaigns.models import CampaignState, ParentCampaignSpec
 from career_bot.campaigns.runner import CampaignRunner
-from career_bot.campaigns.store import CampaignStore
+from career_bot.campaigns.store import CampaignStore, InvalidTransition
 
 
 def sample_spec(approval_mode="ambiguity_only", maximum_runs=3):
@@ -184,3 +186,71 @@ def test_rejected_last_run_fails_when_run_budget_is_exhausted(tmp_path):
     assert result["evaluation"]["accepted"] is False
     assert result["campaign"]["state"] == CampaignState.FAILED.value
     assert "maximum_runs" in result["campaign"]["error"]
+
+
+def test_require_user_input_persists_pending_review_before_transition(tmp_path):
+    database = tmp_path / "campaigns.sqlite3"
+    store = CampaignStore(database)
+    store.create(sample_spec(), campaign_id="campaign-1")
+    runner = CampaignRunner(store)
+    runner.start(
+        "campaign-1",
+        runtime={"api_reachable": True, "logged_in": True},
+        bot_state={"session": {"logged_in": True}},
+    )
+
+    updated = runner.require_user_input(
+        "campaign-1",
+        "review_lineage",
+        {"kind": "pre_run", "parents": [7001, 8001]},
+    )
+    reopened = CampaignStore(database).get("campaign-1")
+
+    assert updated["state"] == CampaignState.NEEDS_USER_INPUT.value
+    assert updated["next_action"] == "review_lineage"
+    assert reopened["context"]["pending_review"] == {
+        "kind": "pre_run",
+        "parents": [7001, 8001],
+    }
+
+
+def test_continue_for_preferred_requires_completed_campaign(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    runner = CampaignRunner(store)
+
+    with pytest.raises(InvalidTransition, match="COMPLETED"):
+        runner.continue_for_preferred("campaign-1")
+
+
+def test_continue_for_preferred_reopens_completed_campaign(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    runner = CampaignRunner(store)
+    runner.start(
+        "campaign-1",
+        runtime={"api_reachable": True, "logged_in": True},
+        bot_state={"session": {"logged_in": True}},
+    )
+    runner.begin_run("campaign-1")
+    runner.reconcile(
+        "campaign-1",
+        runtime={"api_reachable": True, "logged_in": True},
+        bot_state={"career_runner": {"running": False, "finished": True}},
+    )
+    runner.require_user_input(
+        "campaign-1",
+        "review_result",
+        {"kind": "post_run"},
+    )
+    store.transition("campaign-1", CampaignState.COMPLETED)
+
+    reopened = runner.continue_for_preferred("campaign-1")
+
+    assert reopened["state"] == CampaignState.SELECTING_LINEAGE.value
+    assert reopened["next_action"] == "prepare_next_run"
+    assert reopened["context"] == {
+        "required_target_achieved": True,
+        "pending_review": None,
+        "continue_preferred": True,
+    }
