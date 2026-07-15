@@ -282,14 +282,75 @@ class DeckSelectionPolicy(BaseModel):
         return self
 
 
+class SparkCategory(str, Enum):
+    BLUE = "blue"
+    PINK = "pink"
+
+
+class SparkPriority(str, Enum):
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+
+
+class CampaignSparkTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: SparkCategory
+    name: str
+    minimum_stars: int = Field(ge=1, le=9)
+    priority: SparkPriority = SparkPriority.REQUIRED
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if not normalized:
+            raise ValueError("spark target name is required")
+        return normalized
+
+
+class FinalUmaSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_id: int = Field(default=0, ge=0)
+
+
+class FinalParentTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chara_id: int = Field(ge=0)
+    trained_chara_id: int = Field(ge=0)
+
+
+class CampaignLoopMember(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chara_id: int = Field(gt=0)
+    deck_id: int = Field(default=0, ge=0, le=10)
+    pinned: bool = False
+
+
+class CampaignOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    allow_rental: bool = False
+    auto_use_best_veteran: bool = False
+
+
 class ParentCampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     account: str
+    spec_version: int = Field(default=2, ge=1)
     goal: ParentGoal
     strategy: ParentStrategy
     trainee: TraineeSelectionPolicy = Field(default_factory=TraineeSelectionPolicy)
     deck: DeckSelectionPolicy = Field(default_factory=DeckSelectionPolicy)
+    final_uma: FinalUmaSelection = Field(default_factory=FinalUmaSelection)
+    spark_targets: list[CampaignSparkTarget] = Field(default_factory=list)
+    final_parent: FinalParentTarget | None = None
+    loop_members: list[CampaignLoopMember] = Field(default_factory=list)
+    options: CampaignOptions = Field(default_factory=CampaignOptions)
 
     @field_validator("account")
     @classmethod
@@ -300,3 +361,16 @@ class ParentCampaignSpec(BaseModel):
         if not re.fullmatch(r"[A-Za-z0-9_-]+", normalized):
             raise ValueError("account contains unsupported characters")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_loop_members(self) -> "ParentCampaignSpec":
+        if not self.loop_members:
+            return self
+        if len(self.loop_members) != 4:
+            raise ValueError("configured loop_members must contain exactly four members")
+        chara_ids = [row.chara_id for row in self.loop_members]
+        if len(set(chara_ids)) != 4:
+            raise ValueError(
+                "configured loop_members must contain four unique chara_id values"
+            )
+        return self

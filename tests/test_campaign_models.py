@@ -10,6 +10,8 @@ from career_bot.campaigns.models import (
     ParentCampaignSpec,
     ParentGoal,
     ParentStrategy,
+    SparkCategory,
+    SparkPriority,
     TraineeSelectionMode,
 )
 
@@ -186,6 +188,98 @@ def test_campaign_selection_policies_default_to_current_for_backward_compatibili
     assert spec.deck.mode is DeckSelectionMode.CURRENT
     assert spec.deck.name == ""
     assert spec.deck.deck_id == 0
+    assert spec.spec_version == 2
+    assert spec.final_uma.card_id == 0
+    assert spec.spark_targets == []
+    assert spec.final_parent is None
+    assert spec.loop_members == []
+    assert spec.options.allow_rental is False
+    assert spec.options.auto_use_best_veteran is False
+
+
+def test_campaign_spec_accepts_new_web_planner_shape():
+    spec = ParentCampaignSpec(
+        account="alpha",
+        spec_version=2,
+        final_uma={"card_id": 12345},
+        spark_targets=[
+            {"category": "blue", "name": " Speed ", "minimum_stars": 3},
+            {
+                "category": "pink",
+                "name": " Mile ",
+                "minimum_stars": 2,
+                "priority": "preferred",
+            },
+        ],
+        final_parent={"chara_id": 101, "trained_chara_id": 202},
+        loop_members=[
+            {"chara_id": 11, "deck_id": 0, "pinned": True},
+            {"chara_id": 12, "deck_id": 3},
+            {"chara_id": 13, "deck_id": 10},
+            {"chara_id": 14},
+        ],
+        options={"allow_rental": True, "auto_use_best_veteran": True},
+        goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 10,
+            "maximum_runtime_hours": 12,
+        },
+    )
+
+    assert spec.final_uma.card_id == 12345
+    spark_targets = [
+        (row.category, row.name, row.minimum_stars, row.priority)
+        for row in spec.spark_targets
+    ]
+    assert spark_targets == [
+        (SparkCategory.BLUE, "speed", 3, SparkPriority.REQUIRED),
+        (SparkCategory.PINK, "mile", 2, SparkPriority.PREFERRED),
+    ]
+    assert spec.final_parent.chara_id == 101
+    assert spec.final_parent.trained_chara_id == 202
+    loop_members = [(row.chara_id, row.deck_id, row.pinned) for row in spec.loop_members]
+    assert loop_members == [
+        (11, 0, True),
+        (12, 3, False),
+        (13, 10, False),
+        (14, 0, False),
+    ]
+    assert spec.options.allow_rental is True
+    assert spec.options.auto_use_best_veteran is True
+
+
+def test_campaign_loop_members_must_be_four_unique_configured_characters():
+    base = {
+        "account": "alpha",
+        "goal": {"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        "strategy": {
+            "preset_name": "MANT Parent",
+            "maximum_runs": 10,
+            "maximum_runtime_hours": 12,
+        },
+    }
+
+    with pytest.raises(ValidationError, match="exactly four"):
+        ParentCampaignSpec(
+            **base,
+            loop_members=[
+                {"chara_id": 11},
+                {"chara_id": 12},
+                {"chara_id": 13},
+            ],
+        )
+
+    with pytest.raises(ValidationError, match="unique"):
+        ParentCampaignSpec(
+            **base,
+            loop_members=[
+                {"chara_id": 11},
+                {"chara_id": 12},
+                {"chara_id": 13},
+                {"chara_id": 11},
+            ],
+        )
 
 
 def test_campaign_accepts_named_or_auto_headless_selection_policies():
