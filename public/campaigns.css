@@ -49,6 +49,7 @@ body { min-width: 0; }
 .review-panel { border-color: var(--accent-primary) !important; box-shadow: 0 0 1.5rem var(--accent-dim); }
 .candidate-choice { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--border-soft); }
 .inline-actions { justify-content: flex-start; }
+.btn:disabled { cursor: wait; opacity: .55; transform: none; filter: none; }
 
 @media (max-width: 960px) {
     .campaign-navbar { padding: 1rem; align-items: flex-start; flex-direction: column; }

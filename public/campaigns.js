@@ -23,6 +23,12 @@ const state = {
         },
     },
 };
+let campaignAccount = '';
+let parentRequestSequence = 0;
+let loopRequestSequence = 0;
+let parentController = null;
+let loopController = null;
+const pendingMutations = new Set();
 
 const byId = (id) => document.getElementById(id);
 const els = {
@@ -53,6 +59,7 @@ async function apiJson(url, options = {}) {
         if (!response.ok || data.success === false) throw new Error(data.detail || `Request failed (${response.status})`);
         return data;
     } catch (error) {
+        if (error.name === 'AbortError') throw error;
         showMessage(error.message || 'Request failed', 'error');
         throw error;
     }
@@ -74,7 +81,42 @@ function numberFrom(row, keys) {
 function accountName() {
     const session = state.session || {};
     const account = session.account;
-    return String(session.account_name || session.accountName || (typeof account === 'object' && (account.name || account.account)) || (typeof account === 'string' && account) || '').trim();
+    return String(campaignAccount || session.account_name || session.accountName || (typeof account === 'object' && (account.name || account.account)) || (typeof account === 'string' && account) || '').trim();
+}
+
+function accountValue(value) {
+    return String(typeof value === 'object' && value ? value.name || value.account || '' : value || '').trim();
+}
+
+function clearLoopSelection() {
+    loopRequestSequence += 1;
+    loopController?.abort();
+    state.loopRecommendations = { loops: [], ideal_upgrades: [] };
+    state.draft.selectedLoop = null;
+    state.draft.pinnedCharaIds = [];
+    state.draft.deckAssignments = {};
+}
+
+function clearParentAndLoop() {
+    parentRequestSequence += 1;
+    parentController?.abort();
+    state.recommendations = [];
+    state.draft.selectedFinalParent = null;
+    clearLoopSelection();
+}
+
+async function withPending(key, button, operation) {
+    if (pendingMutations.has(key)) return;
+    pendingMutations.add(key);
+    const relatedButtons = key === 'recommend-loop'
+        ? [byId('recommend-loop-btn'), byId('recompute-loop-btn')]
+        : key.startsWith('action:') ? [...document.querySelectorAll('[data-campaign-action], [data-candidate-id]')] : [button];
+    relatedButtons.filter(Boolean).forEach((item) => { item.disabled = true; });
+    try { return await operation(); }
+    finally {
+        pendingMutations.delete(key);
+        relatedButtons.filter((item) => item?.isConnected).forEach((item) => { item.disabled = false; });
+    }
 }
 
 function presetName(row) {
@@ -133,6 +175,7 @@ function renderCampaignList() {
 }
 
 function addTarget(category) {
+    clearParentAndLoop();
     state.draft.sparkTargets.push({ category, name: '', minimum_stars: 1, priority: 'required' });
     renderBuilder();
 }
@@ -177,7 +220,7 @@ function renderLoopCards(rows, upgrade = false) {
         return `<article class="recommendation-card${selected ? ' is-selected' : ''}">
             <p class="rank">#${index + 1}</p><h4>${ids.map((id) => `Chara ${id}`).join(' · ') || 'Unknown loop'}</h4>
             <p>Score ${escapeHtml(loop.score ?? '—')} · Shared G1 ${escapeHtml(loop.shared_g1_count ?? loop.score_breakdown?.shared_g1 ?? '—')}</p>
-            ${upgrade ? '<span class="badge">Upgrade target</span>' : `<div class="pin-grid">${ids.map((id) => `<label><input type="checkbox" data-pin-id="${id}"${state.draft.pinnedCharaIds.includes(id) ? ' checked' : ''}> Pin ${id}</label>`).join('')}</div><button class="btn btn-sm${selected ? ' btn-primary' : ''}" data-loop-index="${index}" type="button">${selected ? 'Selected' : 'Choose runnable loop'}</button>`}
+            ${upgrade ? `<span class="badge">Non-runnable upgrade suggestion</span><button class="btn btn-sm" data-copy-upgrade-index="${index}" type="button">Pin owned matching members</button>` : `<div class="pin-grid">${ids.map((id) => `<button class="btn btn-sm${state.draft.pinnedCharaIds.includes(id) ? ' btn-primary' : ''}" data-pin-id="${id}" type="button">${state.draft.pinnedCharaIds.includes(id) ? 'Unpin' : 'Pin'} Chara ${id}</button>`).join('')}</div><button class="btn btn-sm${selected ? ' btn-primary' : ''}" data-loop-index="${index}" type="button">${selected ? 'Selected' : 'Choose runnable loop'}</button>`}
         </article>`;
     }).join('');
 }
@@ -249,8 +292,8 @@ function renderBuilder() {
 }
 
 function progressBar(label, value) {
-    const numeric = Math.max(0, Math.min(100, Number(value) || 0));
-    return `<div class="progress-row"><span>${escapeHtml(label)}</span><div class="progress-track"><div class="progress-fill" style="width:${numeric}%"></div></div><strong>${numeric}%</strong></div>`;
+    const numeric = Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100);
+    return `<div class="progress-row"><span>${escapeHtml(label)}</span><div class="progress-track" role="progressbar" aria-label="${escapeHtml(label)} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${numeric}"><div class="progress-fill" style="width:${numeric}%"></div></div><strong>${numeric}%</strong></div>`;
 }
 
 function safeJson(value) {
@@ -260,14 +303,14 @@ function safeJson(value) {
 function detailActions(campaign) {
     const campaignState = String(campaign.state || campaign.status || '').toUpperCase();
     const next = campaign.next_action || '';
+    const terminal = ['COMPLETED', 'CANCELLED', 'FAILED'].includes(campaignState);
     const actions = [];
-    if (['DRAFT', 'CREATED'].includes(campaignState)) actions.push(['activate', 'Activate']);
-    if (!['PAUSED', 'CANCELLED', 'COMPLETED'].includes(campaignState)) actions.push(['pause', 'Pause']);
+    if (['DRAFT', 'READY'].includes(campaignState)) actions.push(['activate', 'Activate']);
+    if (!terminal && !['DRAFT', 'PAUSED'].includes(campaignState)) actions.push(['pause', 'Pause']);
     if (campaignState === 'PAUSED') actions.push(['resume', 'Resume']);
-    if (!['CANCELLED', 'COMPLETED'].includes(campaignState)) actions.push(['prepare-next-run', 'Prepare next run']);
-    if (campaignState === 'NEEDS_USER_INPUT' && ['approve_run', 'prepared_run'].includes(next)) actions.push(['approve-run', 'Approve']);
-    if (!['CANCELLED', 'COMPLETED'].includes(campaignState)) actions.push(['continue-preferred', 'Continue preferred']);
-    if (!['CANCELLED', 'COMPLETED'].includes(campaignState)) actions.push(['cancel', 'Cancel']);
+    if (campaignState === 'SELECTING_LINEAGE' || ['prepare_next_run', 'select_lineage'].includes(next)) actions.push(['prepare-next-run', 'Prepare next run']);
+    if (campaignState === 'COMPLETED') actions.push(['continue-preferred', 'Continue preferred']);
+    if (!terminal) actions.push(['cancel', 'Cancel']);
     return actions.map(([action, label]) => `<button class="btn btn-sm${action === 'cancel' ? ' btn-danger-soft' : ''}" data-campaign-action="${action}" type="button">${label}</button>`).join('');
 }
 
@@ -275,8 +318,15 @@ function renderReview(campaign) {
     const review = campaign.context?.pending_review;
     if (!review || String(campaign.state).toUpperCase() !== 'NEEDS_USER_INPUT') return '';
     if (campaign.next_action === 'select_candidate') {
-        const candidates = review.candidates || campaign.candidates || [];
-        return `<section class="review-panel"><h3>Post-run Tradeoff</h3>${candidates.length ? candidates.map((candidate) => `<article class="candidate-choice"><strong>${escapeHtml(labelFor(candidate, candidate.candidate_id || 'Candidate'))}</strong><button class="btn btn-sm btn-primary" data-candidate-id="${escapeHtml(candidate.candidate_id || candidate.id)}" type="button">Choose</button></article>`).join('') : '<p class="empty-state">No candidate choices supplied.</p>'}</section>`;
+        const source = Array.isArray(review.candidates) ? review.candidates : Array.isArray(campaign.candidates) ? campaign.candidates : [];
+        const singleValue = review.candidate || review.candidate_id;
+        const single = singleValue ? (typeof singleValue === 'object' ? singleValue : { candidate_id: singleValue }) : null;
+        const allowed = Array.isArray(review.allowed_candidate_ids) ? review.allowed_candidate_ids.map((candidateId) => ({ candidate_id: candidateId })) : [];
+        const candidates = [...source, ...(single ? [single] : []), ...allowed].filter((candidate, index, rows) => {
+            const id = candidate?.candidate_id || candidate?.id;
+            return id && rows.findIndex((row) => (row?.candidate_id || row?.id) === id) === index;
+        });
+        return `<section class="review-panel"><h3>Post-run Tradeoff</h3>${candidates.length ? candidates.map((candidate) => `<article class="candidate-choice"><strong>${escapeHtml(labelFor(candidate, candidate.candidate_id || 'Candidate'))}</strong><button class="btn btn-sm btn-primary" data-candidate-id="${escapeHtml(candidate.candidate_id || candidate.id)}" type="button">Choose</button></article>`).join('') : '<p class="empty-state">No selectable candidates supplied.</p>'}</section>`;
     }
     if (['approve_run', 'prepared_run'].includes(campaign.next_action)) return `<section class="review-panel"><h3>Pre-run Review</h3>${safeJson(review)}<button class="btn btn-primary" data-campaign-action="approve-run" type="button">Approve Run</button></section>`;
     return '';
@@ -290,9 +340,14 @@ function renderDetail() {
     const agenda = context.race_agenda || context.shared_g1_agenda || campaign.race_agenda || {};
     const required = context.required_progress ?? campaign.required_progress;
     const preferred = context.preferred_progress ?? campaign.preferred_progress;
+    const rotation = context.rotation || {};
+    const runIndex = Number(rotation.run_index ?? context.rotation_index);
+    const loopCharaIds = Array.isArray(rotation.loop_chara_ids) ? rotation.loop_chara_ids : Array.isArray(context.loop_chara_ids) ? context.loop_chara_ids : (spec.loop_members || []).map((member) => member.chara_id);
+    const derivedNextTrainee = Number.isFinite(runIndex) && loopCharaIds.length ? loopCharaIds[((runIndex % loopCharaIds.length) + loopCharaIds.length) % loopCharaIds.length] : 0;
+    const nextTrainee = rotation.next_trainee || context.next_trainee || derivedNextTrainee || '—';
     els.detail.innerHTML = `
         <div class="status-strip"><span class="badge">${escapeHtml(campaign.state || campaign.status || 'UNKNOWN')}</span><span>Next: ${escapeHtml(campaign.next_action || '—')}</span></div>
-        <div class="detail-grid"><article><h3>Final Setup</h3><p>Uma: ${escapeHtml(spec.final_uma?.card_id || '—')}</p><p>Parent: ${escapeHtml(spec.final_parent?.chara_id || '—')} / trained ${escapeHtml(spec.final_parent?.trained_chara_id || '—')}</p></article><article><h3>Usage</h3><p>Runs: ${escapeHtml(campaign.run_count ?? context.run_count ?? 0)}</p><p>Rotation: ${escapeHtml(context.rotation_index ?? '—')} · Next trainee: ${escapeHtml(context.next_trainee?.name || context.next_trainee || '—')}</p></article></div>
+        <div class="detail-grid"><article><h3>Final Setup</h3><p>Uma: ${escapeHtml(spec.final_uma?.card_id || '—')}</p><p>Parent: ${escapeHtml(spec.final_parent?.chara_id || '—')} / trained ${escapeHtml(spec.final_parent?.trained_chara_id || '—')}</p></article><article><h3>Usage</h3><p>Runs: ${escapeHtml(campaign.run_count ?? context.run_count ?? 0)}</p><p>Rotation run: ${escapeHtml(Number.isFinite(runIndex) ? runIndex : '—')} · Next trainee: ${escapeHtml(nextTrainee?.name || nextTrainee?.chara_id || nextTrainee)}</p></article></div>
         <section><h3>Target Progress</h3>${progressBar('Required', required)}${progressBar('Preferred', preferred)}</section>
         ${renderReview(campaign)}
         <section><h3>Actions</h3><div class="inline-actions">${detailActions(campaign)}</div></section>
@@ -305,51 +360,78 @@ function renderDetail() {
 
 async function loadCampaign(id) {
     const data = await apiJson(`/api/campaigns/${encodeURIComponent(id)}`);
-    state.selectedCampaign = data.campaign;
+    state.selectedCampaign = { ...(data.campaign || {}) };
+    if (Array.isArray(data.events)) state.selectedCampaign.events = data.events;
+    if (Array.isArray(data.candidates)) state.selectedCampaign.candidates = data.candidates;
     renderCampaignList(); renderDetail();
 }
 
 async function reloadCampaigns() {
     const data = await apiJson('/api/campaigns');
-    state.campaigns = data.campaigns || [];
+    state.campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+    campaignAccount = accountValue(data.account) || campaignAccount;
     renderCampaignList();
 }
 
-async function recommendParents() {
-    try {
-        const data = await apiJson('/api/campaigns/recommend-final-parents', { method: 'POST', body: JSON.stringify(recommendationContext()) });
-        state.recommendations = data.recommendation || [];
-        state.draft.selectedFinalParent = null;
-        renderBuilder();
-    } catch (error) { if (!els.message.textContent) showMessage(error.message, 'error'); }
+async function recommendParents(button) {
+    return withPending('recommend-parent', button, async () => {
+        const sequence = ++parentRequestSequence;
+        parentController?.abort();
+        parentController = new AbortController();
+        try {
+            const data = await apiJson('/api/campaigns/recommend-final-parents', { method: 'POST', signal: parentController.signal, body: JSON.stringify(recommendationContext()) });
+            if (sequence !== parentRequestSequence) return;
+            state.recommendations = Array.isArray(data.recommendation) ? data.recommendation : [];
+            state.draft.selectedFinalParent = null;
+            clearLoopSelection();
+            renderBuilder();
+        } catch (error) { if (error.name !== 'AbortError' && !els.message.textContent) showMessage(error.message, 'error'); }
+    });
 }
 
-async function recommendLoops() {
-    try {
-        const payload = { ...recommendationContext(), pinned_chara_ids: state.draft.pinnedCharaIds };
-        const data = await apiJson('/api/campaigns/recommend-loop', { method: 'POST', body: JSON.stringify(payload) });
-        state.loopRecommendations = data.recommendation || { loops: [], ideal_upgrades: [] };
-        state.draft.selectedLoop = null; state.draft.deckAssignments = {};
-        renderBuilder();
-    } catch (error) { if (!els.message.textContent) showMessage(error.message, 'error'); }
+async function recommendLoops(button) {
+    return withPending('recommend-loop', button, async () => {
+        if (!state.draft.selectedFinalParent) { showMessage('Choose a final parent before recommending loops.', 'error'); return; }
+        const sequence = ++loopRequestSequence;
+        loopController?.abort();
+        loopController = new AbortController();
+        try {
+            const payload = { ...recommendationContext(), pinned_chara_ids: state.draft.pinnedCharaIds };
+            const data = await apiJson('/api/campaigns/recommend-loop', { method: 'POST', signal: loopController.signal, body: JSON.stringify(payload) });
+            if (sequence !== loopRequestSequence) return;
+            const recommendation = data.recommendation || {};
+            state.loopRecommendations = {
+                loops: Array.isArray(recommendation.loops) ? recommendation.loops : [],
+                ideal_upgrades: Array.isArray(recommendation.ideal_upgrades) ? recommendation.ideal_upgrades : [],
+            };
+            state.draft.selectedLoop = null; state.draft.deckAssignments = {};
+            renderBuilder();
+        } catch (error) { if (error.name !== 'AbortError' && !els.message.textContent) showMessage(error.message, 'error'); }
+    });
 }
 
-async function saveCampaign() {
-    try {
-        const data = await apiJson('/api/campaigns', { method: 'POST', body: JSON.stringify({ spec: buildSpec() }) });
-        showMessage('Campaign saved.', 'success');
-        await reloadCampaigns();
-        els.create.hidden = true;
-        await loadCampaign(data.campaign.id || data.campaign.campaign_id);
-    } catch (error) { if (!els.message.textContent) showMessage(error.message, 'error'); }
+async function saveCampaign(button) {
+    return withPending('save-campaign', button, async () => {
+        try {
+            const data = await apiJson('/api/campaigns', { method: 'POST', body: JSON.stringify({ spec: buildSpec() }) });
+            showMessage('Campaign saved.', 'success');
+            await reloadCampaigns();
+            els.create.hidden = true;
+            await loadCampaign(data.campaign.id || data.campaign.campaign_id);
+        } catch (error) { if (!els.message.textContent) showMessage(error.message, 'error'); }
+    });
 }
 
-async function campaignAction(action, payload) {
+async function campaignAction(action, payload, button) {
     const id = state.selectedCampaign?.id || state.selectedCampaign?.campaign_id;
     if (!id) return;
-    await apiJson(`/api/campaigns/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: payload === undefined ? undefined : JSON.stringify(payload) });
-    showMessage('Campaign updated.', 'success');
-    await reloadCampaigns(); await loadCampaign(id);
+    return withPending(`action:${id}`, button, async () => {
+        try {
+            await apiJson(`/api/campaigns/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: payload === undefined ? undefined : JSON.stringify(payload) });
+            showMessage('Campaign updated.', 'success');
+            await reloadCampaigns(); await loadCampaign(id);
+        } catch (_) {}
+    });
 }
 
 function bindEvents() {
@@ -357,10 +439,11 @@ function bindEvents() {
     byId('close-create-btn').addEventListener('click', () => { els.create.hidden = true; });
     byId('add-blue-target-btn').addEventListener('click', () => addTarget('blue'));
     byId('add-pink-target-btn').addEventListener('click', () => addTarget('pink'));
-    byId('recommend-parent-btn').addEventListener('click', recommendParents);
-    byId('recommend-loop-btn').addEventListener('click', recommendLoops);
-    byId('save-campaign-btn').addEventListener('click', saveCampaign);
-    els.finalUma.addEventListener('change', () => { state.draft.finalUmaCardId = Number(els.finalUma.value); state.recommendations = []; state.draft.selectedFinalParent = null; renderBuilder(); });
+    byId('recommend-parent-btn').addEventListener('click', (event) => recommendParents(event.currentTarget));
+    byId('recommend-loop-btn').addEventListener('click', (event) => recommendLoops(event.currentTarget));
+    byId('recompute-loop-btn').addEventListener('click', (event) => recommendLoops(event.currentTarget));
+    byId('save-campaign-btn').addEventListener('click', (event) => saveCampaign(event.currentTarget));
+    els.finalUma.addEventListener('change', () => { state.draft.finalUmaCardId = Number(els.finalUma.value); clearParentAndLoop(); renderBuilder(); });
     els.preset.addEventListener('change', () => { state.draft.options.presetName = els.preset.value; renderPreview(); });
     els.maximumRuns.addEventListener('input', () => { state.draft.options.maximumRuns = Number(els.maximumRuns.value); renderPreview(); });
     els.runtime.addEventListener('input', () => { state.draft.options.maximumRuntimeHours = Number(els.runtime.value); renderPreview(); });
@@ -369,36 +452,53 @@ function bindEvents() {
     document.addEventListener('input', (event) => {
         const row = event.target.closest('[data-target-index]');
         if (!row || !event.target.dataset.field) return;
+        clearParentAndLoop();
         const target = state.draft.sparkTargets[Number(row.dataset.targetIndex)];
         target[event.target.dataset.field] = event.target.dataset.field === 'minimum_stars' ? Number(event.target.value) : event.target.value;
         renderPreview();
     });
     document.addEventListener('change', async (event) => {
         if (event.target.dataset.deckChara) { state.draft.deckAssignments[event.target.dataset.deckChara] = Number(event.target.value); renderPreview(); }
-        if (event.target.dataset.pinId) {
-            const id = Number(event.target.dataset.pinId);
-            state.draft.pinnedCharaIds = event.target.checked ? [...new Set([...state.draft.pinnedCharaIds, id])] : state.draft.pinnedCharaIds.filter((value) => value !== id);
-            await recommendLoops();
-        }
     });
     document.addEventListener('click', async (event) => {
         const campaignItem = event.target.closest('[data-campaign-id]');
         if (campaignItem) await loadCampaign(campaignItem.dataset.campaignId);
-        if (event.target.dataset.removeTarget !== undefined) { state.draft.sparkTargets.splice(Number(event.target.dataset.removeTarget), 1); renderBuilder(); }
-        if (event.target.dataset.parentIndex !== undefined) { state.draft.selectedFinalParent = state.recommendations[Number(event.target.dataset.parentIndex)]; renderBuilder(); }
+        if (event.target.dataset.removeTarget !== undefined) { clearParentAndLoop(); state.draft.sparkTargets.splice(Number(event.target.dataset.removeTarget), 1); renderBuilder(); }
+        if (event.target.dataset.parentIndex !== undefined) { state.draft.selectedFinalParent = state.recommendations[Number(event.target.dataset.parentIndex)]; clearLoopSelection(); renderBuilder(); }
         if (event.target.dataset.loopIndex !== undefined) { state.draft.selectedLoop = state.loopRecommendations.loops[Number(event.target.dataset.loopIndex)]; state.draft.deckAssignments = {}; renderBuilder(); }
-        if (event.target.dataset.campaignAction) await campaignAction(event.target.dataset.campaignAction, event.target.dataset.campaignAction === 'approve-run' ? { selection_override: null } : event.target.dataset.campaignAction === 'cancel' ? { reason: 'Cancelled from campaigns UI' } : undefined);
-        if (event.target.dataset.candidateId) await campaignAction('select-candidate', { candidate_id: event.target.dataset.candidateId });
+        if (event.target.dataset.pinId) {
+            loopRequestSequence += 1; loopController?.abort();
+            const id = Number(event.target.dataset.pinId);
+            state.draft.pinnedCharaIds = state.draft.pinnedCharaIds.includes(id) ? state.draft.pinnedCharaIds.filter((value) => value !== id) : [...state.draft.pinnedCharaIds, id];
+            state.draft.selectedLoop = null; state.draft.deckAssignments = {}; renderBuilder();
+        }
+        if (event.target.dataset.copyUpgradeIndex !== undefined) {
+            loopRequestSequence += 1; loopController?.abort();
+            const upgradeIds = loopIds(state.loopRecommendations.ideal_upgrades[Number(event.target.dataset.copyUpgradeIndex)]);
+            const runnableIds = new Set((state.loopRecommendations.loops || []).flatMap(loopIds));
+            const ownedMatches = upgradeIds.filter((id) => runnableIds.has(id));
+            state.draft.pinnedCharaIds = [...new Set([...state.draft.pinnedCharaIds, ...ownedMatches])];
+            state.draft.selectedLoop = null; state.draft.deckAssignments = {}; renderBuilder();
+            showMessage(ownedMatches.length ? 'Owned matching members pinned. Recompute to replace unpinned members.' : 'Upgrade is non-runnable; no owned matching members can be pinned.', ownedMatches.length ? 'success' : 'error');
+        }
+        if (event.target.dataset.campaignAction) await campaignAction(event.target.dataset.campaignAction, event.target.dataset.campaignAction === 'approve-run' ? { selection_override: null } : event.target.dataset.campaignAction === 'cancel' ? { reason: 'Cancelled from campaigns UI' } : undefined, event.target);
+        if (event.target.dataset.candidateId) await campaignAction('select-candidate', { candidate_id: event.target.dataset.candidateId }, event.target);
     });
 }
 
 async function bootstrap() {
     bindEvents(); els.create.hidden = true;
-    try {
-        const [sessionData, presetData, campaignData] = await Promise.all([apiJson('/api/session'), apiJson('/api/presets'), apiJson('/api/campaigns')]);
-        state.session = sessionData; state.presets = presetData.presets || []; state.campaigns = campaignData.campaigns || [];
-        renderBootstrapChoices(); resetDraft(); renderCampaignList(); renderDetail();
-    } catch (_) { renderCampaignList(); renderDetail(); }
+    const results = await Promise.allSettled([apiJson('/api/session'), apiJson('/api/presets'), apiJson('/api/campaigns')]);
+    const [sessionResult, presetResult, campaignResult] = results;
+    if (sessionResult.status === 'fulfilled') state.session = sessionResult.value;
+    if (presetResult.status === 'fulfilled') state.presets = Array.isArray(presetResult.value.presets) ? presetResult.value.presets : [];
+    if (campaignResult.status === 'fulfilled') {
+        state.campaigns = Array.isArray(campaignResult.value.campaigns) ? campaignResult.value.campaigns : [];
+        campaignAccount = accountValue(campaignResult.value.account);
+    }
+    renderBootstrapChoices(); resetDraft(); renderCampaignList(); renderDetail();
+    const failed = results.flatMap((result, index) => result.status === 'rejected' ? [['session', 'presets', 'campaigns'][index]] : []);
+    if (failed.length) showMessage(`Partial load failed: ${failed.join(', ')}. Available data remains usable.`, 'error');
 }
 
 bootstrap();
