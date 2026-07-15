@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
-from career_bot.campaigns.store import CampaignError, InvalidTransition
+from career_bot.campaigns.store import CampaignError, CampaignNotFound, InvalidTransition
 
 def valid_web_spec():
     return {
@@ -92,8 +92,8 @@ def client():
     ("method", "path", "json_body", "expected"),
     [
         ("get", "/api/campaigns?account=acct01", None, ("list_campaigns", ("acct01",), {})),
-        ("post", "/api/campaigns/recommend-final-parents", {"request": {"limit": 2}}, ("recommend_final_parents", ({"limit": 2},), {})),
-        ("post", "/api/campaigns/recommend-loop", {"request": {"limit": 3}}, ("recommend_loops", ({"limit": 3},), {})),
+        ("post", "/api/campaigns/recommend-final-parents", {"final_uma_card_id": 100101, "limit": 2}, ("recommend_final_parents", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 2},), {})),
+        ("post", "/api/campaigns/recommend-loop", {"final_uma_card_id": 100101, "limit": 3, "pinned_chara_ids": [1, 2]}, ("recommend_loops", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 3, "pinned_chara_ids": [1, 2]},), {})),
         ("get", "/api/campaigns/cmp1", None, ("get_campaign", ("cmp1",), {})),
         ("post", "/api/campaigns/cmp1/activate", None, ("activate", ("cmp1",), {})),
         ("post", "/api/campaigns/cmp1/pause", None, ("pause", ("cmp1",), {})),
@@ -137,6 +137,7 @@ def test_campaign_list_uses_current_account_when_omitted(client, fake_campaign_s
     [
         (CampaignError("conflict"), 409),
         (InvalidTransition("invalid state"), 409),
+        (CampaignNotFound("missing"), 404),
         (ValueError("invalid request"), 422),
     ],
 )
@@ -154,6 +155,113 @@ def test_campaign_unexpected_errors_propagate(client, fake_campaign_service):
 
     with pytest.raises(RuntimeError, match="boom"):
         client.get("/api/campaigns/cmp1")
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"final_uma_card_id": 0},
+        {"final_uma_card_id": 100101, "limit": 0},
+        {"final_uma_card_id": 100101, "mdb_path": "/tmp/master.mdb"},
+        {"final_uma_card_id": 100101, "factor_map": {}},
+        {"final_uma_card_id": 100101, "pinned_chara_ids": [0]},
+        {"final_uma_card_id": 100101, "spark_targets": [{"category": "blue", "name": "", "minimum_stars": 0}]},
+        {"account": "bad account", "final_uma_card_id": 100101},
+    ],
+)
+def test_campaign_recommendation_rejects_malformed_or_extra_fields(client, fake_campaign_service, payload):
+    route = "/api/campaigns/recommend-loop" if "pinned_chara_ids" in payload else "/api/campaigns/recommend-final-parents"
+
+    response = client.post(route, json=payload)
+
+    assert response.status_code == 422
+    assert fake_campaign_service.calls == []
+
+def test_campaign_runtime_snapshot_uses_nested_runner_contract(monkeypatch):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01", "career": {"active": True}})
+    monkeypatch.setattr(main, "active_dashboard_data", {"umas": []})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(main.career_runner, "snapshot", lambda: {"running": True})
+    monkeypatch.setattr(main.dailies_runner, "running", True)
+
+    snapshot = main._campaign_runtime_snapshot("acct01")
+
+    assert snapshot["runtime"] == {"api_reachable": True, "logged_in": True}
+    assert snapshot["bot_state"] == {
+        "session": {"logged_in": True},
+        "career_runner": {"running": True},
+        "dailies": {"running": True},
+    }
+
+def test_campaign_runtime_snapshot_rejects_active_account_mismatch(monkeypatch):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_dashboard_data", {})
+
+    with pytest.raises(ValueError, match="acct02.*acct01"):
+        main._campaign_runtime_snapshot("acct02")
+
+def test_campaign_start_rejects_active_account_mismatch(monkeypatch):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+
+    with pytest.raises(ValueError, match="acct02.*acct01"):
+        main._campaign_start_career({"account": "acct02"})
+
+def test_campaign_start_propagates_friend_and_races(monkeypatch):
+    captured = []
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(main, "active_dashboard_data", {"umas": [{"id": 100101}]})
+    monkeypatch.setattr(
+        main,
+        "start_career_from_request",
+        lambda request: captured.append(request) or {"success": True, "result": {"started": True}},
+    )
+
+    result = main._campaign_start_career({
+        "account": "acct01",
+        "trainee_chara_id": 1001,
+        "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+        "friend_support": {"viewer_id": 33, "support_card_id": 44},
+        "race_overrides": {"mandatory_race_list": [7], "extra_race_list": [8]},
+        "preset": {
+            "name": "parent",
+            "support_card_ids": [1, 2, 3, 4, 5],
+            "friend_viewer_id": 99,
+            "friend_card_id": 100,
+            "parent_run": True,
+        },
+    })
+
+    request = captured[0]
+    assert result["success"] is True
+    assert request.friend_viewer_id == 33
+    assert request.friend_card_id == 44
+    assert request.preset_overrides["mandatory_race_list"] == [7]
+    assert request.preset_overrides["extra_race_list"] == [8]
+    assert request.preset_overrides["parent_run"] is True
+
+def test_campaign_planner_includes_rentals_without_duplicate_trained_ids(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "_campaign_runtime_snapshot",
+        lambda _account: {
+            "owned_chara_ids": {1001},
+            "owned_candidates": [{"trained_chara_id": 1, "card_id": 100101}],
+            "rental_candidates": [
+                {"trained_chara_id": 1, "card_id": 100199},
+                {"trained_chara_id": 2, "card_id": 100201},
+            ],
+            "display_by_id": {},
+        },
+    )
+    monkeypatch.setattr(main, "_campaign_master_mdb_path", lambda: "/tmp/master.mdb")
+    monkeypatch.setattr(main, "_campaign_race_rows", lambda: [])
+    monkeypatch.setattr(main.affinity_calc, "_load_g1_saddles", lambda _path: set())
+
+    planner = main._campaign_planner_factory({"final_uma_card_id": 100101})
+
+    assert [row["trained_chara_id"] for row in planner.veteran_records] == [1, 2]
+    assert planner.veteran_records[0]["card_id"] == 100101
 
 
 @pytest.mark.parametrize(

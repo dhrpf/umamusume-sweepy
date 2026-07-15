@@ -3,11 +3,12 @@ import json
 import re
 import subprocess
 import sys
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pathlib import Path
 import random
 import time
@@ -21,11 +22,11 @@ from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
-from career_bot.campaigns.models import ParentCampaignSpec
+from career_bot.campaigns.models import CampaignSparkTarget, ParentCampaignSpec
 from career_bot.campaigns.planner import CampaignPlanner
 from career_bot.campaigns.runner import CampaignRunner
 from career_bot.campaigns.service import CampaignService
-from career_bot.campaigns.store import CampaignError, CampaignStore, InvalidTransition
+from career_bot.campaigns.store import CampaignError, CampaignNotFound, CampaignStore, InvalidTransition
 from uma_api.client import UmaClient, runtime_output_root
 from career_bot.delay import (
     GateKeeper, dna_sleep, dna_uniform,
@@ -251,14 +252,26 @@ class _CampaignPresetStore:
 def _current_campaign_account():
     dashboard = active_dashboard_data or {}
     account = active_account or dashboard.get("account") or {}
+    if isinstance(account, str):
+        return account
+    if not isinstance(account, dict):
+        account = {}
     return str(
         dashboard.get("account_name")
+        or dashboard.get("accountName")
         or account.get("name")
         or account.get("account")
         or ""
     )
 
+def _assert_campaign_account(account):
+    requested = str(account or "").strip()
+    current = _current_campaign_account().strip()
+    if requested and current and requested != current:
+        raise ValueError(f"Campaign account {requested} does not match active account {current}")
+
 def _campaign_runtime_snapshot(account):
+    _assert_campaign_account(account)
     dashboard = active_dashboard_data or {}
     display_rows = [
         *(dashboard.get("displayVeterans") or []),
@@ -292,7 +305,6 @@ def _campaign_runtime_snapshot(account):
         "current_career": current_account.get("career") if isinstance(current_account, dict) else None,
         "owned_candidates": [dict(row) for row in active_parent_full.values()],
         "rental_candidates": rental_candidates,
-        "veteran_records": [dict(row) for row in active_parent_full.values()],
         "display_by_id": display_by_id,
         "owned_chara_ids": {value for value in owned_chara_ids if value > 0},
         "runtime": {
@@ -300,9 +312,9 @@ def _campaign_runtime_snapshot(account):
             "logged_in": active_client is not None,
         },
         "bot_state": {
-            "logged_in": active_client is not None,
-            "career_running": bool(career_runner.snapshot().get("running")),
-            "dailies_running": bool(dailies_runner.running),
+            "session": {"logged_in": active_client is not None},
+            "career_runner": {"running": bool(career_runner.snapshot().get("running"))},
+            "dailies": {"running": bool(dailies_runner.running)},
         },
     }
 
@@ -345,24 +357,30 @@ class _ConfiguredCampaignPlanner(CampaignPlanner):
 def _campaign_planner_factory(request):
     payload = dict(request)
     snapshot = _campaign_runtime_snapshot(payload.get("account") or _current_campaign_account())
-    mdb_path = str(payload.get("mdb_path") or _campaign_master_mdb_path())
+    mdb_path = _campaign_master_mdb_path()
+    veteran_by_id = {}
+    for row in [*snapshot["owned_candidates"], *snapshot["rental_candidates"]]:
+        trained_id = int(row.get("trained_chara_id") or row.get("instance_id") or 0)
+        if trained_id:
+            veteran_by_id.setdefault(trained_id, dict(row))
     final_uma = payload.get("final_uma") or {}
     return _ConfiguredCampaignPlanner(
         mdb_path=mdb_path,
         owned_chara_ids=set(snapshot["owned_chara_ids"]),
-        veteran_records=list(snapshot["veteran_records"]),
+        veteran_records=list(veteran_by_id.values()),
         display_by_id=dict(snapshot["display_by_id"]),
         g1_saddle_ids=set(affinity_calc._load_g1_saddles(mdb_path)),
         race_rows=_campaign_race_rows(),
         affinity_for_pair=lambda trainee, first, second: affinity_calc.calculate_affinity(
             mdb_path, trainee, first, second
         ),
-        factor_map=payload.get("factor_map") or factor_map,
+        factor_map=factor_map,
         spark_targets=payload.get("spark_targets") or [],
         final_uma_card_id=int(payload.get("final_uma_card_id") or final_uma.get("card_id") or 0),
     )
 
 def _campaign_start_career(request):
+    _assert_campaign_account(request.get("account"))
     if not active_client:
         raise ValueError("Campaign career start requires login")
     preset = dict(request.get("preset") or {})
@@ -371,8 +389,19 @@ def _campaign_start_career(request):
     if len(parent_ids) < 2 or not all(parent_ids[:2]):
         raise ValueError("Campaign prepared run requires two resolved parents")
     support_ids = list(preset.get("support_card_ids") or preset.get("support_card_id_array") or [])
-    friend_viewer_id = int(preset.get("friend_viewer_id") or 0)
-    friend_card_id = int(preset.get("friend_card_id") or 0)
+    friend_support = request.get("friend_support") or {}
+    friend_viewer_id = int(
+        friend_support.get("viewer_id")
+        or friend_support.get("friend_viewer_id")
+        or preset.get("friend_viewer_id")
+        or 0
+    )
+    friend_card_id = int(
+        friend_support.get("support_card_id")
+        or friend_support.get("friend_card_id")
+        or preset.get("friend_card_id")
+        or 0
+    )
     if len(support_ids) != 5 or not friend_viewer_id or not friend_card_id:
         raise ValueError("Campaign preset requires five supports and a friend support")
     trainee_chara_id = int(request.get("trainee_chara_id") or 0)
@@ -384,7 +413,19 @@ def _campaign_start_career(request):
         ),
         trainee_chara_id,
     )
-    result = start_career_from_request(StartCareerRequest(
+    race_overrides = request.get("race_overrides") or []
+    preset_overrides = dict(preset.get("preset_overrides") or {})
+    if isinstance(race_overrides, dict):
+        for key in ("mandatory_race_list", "extra_race_list"):
+            if key in race_overrides:
+                preset_overrides[key] = list(race_overrides[key] or [])
+    elif isinstance(race_overrides, list):
+        preset_overrides["extra_race_list"] = list(race_overrides)
+    else:
+        raise ValueError("Campaign race_overrides must be a list or mapping")
+    if "parent_run" in preset:
+        preset_overrides["parent_run"] = bool(preset["parent_run"])
+    result = start_career_from_request(RunCareerRequest(
         card_id=card_id,
         support_card_ids=support_ids,
         friend_viewer_id=friend_viewer_id,
@@ -394,6 +435,8 @@ def _campaign_start_career(request):
         scenario_id=int(preset.get("scenario_id") or preset.get("scenario") or 4),
         deck_id=int(preset.get("deck_id") or 1),
         use_tp=int(preset.get("use_tp") or 30),
+        preset_name=str(preset.get("name") or preset.get("preset_name") or ""),
+        preset_overrides=preset_overrides,
     ))
     if not result.get("success"):
         raise ValueError(result.get("detail") or "Campaign career start failed")
@@ -1448,8 +1491,16 @@ class InheritanceRecommendRequest(BaseModel):
     def clamp_limit(cls, value):
         return max(1, min(int(value or 10), 50))
 
-class CampaignRecommendationRequest(BaseModel):
-    request: dict = Field(default_factory=dict)
+class CampaignFinalParentsRecommendationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account: str | None = Field(default=None, min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
+    final_uma_card_id: int = Field(gt=0)
+    spark_targets: list[CampaignSparkTarget] = Field(default_factory=list)
+    limit: int = Field(default=3, ge=1, le=50)
+
+class CampaignLoopRecommendationRequest(CampaignFinalParentsRecommendationRequest):
+    pinned_chara_ids: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
 
 class CampaignCreateRequest(BaseModel):
     spec: ParentCampaignSpec
@@ -1610,6 +1661,8 @@ async def delete_preset(req: DeletePresetByNameRequest):
 def _campaign_api_call(method, *args):
     try:
         return method(*args)
+    except CampaignNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except InvalidTransition as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CampaignError as exc:
@@ -1623,12 +1676,14 @@ async def list_campaigns(account: str | None = None):
     return {"success": True, "campaigns": _campaign_api_call(campaign_service.list_campaigns, resolved_account)}
 
 @app.post("/api/campaigns/recommend-final-parents")
-async def recommend_campaign_final_parents(req: CampaignRecommendationRequest):
-    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_final_parents, req.request)}
+async def recommend_campaign_final_parents(req: CampaignFinalParentsRecommendationRequest):
+    payload = req.model_dump(mode="json")
+    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_final_parents, payload)}
 
 @app.post("/api/campaigns/recommend-loop")
-async def recommend_campaign_loop(req: CampaignRecommendationRequest):
-    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_loops, req.request)}
+async def recommend_campaign_loop(req: CampaignLoopRecommendationRequest):
+    payload = req.model_dump(mode="json")
+    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_loops, payload)}
 
 @app.post("/api/campaigns")
 async def create_campaign(req: CampaignCreateRequest):
