@@ -11,10 +11,12 @@ from .models import (
     ParentGoal,
     ParentStrategy,
 )
+from .service import CampaignService
 
 __all__ = [
     "ApprovalMode",
     "CampaignState",
+    "CampaignService",
     "FactorAggregation",
     "FactorScope",
     "FactorTarget",

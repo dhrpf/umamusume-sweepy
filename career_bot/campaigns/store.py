@@ -452,6 +452,152 @@ class CampaignStore:
         finally:
             connection.close()
 
+    def append_event(
+        self,
+        campaign_id: str,
+        event_type: str,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not str(event_type or "").strip():
+            raise ValueError("event_type is required")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT campaign_id FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            self._insert_event(connection, str(campaign_id), str(event_type), data)
+            event = connection.execute(
+                "SELECT * FROM campaign_events WHERE campaign_id=? ORDER BY id DESC LIMIT 1",
+                (str(campaign_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return {
+                "id": int(event["id"]),
+                "campaign_id": event["campaign_id"],
+                "event_type": event["event_type"],
+                "created_at": float(event["created_at"]),
+                "data": _json_loads(event["data_json"]) or {},
+            }
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
+    def reserve_prepared_run_start(
+        self,
+        campaign_id: str,
+        operation_id: str,
+        *,
+        prepared_run: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        operation_id = str(operation_id or "").strip()
+        if not operation_id:
+            raise ValueError("operation_id is required")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            context = _json_loads(row["context_json"]) or {}
+            current = context.get("run_start") if isinstance(context.get("run_start"), dict) else {}
+            if current.get("status") == "STARTING" or (
+                current.get("operation_id") == operation_id
+                and current.get("status") == "STARTED"
+            ):
+                connection.execute("COMMIT")
+                return {"acquired": False, "run_start": current}
+            run_start = {
+                "operation_id": operation_id,
+                "status": "STARTING",
+                "result": None,
+                "error": "",
+            }
+            context["run_start"] = run_start
+            if prepared_run is not None:
+                context["prepared_run"] = prepared_run
+            context["pending_review"] = None
+            context["review_required"] = False
+            connection.execute(
+                "UPDATE campaigns SET context_json=?, updated_at=?, version=version+1 "
+                "WHERE campaign_id=?",
+                (_json_dumps(context), float(self.clock()), str(campaign_id)),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                "prepared_run_start_reserved",
+                {"operation_id": operation_id},
+            )
+            connection.execute("COMMIT")
+            return {"acquired": True, "run_start": run_start}
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
+    def finish_prepared_run_start(
+        self,
+        campaign_id: str,
+        operation_id: str,
+        *,
+        status: str,
+        result: Any = None,
+        error: str = "",
+    ) -> dict[str, Any]:
+        if status not in {"STARTED", "FAILED"}:
+            raise ValueError("run start status must be STARTED or FAILED")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            context = _json_loads(row["context_json"]) or {}
+            current = context.get("run_start") if isinstance(context.get("run_start"), dict) else {}
+            if current.get("operation_id") != str(operation_id):
+                raise CampaignError("prepared run start operation changed")
+            run_start = {
+                "operation_id": str(operation_id),
+                "status": status,
+                "result": result if status == "STARTED" else None,
+                "error": str(error or "") if status == "FAILED" else "",
+            }
+            context["run_start"] = run_start
+            connection.execute(
+                "UPDATE campaigns SET context_json=?, updated_at=?, version=version+1 "
+                "WHERE campaign_id=?",
+                (_json_dumps(context), float(self.clock()), str(campaign_id)),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                "prepared_run_start_finished",
+                {"operation_id": str(operation_id), "status": status, "error": run_start["error"]},
+            )
+            connection.execute("COMMIT")
+            return run_start
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
     def list(self, *, account: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 500))
         connection = self._connect()
@@ -895,6 +1041,121 @@ class CampaignStore:
             row for row in self.list_candidates(campaign_id) if row["candidate_id"] == resolved_id
         )
 
+    def persist_candidate_result(
+        self,
+        campaign_id: str,
+        *,
+        candidate_id: str,
+        trained_chara_id: int,
+        name: str,
+        score: float,
+        evaluation: dict[str, Any],
+        select: bool,
+        state: CampaignState | str,
+        next_action: str,
+        context_updates: dict[str, Any] | None = None,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        target = CampaignState(state)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            campaign_row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if campaign_row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            existing = connection.execute(
+                "SELECT * FROM campaign_candidates WHERE campaign_id=? AND candidate_id=?",
+                (str(campaign_id), str(candidate_id)),
+            ).fetchone()
+            if existing is not None:
+                connection.execute("COMMIT")
+                return {
+                    "campaign": self._campaign_from_row(campaign_row),
+                    "candidate": self._candidate_from_row(existing),
+                    "replayed": True,
+                }
+            if expected_version is not None and int(campaign_row["version"]) != int(expected_version):
+                raise CampaignError("campaign version changed while recording candidate")
+            current = CampaignState(campaign_row["state"])
+            if target != current and target not in ALLOWED_TRANSITIONS[current]:
+                raise InvalidTransition(
+                    f"Campaign {campaign_id} cannot transition from {current.value} to {target.value}"
+                )
+            now = float(self.clock())
+            connection.execute(
+                "INSERT INTO campaign_candidates "
+                "(candidate_id, campaign_id, trained_chara_id, name, score, accepted, "
+                "selected, evaluation_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(candidate_id),
+                    str(campaign_id),
+                    int(trained_chara_id),
+                    str(name or f"Candidate #{trained_chara_id}"),
+                    float(score),
+                    1 if evaluation.get("accepted") else 0,
+                    1 if select else 0,
+                    _json_dumps(evaluation),
+                    now,
+                ),
+            )
+            selected_candidate_id = campaign_row["selected_candidate_id"] or ""
+            if select:
+                connection.execute(
+                    "UPDATE campaign_candidates SET selected=0 "
+                    "WHERE campaign_id=? AND candidate_id<>?",
+                    (str(campaign_id), str(candidate_id)),
+                )
+                selected_candidate_id = str(candidate_id)
+            context = _json_loads(campaign_row["context_json"]) or {}
+            context = _deep_merge(context, context_updates or {})
+            ended_at = now if target in TERMINAL_STATES else campaign_row["ended_at"]
+            connection.execute(
+                "UPDATE campaigns SET state=?, context_json=?, selected_candidate_id=?, "
+                "next_action=?, updated_at=?, ended_at=?, version=version+1 WHERE campaign_id=?",
+                (
+                    target.value,
+                    _json_dumps(context),
+                    selected_candidate_id,
+                    str(next_action or ""),
+                    now,
+                    ended_at,
+                    str(campaign_id),
+                ),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                "candidate_result_recorded",
+                {
+                    "candidate_id": str(candidate_id),
+                    "selected": bool(select),
+                    "state": target.value,
+                },
+            )
+            updated_campaign = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            updated_candidate = connection.execute(
+                "SELECT * FROM campaign_candidates WHERE candidate_id=?",
+                (str(candidate_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return {
+                "campaign": self._campaign_from_row(updated_campaign),
+                "candidate": self._candidate_from_row(updated_candidate),
+                "replayed": False,
+            }
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
     def list_candidates(self, campaign_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
         self.get(campaign_id)
         limit = max(1, min(int(limit), 500))
@@ -906,6 +1167,106 @@ class CampaignStore:
                 (str(campaign_id), limit),
             ).fetchall()
             return [self._candidate_from_row(row) for row in rows]
+        finally:
+            connection.close()
+
+    def get_candidate(self, campaign_id: str, candidate_id: str) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM campaign_candidates WHERE campaign_id=? AND candidate_id=?",
+                (str(campaign_id), str(candidate_id)),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(
+                    f"Candidate {candidate_id} not found in campaign {campaign_id}"
+                )
+            return self._candidate_from_row(row)
+        finally:
+            connection.close()
+
+    def apply_candidate_selection(
+        self,
+        campaign_id: str,
+        candidate_id: str,
+        *,
+        state: CampaignState | str,
+        next_action: str,
+        context_updates: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        target = CampaignState(state)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            campaign_row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            candidate_row = connection.execute(
+                "SELECT * FROM campaign_candidates WHERE campaign_id=? AND candidate_id=?",
+                (str(campaign_id), str(candidate_id)),
+            ).fetchone()
+            if campaign_row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            if candidate_row is None:
+                raise CampaignNotFound(
+                    f"Candidate {candidate_id} not found in campaign {campaign_id}"
+                )
+            current = CampaignState(campaign_row["state"])
+            if target != current and target not in ALLOWED_TRANSITIONS[current]:
+                raise InvalidTransition(
+                    f"Campaign {campaign_id} cannot transition from {current.value} to {target.value}"
+                )
+            now = float(self.clock())
+            connection.execute(
+                "UPDATE campaign_candidates SET selected=0 WHERE campaign_id=?",
+                (str(campaign_id),),
+            )
+            connection.execute(
+                "UPDATE campaign_candidates SET selected=1 WHERE candidate_id=?",
+                (str(candidate_id),),
+            )
+            context = _deep_merge(
+                _json_loads(campaign_row["context_json"]) or {},
+                context_updates or {},
+            )
+            ended_at = now if target in TERMINAL_STATES else campaign_row["ended_at"]
+            connection.execute(
+                "UPDATE campaigns SET state=?, context_json=?, selected_candidate_id=?, "
+                "next_action=?, updated_at=?, ended_at=?, version=version+1 WHERE campaign_id=?",
+                (
+                    target.value,
+                    _json_dumps(context),
+                    str(candidate_id),
+                    str(next_action or ""),
+                    now,
+                    ended_at,
+                    str(campaign_id),
+                ),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                "candidate_selected",
+                {"candidate_id": str(candidate_id), "state": target.value},
+            )
+            updated_campaign = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            updated_candidate = connection.execute(
+                "SELECT * FROM campaign_candidates WHERE candidate_id=?",
+                (str(candidate_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return {
+                "campaign": self._campaign_from_row(updated_campaign),
+                "candidate": self._candidate_from_row(updated_candidate),
+            }
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
         finally:
             connection.close()
 

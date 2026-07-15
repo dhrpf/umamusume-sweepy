@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
+import hashlib
 from typing import Any
 
 from .final_setup import READY, READY_WITH_RENTAL, evaluate_final_setup
@@ -64,6 +65,13 @@ class CampaignService:
         return planner.recommend_loops(**kwargs)
 
     def create_campaign(self, spec: ParentCampaignSpec | Mapping[str, Any]) -> dict[str, Any]:
+        if isinstance(spec, Mapping):
+            final_uma = spec.get("final_uma")
+            if isinstance(final_uma, Mapping) and isinstance(final_uma.get("card_id"), bool):
+                raise ValueError("final_uma.card_id must be an integer")
+            for member in spec.get("loop_members") or []:
+                if isinstance(member, Mapping) and isinstance(member.get("deck_id"), bool):
+                    raise ValueError("loop member deck_id must be an integer")
         validated = ParentCampaignSpec.model_validate(spec)
         if validated.final_uma.card_id <= 0:
             raise ValueError("final_uma.card_id must be positive for Web campaigns")
@@ -91,7 +99,6 @@ class CampaignService:
     def prepare_next_run(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
         runtime = self._snapshot(campaign["account"])
-        context = dict(campaign.get("context") or {})
         rotation = self._rotation(campaign)
         resolver = LegacyResolver(allow_rental=bool(campaign["spec"]["options"]["allow_rental"]))
         candidates = [dict(row) for row in self.candidate_pool(campaign, rotation, runtime)]
@@ -99,25 +106,58 @@ class CampaignService:
             resolver.resolve_slot(LegacySlot(**dict(slot)), candidates=candidates)
             for slot in self.planned_slots(campaign, rotation, runtime)
         ]
+        unresolved = [row for row in resolved if row.get("status") != "RESOLVED"]
+        if unresolved:
+            review = {
+                "kind": "unresolved_legacy_slots",
+                "unresolved_slots": unresolved,
+                "resolved_slots": resolved,
+            }
+            persisted = self.store.update_context(
+                campaign_id,
+                {
+                    "rotation": rotation.to_dict(),
+                    "prepared_run": None,
+                    "prepared_run_id": None,
+                    "pending_review": review,
+                    "review_required": True,
+                    "run_start": None,
+                },
+            )
+            persisted = self.runner.require_user_input(
+                campaign_id,
+                "prepare_next_run",
+                review,
+            )
+            return {"campaign": persisted, "prepared_run": None, "resolved_slots": resolved}
         races = list(self.race_overrides(campaign, rotation, runtime))
         request = self.career_request(campaign, rotation, resolved, races, runtime)
+        prepared_run_id = self._stable_id("prepared", request)
         replacements = [row for row in resolved if row.get("replacement")]
         auto = bool(campaign["spec"]["options"].get("auto_use_best_veteran", False))
-        audit_events = list(context.get("audit_events") or [])
-        audit_events.extend(
-            {"event": "legacy_replaced", "role": row.get("role"), "details": row}
-            for row in replacements
-        )
-        review = {"prepared_run": request, "resolved_slots": resolved, "replacements": replacements}
+        review = {
+            "kind": "prepared_run",
+            "prepared_run_id": prepared_run_id,
+            "prepared_run": request,
+            "resolved_slots": resolved,
+            "replacements": replacements,
+        }
         updates = {
             "rotation": rotation.to_dict(),
             "prepared_run": request,
-            "pending_review": False if auto else True,
-            "audit_events": audit_events,
-            "approval_started": False,
+            "prepared_run_id": prepared_run_id,
+            "pending_review": None if auto else review,
+            "review_required": not auto,
+            "run_start": None,
         }
         persisted = self.store.update_context(campaign_id, updates)
         if auto:
+            for replacement in replacements:
+                self.store.append_event(
+                    campaign_id,
+                    "automatic_legacy_replacement",
+                    {"prepared_run_id": prepared_run_id, "replacement": replacement},
+                )
             persisted = self.store.set_next_action(campaign_id, "start_career")
         else:
             persisted = self.runner.require_user_input(campaign_id, "approve_run", review)
@@ -130,19 +170,45 @@ class CampaignService:
     ) -> Any:
         campaign = self.store.get(campaign_id)
         context = dict(campaign.get("context") or {})
-        if context.get("approval_started"):
-            return context.get("start_result")
         request = deepcopy(context.get("prepared_run"))
         if not isinstance(request, dict):
             raise ValueError("campaign has no persisted prepared_run")
         if selection_override:
+            allowed = {"race_overrides", "legacy_slots", "friend_support"}
+            unknown = set(selection_override) - allowed
+            if unknown:
+                raise ValueError(f"unsupported selection override fields: {sorted(unknown)}")
             request.update(deepcopy(dict(selection_override)))
-        self.store.update_context(
+        operation_id = self._stable_id("prepared-start", request)
+        reservation = self.store.reserve_prepared_run_start(
             campaign_id,
-            {"prepared_run": request, "pending_review": False, "approval_started": True},
+            operation_id,
+            prepared_run=request,
         )
-        result = self.start_career(request)
-        self.store.update_context(campaign_id, {"start_result": result})
+        if not reservation["acquired"]:
+            run_start = reservation["run_start"]
+            if run_start["status"] == "STARTED":
+                return run_start.get("result")
+            return {
+                "status": "STARTING",
+                "operation_id": run_start["operation_id"],
+            }
+        try:
+            result = self.start_career(request)
+        except Exception as exc:
+            self.store.finish_prepared_run_start(
+                campaign_id,
+                operation_id,
+                status="FAILED",
+                error=str(exc),
+            )
+            raise
+        self.store.finish_prepared_run_start(
+            campaign_id,
+            operation_id,
+            status="STARTED",
+            result=result,
+        )
         return result
 
     def record_completed_veteran(
@@ -171,52 +237,86 @@ class CampaignService:
             "final_setup": final_result,
         }
         previous = self.store.list_candidates(campaign_id)
-        decision = self._candidate_decision(evaluation, previous)
+        current_best = self._current_best(campaign, previous)
+        decision = self._candidate_decision(evaluation, current_best)
+        can_complete = final_result["status"] == READY or (
+            final_result["status"] == READY_WITH_RENTAL
+            and bool(spec["options"].get("allow_rental", False))
+        )
+        evaluation["accepted"] = can_complete
+        evaluation["decision"] = decision
         score = (
             evaluation["required_progress"] * 1000
             + evaluation["preferred_progress"] * 100
             + evaluation["best_affinity"]
         )
-        stored = self.store.add_candidate(
-            campaign_id,
-            trained_chara_id=int(candidate.get("trained_chara_id") or 0),
-            name=str(candidate.get("name") or ""),
-            score=score,
-            evaluation={**evaluation, "decision": decision},
-        )
-        can_complete = final_result["status"] == READY or (
-            final_result["status"] == READY_WITH_RENTAL
-            and bool(spec["options"].get("allow_rental", False))
-        )
+        candidate_id = str(candidate.get("candidate_id") or self._stable_id(
+            "candidate",
+            {"candidate": dict(candidate), "pairings": list(final_pairings)},
+        ))
+        context_updates: dict[str, Any] = {"pending_review": None, "review_required": False}
         if can_complete:
-            campaign = self.store.transition(campaign_id, CampaignState.COMPLETED, next_action="")
+            target_state = CampaignState.COMPLETED
+            next_action = ""
+            select = True
         elif decision == "tradeoff":
-            campaign = self.runner.require_user_input(
-                campaign_id,
-                "select_candidate",
-                {"candidate": stored, "evaluation": evaluation},
-            )
+            target_state = CampaignState.NEEDS_USER_INPUT
+            next_action = "select_candidate"
+            select = False
+            context_updates = {
+                "pending_review": {
+                    "kind": "candidate_tradeoff",
+                    "candidate_id": candidate_id,
+                    "evaluation": evaluation,
+                },
+                "review_required": True,
+            }
         else:
             rotation = advance_rotation(
                 self._rotation(campaign),
-                produced_legacy_id=str(candidate.get("trained_chara_id") or stored["candidate_id"]),
+                produced_legacy_id=str(candidate.get("trained_chara_id") or candidate_id),
             )
-            self.store.update_context(campaign_id, {"rotation": rotation.to_dict()})
-            campaign = self.store.transition(
-                campaign_id,
-                CampaignState.SELECTING_LINEAGE,
-                next_action="prepare_next_run",
-            )
+            context_updates["rotation"] = rotation.to_dict()
+            target_state = CampaignState.SELECTING_LINEAGE
+            next_action = "prepare_next_run"
+            select = False
+        persisted = self.store.persist_candidate_result(
+            campaign_id,
+            candidate_id=candidate_id,
+            trained_chara_id=int(candidate.get("trained_chara_id") or 0),
+            name=str(candidate.get("name") or ""),
+            score=score,
+            evaluation=evaluation,
+            select=select,
+            state=target_state,
+            next_action=next_action,
+            context_updates=context_updates,
+            expected_version=campaign.get("version"),
+        )
         return {
-            "campaign": campaign,
-            "candidate": stored,
+            "campaign": persisted["campaign"],
+            "candidate": persisted["candidate"],
             "decision": decision,
             "targets": target_result,
             "final_setup": final_result,
         }
 
     def select_candidate(self, campaign_id: str, candidate_id: str) -> dict[str, Any]:
-        return self.runner.select_candidate(campaign_id, candidate_id)
+        campaign = self.store.get(campaign_id)
+        candidate = self.store.get_candidate(campaign_id, candidate_id)
+        evaluation = candidate.get("evaluation") or {}
+        final_status = (evaluation.get("final_setup") or {}).get("status")
+        allow_rental = bool(campaign["spec"]["options"].get("allow_rental", False))
+        complete = final_status == READY or (
+            final_status == READY_WITH_RENTAL and allow_rental
+        )
+        return self.store.apply_candidate_selection(
+            campaign_id,
+            candidate_id,
+            state=CampaignState.COMPLETED if complete else CampaignState.SELECTING_LINEAGE,
+            next_action="" if complete else "prepare_next_run",
+            context_updates={"pending_review": None, "review_required": False},
+        )
 
     def continue_for_preferred(self, campaign_id: str) -> dict[str, Any]:
         return self.runner.continue_for_preferred(campaign_id)
@@ -225,10 +325,7 @@ class CampaignService:
         return self.runner.cancel(campaign_id, reason=reason)
 
     def _snapshot(self, account: str) -> dict[str, Any]:
-        try:
-            return self.runtime_snapshot(account)
-        except TypeError:
-            return self.runtime_snapshot()
+        return self.runtime_snapshot(account)
 
     @staticmethod
     def _rotation(campaign: Mapping[str, Any]) -> RotationState:
@@ -240,21 +337,45 @@ class CampaignService:
         return RotationState.bootstrap([int(row["chara_id"]) for row in members])
 
     @staticmethod
-    def _candidate_decision(evaluation: Mapping[str, Any], previous: Sequence[Mapping[str, Any]]) -> str:
+    def _current_best(
+        campaign: Mapping[str, Any],
+        previous: Sequence[Mapping[str, Any]],
+    ) -> Mapping[str, Any] | None:
+        selected_id = str(campaign.get("selected_candidate_id") or "")
+        if selected_id:
+            selected = next(
+                (row for row in previous if row.get("candidate_id") == selected_id),
+                None,
+            )
+            if selected is not None:
+                return selected
+        return previous[0] if previous else None
+
+    @staticmethod
+    def _candidate_decision(
+        evaluation: Mapping[str, Any],
+        previous: Mapping[str, Any] | None,
+    ) -> str:
         dimensions = ("required_progress", "preferred_progress", "best_affinity")
         current = tuple(float(evaluation[key]) for key in dimensions)
-        for row in previous:
-            old = row.get("evaluation") or {}
-            prior = tuple(float(old.get(key, 0)) for key in dimensions)
-            if all(left <= right for left, right in zip(current, prior)) and any(
-                left < right for left, right in zip(current, prior)
-            ):
-                return "reject"
-            if any(left > right for left, right in zip(current, prior)) and any(
-                left < right for left, right in zip(current, prior)
-            ):
-                return "tradeoff"
+        if previous is None:
+            return "accept"
+        old = previous.get("evaluation") or {}
+        prior = tuple(float(old.get(key, 0)) for key in dimensions)
+        if all(left <= right for left, right in zip(current, prior)) and any(
+            left < right for left, right in zip(current, prior)
+        ):
+            return "reject"
+        if any(left > right for left, right in zip(current, prior)) and any(
+            left < right for left, right in zip(current, prior)
+        ):
+            return "tradeoff"
         return "accept"
+
+    @staticmethod
+    def _stable_id(prefix: str, value: Any) -> str:
+        encoded = repr(value)
+        return f"{prefix}-{hashlib.sha256(encoded.encode()).hexdigest()[:24]}"
 
     def _pairing_with_affinity(
         self,

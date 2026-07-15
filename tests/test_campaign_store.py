@@ -276,3 +276,104 @@ def test_two_store_instances_cannot_activate_same_account_concurrently(tmp_path)
         )
 
     assert sorted(results) == ["activated", "blocked"]
+
+def _evaluating_campaign(store, campaign_id="campaign-1"):
+    store.create(sample_spec(), campaign_id=campaign_id)
+    for state in (
+        CampaignState.READY,
+        CampaignState.STARTING_BOT,
+        CampaignState.SELECTING_LINEAGE,
+        CampaignState.RUNNING_CAREER,
+        CampaignState.EVALUATING_RESULT,
+    ):
+        store.transition(campaign_id, state)
+    return store.get(campaign_id)
+
+
+def test_public_append_event_is_append_only(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    store.append_event("campaign-1", "automatic_legacy_replacement", {"role": "parent1"})
+    store.append_event("campaign-1", "automatic_legacy_replacement", {"role": "parent2"})
+    events = [row for row in store.recent_events("campaign-1") if row["event_type"] == "automatic_legacy_replacement"]
+    assert [row["data"]["role"] for row in events] == ["parent2", "parent1"]
+
+
+def test_prepared_run_reservation_is_atomic_and_failed_start_can_retry(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    barrier = Barrier(2)
+
+    def reserve():
+        barrier.wait()
+        return store.reserve_prepared_run_start(
+            "campaign-1", "operation-1", prepared_run={"campaign_id": "campaign-1"}
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _value: reserve(), range(2)))
+
+    assert sorted(row["acquired"] for row in results) == [False, True]
+    store.finish_prepared_run_start(
+        "campaign-1", "operation-1", status="FAILED", error="gateway failed"
+    )
+    retry = store.reserve_prepared_run_start("campaign-1", "operation-1")
+    assert retry["acquired"] is True
+    started = store.finish_prepared_run_start(
+        "campaign-1", "operation-1", status="STARTED", result={"job_id": "job-1"}
+    )
+    replay = store.reserve_prepared_run_start("campaign-1", "operation-1")
+    assert started["result"] == {"job_id": "job-1"}
+    assert replay == {"acquired": False, "run_start": started}
+
+
+def test_candidate_result_transaction_replays_without_duplicate_and_selects_completion(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    campaign = _evaluating_campaign(store)
+    kwargs = {
+        "candidate_id": "result-1",
+        "trained_chara_id": 501,
+        "name": "Veteran",
+        "score": 1150,
+        "evaluation": {"accepted": True, "final_setup": {"status": "READY"}},
+        "select": True,
+        "state": CampaignState.COMPLETED,
+        "next_action": "",
+        "context_updates": {"pending_review": None, "review_required": False},
+        "expected_version": campaign["version"],
+    }
+    first = store.persist_candidate_result("campaign-1", **kwargs)
+    second = store.persist_candidate_result("campaign-1", **kwargs)
+    assert first["replayed"] is False
+    assert second["replayed"] is True
+    assert len(store.list_candidates("campaign-1")) == 1
+    assert store.get("campaign-1")["selected_candidate_id"] == "result-1"
+    assert first["candidate"]["selected"] is True
+
+
+def test_candidate_selection_transaction_uses_requested_outcome(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    campaign = _evaluating_campaign(store)
+    stored = store.persist_candidate_result(
+        "campaign-1",
+        candidate_id="tradeoff-1",
+        trained_chara_id=501,
+        name="Tradeoff",
+        score=900,
+        evaluation={"accepted": False, "final_setup": {"status": "IN_PROGRESS"}},
+        select=False,
+        state=CampaignState.NEEDS_USER_INPUT,
+        next_action="select_candidate",
+        context_updates={"pending_review": {"kind": "candidate_tradeoff"}},
+        expected_version=campaign["version"],
+    )
+    result = store.apply_candidate_selection(
+        "campaign-1",
+        stored["candidate"]["candidate_id"],
+        state=CampaignState.SELECTING_LINEAGE,
+        next_action="prepare_next_run",
+        context_updates={"pending_review": None, "review_required": False},
+    )
+    assert result["candidate"]["selected"] is True
+    assert result["campaign"]["state"] == CampaignState.SELECTING_LINEAGE.value
+    assert result["campaign"]["context"]["pending_review"] is None
