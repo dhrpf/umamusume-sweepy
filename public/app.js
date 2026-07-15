@@ -82,6 +82,17 @@ const els = {
     parentGrid: document.getElementById('parent-grid'),
     friendGrid: document.getElementById('friend-grid'),
     deckList: document.getElementById('deck-list'),
+    deckEditorModal: document.getElementById('deck-editor-modal'),
+    deckEditorDeckId: document.getElementById('deck-editor-deck-id'),
+    deckEditorName: document.getElementById('deck-editor-name'),
+    deckEditorSlots: document.getElementById('deck-editor-slots'),
+    deckEditorCount: document.getElementById('deck-editor-count'),
+    deckEditorSearch: document.getElementById('deck-editor-search'),
+    deckEditorTypeFilter: document.getElementById('deck-editor-type-filter'),
+    deckEditorStatus: document.getElementById('deck-editor-status'),
+    deckEditorOwned: document.getElementById('deck-editor-owned'),
+    deckEditorSave: document.getElementById('deck-editor-save'),
+    deckEditorCancel: document.getElementById('deck-editor-cancel'),
     umaCount: document.getElementById('uma-count'),
     cardCount: document.getElementById('card-count'),
     parentCount: document.getElementById('parent-count'),
@@ -91,6 +102,11 @@ const els = {
     presetSelect: document.getElementById('preset-select'),
     startCareerBtn: document.getElementById('start-career-btn'),
     startStatus: document.getElementById('start-status'),
+    careerLoopIndicator: document.getElementById('career-loop-indicator'),
+    careerLoopPhase: document.getElementById('career-loop-phase'),
+    careerLoopCountdown: document.getElementById('career-loop-countdown'),
+    careerLoopMessage: document.getElementById('career-loop-message'),
+    careerLoopStopBtn: document.getElementById('career-loop-stop-btn'),
     accountStrip: document.getElementById('account-strip'),
     careerModal: document.getElementById('career-modal'),
     careerModalCopy: document.getElementById('career-modal-copy'),
@@ -893,6 +909,13 @@ const els = {
         };
         let dashData = null;
         const selection = { deck: null, friend: null, trainee: null, veterans: [] };
+        const deckEditorState = {
+            deckId: 0,
+            cards: [],
+            search: '',
+            type: '',
+            saving: false,
+        };
 
         async function syncSelectionToServer() {
             selection.preset = state.selectedPreset || '';
@@ -1010,12 +1033,16 @@ const els = {
             return '';
         }
         function syncStartButton() {
+            const loopActive = Boolean(state.runner && state.runner.loop && state.runner.loop.active);
             const reason = getStartMissingReason();
-            els.startCareerBtn.disabled = Boolean(reason) || state.isStartingCareer;
+            els.startCareerBtn.disabled = Boolean(reason) || state.isStartingCareer || loopActive;
             if (state.isStartingCareer) {
                 els.startCareerBtn.innerText = 'RUNNING...';
                 els.startStatus.innerText = 'Starting runner...';
                 els.startStatus.classList.remove('error');
+            } else if (loopActive) {
+                els.startCareerBtn.innerText = 'LOOP ACTIVE';
+                els.startStatus.classList.toggle('error', false);
             } else {
                 const activeCareer = state.account && state.account.career && state.account.career.active;
                 els.startCareerBtn.innerText = activeCareer ? 'RESUME CAREER' : 'RUN CAREER';
@@ -1226,8 +1253,8 @@ const els = {
             const deckIdx = findDeckIndexForCareer(activeCareer);
             if (deckIdx >= 0) {
                 selection.deck = dashData.validDecks[deckIdx];
-                const deckEls = document.querySelectorAll('.deck-container');
-                if (deckEls[deckIdx]) deckEls[deckIdx].classList.add('selected');
+                const deckEl = document.querySelector(`.deck-container[data-deck-id="${Number(selection.deck.id)}"]`);
+                if (deckEl) deckEl.classList.add('selected');
                 return;
             }
             const supportCards = (activeCareer && activeCareer.support_cards) || [];
@@ -2353,6 +2380,29 @@ const els = {
                 });
             });
         }
+        async function stopCareerLoop() {
+            if (!state.runner || !state.runner.loop || !state.runner.loop.active) return;
+            if (els.careerLoopStopBtn) {
+                els.careerLoopStopBtn.disabled = true;
+                els.careerLoopStopBtn.textContent = 'STOPPING...';
+            }
+            try {
+                const data = await apiJson('/api/career/runner/stop', { method: 'POST' });
+                if (!data.success) throw new Error(data.detail || 'Failed to stop career loop');
+                if (data.runner) applyRunnerSnapshot(data.runner);
+                els.startStatus.classList.remove('error');
+                els.startStatus.innerText = 'Stopping career loop...';
+                startRunnerPolling();
+            } catch (e) {
+                els.startStatus.innerText = e.message || 'Failed to stop career loop';
+                els.startStatus.classList.add('error');
+                if (els.careerLoopStopBtn) {
+                    els.careerLoopStopBtn.disabled = false;
+                    els.careerLoopStopBtn.textContent = 'STOP LOOP';
+                }
+            }
+        }
+
         async function startCareer() {
             const reason = getStartMissingReason();
             if (reason || state.isStartingCareer) {
@@ -2406,6 +2456,7 @@ const els = {
                 });
                 if (!data.success) throw new Error(data.detail || 'Start failed');
                 state.displayedClocksUsed = Number(data.runner && data.runner.clocks_used || 0);
+                if (data.runner) applyRunnerSnapshot(data.runner);
                 renderAccountStrip(data.account);
                 if (data.account && data.account.career && data.account.career.active) {
                     autoLoadCareerSelection();
@@ -2505,10 +2556,44 @@ const els = {
                 state.displayedClocksUsed = clocksUsed;
             }
         }
+        function formatLoopCountdown(totalSeconds) {
+            const seconds = Math.max(0, Math.floor(Number(totalSeconds || 0)));
+            if (!seconds) return '';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours) return `${hours}h ${minutes}m`;
+            if (minutes) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+        function renderCareerLoopIndicator(loop) {
+            if (!els.careerLoopIndicator) return;
+            const active = Boolean(loop && loop.active);
+            els.careerLoopIndicator.hidden = !active;
+            els.careerLoopIndicator.setAttribute('aria-hidden', active ? 'false' : 'true');
+            if (!active) return;
+            const phaseLabels = {
+                starting: 'LOOP STARTING',
+                running: 'LOOP RUNNING',
+                waiting_tp: 'WAITING FOR TP',
+                waiting_delay: 'WAITING NEXT RUN',
+                stopping: 'STOPPING LOOP',
+            };
+            const phase = String(loop.phase || 'active');
+            els.careerLoopIndicator.dataset.phase = phase;
+            if (els.careerLoopPhase) els.careerLoopPhase.textContent = phaseLabels[phase] || 'LOOP ACTIVE';
+            if (els.careerLoopMessage) els.careerLoopMessage.textContent = loop.message || 'Career loop is active';
+            if (els.careerLoopCountdown) els.careerLoopCountdown.textContent = formatLoopCountdown(loop.remaining_sec);
+            if (els.careerLoopStopBtn) {
+                els.careerLoopStopBtn.disabled = phase === 'stopping';
+                els.careerLoopStopBtn.textContent = phase === 'stopping' ? 'STOPPING...' : 'STOP LOOP';
+            }
+        }
         function applyRunnerSnapshot(runner) {
             state.runner = runner;
             applyRunnerSettings(runner);
             applyRunnerClockUsage(runner);
+            renderCareerLoopIndicator(runner.loop || null);
+            syncStartButton();
         }
         async function refreshRunnerStatus() {
             try {
@@ -2528,6 +2613,14 @@ const els = {
                 if (runner.running) {
                     els.startStatus.classList.toggle('error', false);
                     if (!rows.length) els.startStatus.innerText = `Turn ${runner.turn || '?'} / ${runner.last_action || 'running'} / ${runner.steps || 0}`;
+                    return;
+                }
+                if (runner.loop && runner.loop.active) {
+                    els.startStatus.classList.toggle('error', false);
+                    if (!rows.length) {
+                        const countdown = formatLoopCountdown(runner.loop.remaining_sec);
+                        els.startStatus.innerText = `${runner.loop.message || 'Career loop active'}${countdown ? ` · ${countdown}` : ''}`;
+                    }
                     return;
                 }
                 if (state.runnerTimer && !state.devEnabled) {
@@ -2690,14 +2783,17 @@ const els = {
             loadFriends(true);
         });
         els.startCareerBtn.addEventListener('click', startCareer);
+        els.careerLoopStopBtn?.addEventListener('click', stopCareerLoop);
 
-        function selectDeck(index, element) {
+        function selectDeck(deckId, element) {
+            const deck = (dashData && dashData.validDecks || []).find(item => Number(item.id) === Number(deckId));
+            if (!deck) return;
             const alreadySelected = element.classList.contains('selected');
             document.querySelectorAll('.deck-container.selected').forEach(card => card.classList.remove('selected'));
             selection.deck = null;
             if (!alreadySelected) {
                 element.classList.add('selected');
-                selection.deck = dashData.validDecks[index];
+                selection.deck = deck;
             }
             renderFriends();
             renderTeamPanel();
@@ -2730,8 +2826,17 @@ const els = {
             syncSelectionToServer();
         }
         function attachSelectionHandlers() {
-            document.querySelectorAll('.deck-container').forEach((element, index) => {
-                element.addEventListener('click', () => selectDeck(index, element));
+            document.querySelectorAll('.deck-container').forEach(element => {
+                const deckId = Number(element.dataset.deckId || 0);
+                if (!element.classList.contains('deck-incomplete')) {
+                    element.addEventListener('click', () => selectDeck(deckId, element));
+                }
+            });
+            document.querySelectorAll('.deck-edit-btn').forEach(button => {
+                button.addEventListener('click', event => {
+                    event.stopPropagation();
+                    openDeckEditor(Number(button.dataset.deckEdit || 0));
+                });
             });
             document.querySelectorAll('#uma-grid .grid-card').forEach((element, index) => {
                 element.classList.add('selectable');
@@ -2739,11 +2844,11 @@ const els = {
             });
         }
         function isValidDeck(deck) {
-            return deck.cards.every(card => {
-                const id = card.id || '';
-                const name = card.name || '';
-                return !id.includes('{') && !id.includes('-') && !name.includes('Unknown');
-            });
+            return Boolean(deck && Array.isArray(deck.cards) && deck.cards.length === 5 && deck.cards.every(card => {
+                const id = String(card.id || '');
+                const name = String(card.name || '');
+                return id && !id.includes('{') && !id.includes('-') && !name.includes('Unknown');
+            }));
         }
         function renderCounts(data) {
             els.umaCount.innerText = `(${data.umas.length})`;
@@ -2751,28 +2856,187 @@ const els = {
             els.parentCount.innerText = `(${data.parents.length})`;
         }
         function renderDecks(decks) {
-            els.deckList.innerHTML = decks.map(deck => {
-                const cards = deck.cards.map(card => {
+            els.deckList.innerHTML = (decks || []).map(deck => {
+                const displayCards = [...(deck.cards || []).slice(0, 5)];
+                while (displayCards.length < 5) displayCards.push(null);
+                const cards = displayCards.map(card => {
+                    if (!card) return '<div class="grid-card deck-card deck-card-empty"><span>EMPTY</span></div>';
                     const imgId = card.id || '10001';
-                    const lb = card.limit_break_count ?? 0;
+                    const lb = Math.max(0, Math.min(4, Number(card.limit_break_count ?? 0)));
                     return `<div class="grid-card deck-card">
                         <img src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                         <div class="grid-card-overlay">
-                            <span class="grid-card-kicker">${card.type || '?'} | ${card.rarity || '?'}</span>
+                            <span class="grid-card-kicker">${escapeHtml(card.type || '?')} | ${escapeHtml(card.rarity || '?')}</span>
                             <span class="grid-card-lb">${'★'.repeat(lb)}${'☆'.repeat(4 - lb)}</span>
-                            <span class="grid-card-name">${card.name || 'Unknown'}</span>
+                            <span class="grid-card-name">${escapeHtml(card.name || 'Unknown')}</span>
                         </div>
                     </div>`;
                 }).join('');
-                return `<div class="deck-container">
+                const valid = isValidDeck(deck);
+                const selected = selection.deck && Number(selection.deck.id) === Number(deck.id);
+                return `<div class="deck-container${valid ? '' : ' deck-incomplete'}${selected ? ' selected' : ''}" data-deck-id="${Number(deck.id || 0)}">
                     <div class="deck-header">
-                        <span>${deck.name.toUpperCase()}</span>
-                        <span style="font-size:0.85rem; opacity:0.8">SLOT ${deck.id}</span>
+                        <span>${escapeHtml(String(deck.name || `Deck ${deck.id}`).toUpperCase())}</span>
+                        <div class="deck-header-actions">
+                            <span class="deck-slot-label">SLOT ${Number(deck.id || 0)}</span>
+                            <button class="btn btn-sm deck-edit-btn" type="button" data-deck-edit="${Number(deck.id || 0)}">EDIT</button>
+                        </div>
                     </div>
                     <div class="deck-cards">${cards}</div>
                 </div>`;
             }).join('');
         }
+
+        function ownedSupportCardsForEditor() {
+            return ((dashData && dashData.supports) || []).filter(card => {
+                const id = String(card.id || '');
+                return id && !id.includes('{') && !id.includes('-') && !String(card.name || '').includes('Unknown');
+            });
+        }
+        function deckEditorHas(cardId) {
+            return deckEditorState.cards.some(card => String(card.id) === String(cardId));
+        }
+        function closeDeckEditor() {
+            if (!els.deckEditorModal) return;
+            els.deckEditorModal.classList.remove('open');
+            els.deckEditorModal.setAttribute('aria-hidden', 'true');
+        }
+        function openDeckEditor(deckId) {
+            const deck = ((dashData && dashData.decks) || []).find(item => Number(item.id) === Number(deckId));
+            if (!deck || !els.deckEditorModal) return;
+            deckEditorState.deckId = Number(deck.id);
+            deckEditorState.cards = (deck.cards || []).slice(0, 5).map(card => ({ ...card }));
+            deckEditorState.search = '';
+            deckEditorState.type = '';
+            deckEditorState.saving = false;
+            if (els.deckEditorDeckId) els.deckEditorDeckId.textContent = String(deck.id);
+            if (els.deckEditorName) els.deckEditorName.value = deck.name || `Deck ${deck.id}`;
+            if (els.deckEditorSearch) els.deckEditorSearch.value = '';
+            if (els.deckEditorTypeFilter) els.deckEditorTypeFilter.value = '';
+            els.deckEditorModal.classList.add('open');
+            els.deckEditorModal.setAttribute('aria-hidden', 'false');
+            renderDeckEditor();
+        }
+        function renderDeckEditorSlots() {
+            if (!els.deckEditorSlots) return;
+            const cards = [...deckEditorState.cards];
+            while (cards.length < 5) cards.push(null);
+            els.deckEditorSlots.innerHTML = cards.map((card, index) => {
+                if (!card) return `<button type="button" class="deck-editor-slot empty" disabled><span>${index + 1}</span><b>+</b></button>`;
+                return `<button type="button" class="deck-editor-slot filled" data-deck-remove="${escapeAttr(card.id)}" title="Remove ${escapeAttr(card.name || '')}">
+                    <img src="/api/images/${escapeAttr(card.id)}.png" onerror="hideBrokenImage(this)">
+                    <span class="deck-editor-slot-number">${index + 1}</span>
+                    <span class="deck-editor-slot-name">${escapeHtml(card.name || 'Unknown')}</span>
+                </button>`;
+            }).join('');
+            els.deckEditorSlots.querySelectorAll('[data-deck-remove]').forEach(button => {
+                button.addEventListener('click', () => {
+                    deckEditorState.cards = deckEditorState.cards.filter(card => String(card.id) !== String(button.dataset.deckRemove));
+                    renderDeckEditor();
+                });
+            });
+        }
+        function renderDeckEditorOwned() {
+            if (!els.deckEditorOwned) return;
+            const search = deckEditorState.search.toLowerCase().trim();
+            const type = deckEditorState.type.toLowerCase();
+            let cards = ownedSupportCardsForEditor();
+            if (search) cards = cards.filter(card => String(card.name || '').toLowerCase().includes(search));
+            if (type) cards = cards.filter(card => String(card.type || '').toLowerCase() === type);
+            cards = [...cards].sort((a, b) => {
+                const aSelected = deckEditorHas(a.id) ? 0 : 1;
+                const bSelected = deckEditorHas(b.id) ? 0 : 1;
+                return aSelected - bSelected || String(a.type || '').localeCompare(String(b.type || '')) || String(a.name || '').localeCompare(String(b.name || ''));
+            });
+            els.deckEditorOwned.innerHTML = cards.map(card => {
+                const selected = deckEditorHas(card.id);
+                const lb = Math.max(0, Math.min(4, Number(card.limit_break_count || 0)));
+                return `<button type="button" class="deck-editor-owned-card${selected ? ' selected' : ''}" data-deck-card-id="${escapeAttr(card.id)}">
+                    <img src="/api/images/${escapeAttr(card.id)}.png" onerror="hideBrokenImage(this)">
+                    <span class="deck-editor-owned-meta">${escapeHtml(card.type || '?')} · ${escapeHtml(card.rarity || '?')} · LB${lb}</span>
+                    <span class="deck-editor-owned-name">${escapeHtml(card.name || 'Unknown')}</span>
+                    <span class="deck-editor-owned-check">${selected ? 'SELECTED' : 'ADD'}</span>
+                </button>`;
+            }).join('') || '<div class="friend-status">No owned support cards match.</div>';
+            els.deckEditorOwned.querySelectorAll('[data-deck-card-id]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const cardId = button.dataset.deckCardId;
+                    if (deckEditorHas(cardId)) {
+                        deckEditorState.cards = deckEditorState.cards.filter(card => String(card.id) !== String(cardId));
+                    } else {
+                        if (deckEditorState.cards.length >= 5) {
+                            if (els.deckEditorStatus) els.deckEditorStatus.textContent = 'Deck is full. Remove a card first.';
+                            return;
+                        }
+                        const card = ownedSupportCardsForEditor().find(item => String(item.id) === String(cardId));
+                        if (card) deckEditorState.cards.push({ ...card });
+                    }
+                    renderDeckEditor();
+                });
+            });
+        }
+        function renderDeckEditor() {
+            renderDeckEditorSlots();
+            renderDeckEditorOwned();
+            if (els.deckEditorCount) els.deckEditorCount.textContent = `${deckEditorState.cards.length} / 5`;
+            if (els.deckEditorStatus) {
+                els.deckEditorStatus.textContent = deckEditorState.cards.length === 5
+                    ? 'Ready to use for a career.'
+                    : `${5 - deckEditorState.cards.length} empty slot(s). You can save it, but incomplete decks cannot be selected for a career.`;
+            }
+            if (els.deckEditorSave) {
+                els.deckEditorSave.disabled = deckEditorState.saving;
+                els.deckEditorSave.textContent = deckEditorState.saving ? 'SAVING...' : 'SAVE DECK';
+            }
+        }
+        async function saveDeckEditor() {
+            if (!deckEditorState.deckId || deckEditorState.saving) return;
+            deckEditorState.saving = true;
+            renderDeckEditor();
+            const editedDeckId = deckEditorState.deckId;
+            try {
+                const data = await apiJson('/api/support-decks/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deck_id: editedDeckId,
+                        name: (els.deckEditorName && els.deckEditorName.value || '').trim(),
+                        support_card_ids: deckEditorState.cards.map(card => Number(card.id)),
+                    }),
+                });
+                if (!data || data.success === false) throw new Error((data && data.detail) || 'Deck save failed');
+                dashData.decks = data.decks || [];
+                dashData.validDecks = dashData.decks.filter(isValidDeck);
+                if (selection.deck && Number(selection.deck.id) === editedDeckId) {
+                    selection.deck = dashData.validDecks.find(deck => Number(deck.id) === editedDeckId) || null;
+                    clearInvalidFriendSelection();
+                }
+                renderDecks(dashData.decks);
+                attachSelectionHandlers();
+                renderFriends();
+                renderTeamPanel();
+                await syncSelectionToServer();
+                closeDeckEditor();
+            } catch (error) {
+                if (els.deckEditorStatus) els.deckEditorStatus.textContent = `Error: ${error.message || error}`;
+            } finally {
+                deckEditorState.saving = false;
+                renderDeckEditor();
+            }
+        }
+        els.deckEditorCancel?.addEventListener('click', closeDeckEditor);
+        els.deckEditorSave?.addEventListener('click', saveDeckEditor);
+        els.deckEditorSearch?.addEventListener('input', () => {
+            deckEditorState.search = els.deckEditorSearch.value || '';
+            renderDeckEditorOwned();
+        });
+        els.deckEditorTypeFilter?.addEventListener('change', () => {
+            deckEditorState.type = els.deckEditorTypeFilter.value || '';
+            renderDeckEditorOwned();
+        });
+        els.deckEditorModal?.addEventListener('click', event => {
+            if (event.target === els.deckEditorModal) closeDeckEditor();
+        });
         function renderFactors(factors) {
             const star = String.fromCharCode(9733);
             return factors.map(factor => `
@@ -2789,28 +3053,54 @@ const els = {
                 <span class="spark-win-chip">G3 ${wins.g3 || 0}</span>
             `;
         }
-        function renderParentSparks(parent, fallbackImgId) {
+        function renderVeteranSparkGroups(parent) {
             const tree = parent.tree || {};
-            return ['self', 'p1', 'p2', 'gp1', 'gp2', 'gp3', 'gp4'].map(key => {
-                const node = tree[key];
-                if (!node || !node.factors || node.factors.length === 0) return '';
-                const nodeImg = node.card_id || fallbackImgId;
-                const nodeClass = key === 'self' ? 'spark-node spark-node-self'
-                    : key.startsWith('gp') ? 'spark-node spark-node-gp'
-                    : 'spark-node';
-                return `<div class="${nodeClass}" style="--node-bg: url('/api/images/${nodeImg}.png')">
-                    <div class="spark-node-header">
-                        <img class="spark-node-portrait" src="/api/images/${nodeImg}.png" onerror="hideBrokenImage(this)">
-                        <div class="spark-node-meta">
-                            <div class="spark-node-title">${escapeHtml(node.name || `Card ${node.card_id || '?'}`)}</div>
-                            <div class="spark-win-row">${renderWins(node.wins)}</div>
-                        </div>
-                    </div>
-                    <div class="spark-factor-list">
-                        ${renderFactors(node.factors)}
-                    </div>
-                </div>`;
+            const factors = ['self', 'p1', 'p2'].flatMap(key =>
+                ((tree[key] && tree[key].factors) || []).map(factor => ({ ...factor, source: key }))
+            );
+            const normalizeCategory = factor => String(factor.category || 'other').toLowerCase();
+            const bluePink = factors.filter(factor => ['stat', 'blue', 'aptitude', 'pink'].includes(normalizeCategory(factor)));
+            const unique = factors.filter(factor => ['unique', 'green'].includes(normalizeCategory(factor)));
+            const white = factors.filter(factor => !bluePink.includes(factor) && !unique.includes(factor));
+
+            const summaryMap = new Map();
+            bluePink.forEach(factor => {
+                const key = `${normalizeCategory(factor)}:${factor.name || '?'}`;
+                const current = summaryMap.get(key) || { ...factor, stars: 0 };
+                current.stars += Number(factor.stars || 0);
+                summaryMap.set(key, current);
+            });
+            const summary = [...summaryMap.values()];
+
+            const factorStarTone = factor => {
+                if (factor.source === 'self') return 'stars-own';
+                const category = normalizeCategory(factor);
+                if (['stat', 'blue'].includes(category)) return 'stars-blue';
+                if (['aptitude', 'pink'].includes(category)) return 'stars-pink';
+                if (['unique', 'green'].includes(category)) return 'stars-green';
+                return 'stars-white';
+            };
+            const renderCompactFactors = items => items.map(factor => {
+                const tone = factorStarTone(factor);
+                const sourceClass = factor.source === 'self' ? ' spark-own' : '';
+                return `<span class="factor-badge chrono-factor f-${escapeAttr(factor.category || 'other')}${sourceClass}">${escapeHtml(factor.name || '?')} <span class="stars ${tone}">${'★'.repeat(Number(factor.stars || 0))}</span></span>`;
             }).join('');
+            const renderGroup = (label, className, items) => {
+                if (!items.length) return '';
+                return `<div class="veteran-spark-group ${className}">
+                    <div class="veteran-spark-group-label">${label}</div>
+                    <div class="veteran-spark-chip-row">${renderCompactFactors(items)}</div>
+                </div>`;
+            };
+
+            return `<div class="veteran-spark-groups">
+                ${summary.length ? `<div class="veteran-spark-summary">${summary.map(factor =>
+                    `<span class="spark-summary-chip f-${escapeAttr(factor.category || 'other')}">${escapeHtml(factor.name || '?')} ★${Number(factor.stars || 0)}</span>`
+                ).join('')}</div>` : ''}
+                ${renderGroup('BLUE / PINK SPARKS', 'spark-group-blue-pink', bluePink)}
+                ${renderGroup('GREEN / UNIQUE SPARKS', 'spark-group-unique', unique)}
+                ${renderGroup('WHITE SPARKS', 'spark-group-white', white)}
+            </div>`;
         }
         function renderParentStats(parent) {
             const stats = parent.stats || {};
@@ -2919,8 +3209,8 @@ const els = {
                 <div class="vet-skill-list">${renderParentSkillList(parent, 999)}</div>
             </div>
             <div class="vet-tooltip-section">
-                <div class="vet-tooltip-label">SELF / PARENT / GRANDPARENT FACTORS</div>
-                <div class="sparks-lineage-grid veteran-detail-lineage">${renderParentSparks(parent, imgId)}</div>
+                <div class="vet-tooltip-label">DIRECT LINEAGE SPARKS</div>
+                <div class="veteran-detail-lineage">${renderVeteranSparkGroups(parent)}</div>
             </div>`;
         }
         function openVeteranDetail(id) {
@@ -3036,8 +3326,8 @@ const els = {
                                 <div class="vet-tooltip-label">SKILLS</div>
                                 <div class="vet-skill-list">${renderParentSkillList(parent, 40)}</div>
                             </div>
-                            <div class="sparks-lineage-grid">
-                                ${renderParentSparks(parent, imgId)}
+                            <div class="veteran-detail-lineage">
+                                ${renderVeteranSparkGroups(parent)}
                             </div>
                         </div>
                     </div>
@@ -3342,8 +3632,8 @@ const els = {
                 const deckIdx = dashData.validDecks.findIndex(d => Number(d.id) === Number(serverSelection.deck.id));
                 if (deckIdx >= 0) {
                     selection.deck = dashData.validDecks[deckIdx];
-                    const deckEls = document.querySelectorAll('.deck-container');
-                    if (deckEls[deckIdx]) deckEls[deckIdx].classList.add('selected');
+                    const deckEl = document.querySelector(`.deck-container[data-deck-id="${Number(selection.deck.id)}"]`);
+                    if (deckEl) deckEl.classList.add('selected');
                 }
             }
             if (serverSelection.trainee && dashData.umas) {
@@ -3455,7 +3745,7 @@ const els = {
                 showDashboardView(data);
             }
             renderCounts(data);
-            renderDecks(dashData.validDecks);
+            renderDecks(dashData.decks);
             renderParents(data.parents);
             renderVeteranPage();
             renderTrainees(dashData.umas);
@@ -3879,14 +4169,6 @@ const els = {
             ).join('') + '</div>';
         }
 
-        function renderVetParents(v) {
-            const ids = v.parent_card_ids || [];
-            if (!ids.length) return '';
-            return '<div class="vet-parents" title="Direct parents">' + ids.map(cid =>
-                '<img class="vet-parent-portrait" src="/api/images/' + cid + '.png" onerror="hideBrokenImage(this)" alt="' + cid + '">'
-            ).join('') + '</div>';
-        }
-
         function renderSupportDeckStrip(cards) {
             if (!cards || !cards.length) return '';
             return '<div class="vet-deck-strip">' + cards.map(c =>
@@ -3915,8 +4197,7 @@ const els = {
                 '<span>#ID ' + v.trained_chara_id + '</span>' +
                 '<span>' + (v.wins || 0) + ' wins</span>' +
                 '</div>' +
-                renderVetParents(v) +
-                renderVetFactors(v) +
+                '<div class="veteran-detail-lineage">' + renderVeteranSparkGroups(v) + '</div>' +
                 renderSupportDeckStrip(deckCards) +
                 '</div></div>';
         }

@@ -323,12 +323,14 @@ class DailiesRunner:
                 opponents[0],
             )
             client.team_stadium_decide_frame_order(opponent)
-            client.team_stadium_start(item_id_array=[])
+            start = client.team_stadium_start(item_id_array=[])
             client.team_stadium_replay_check(round=5)
             end = client.team_stadium_all_race_end()
             races += 1
 
             rp = _find_value(end, "current_rp")
+            if rp is None:
+                rp = _find_value(start, "current_rp")
             win_type = _find_value(end, "final_win_type")
             ranking = _find_value(end, "ranking_rank")
             detail = f"Team Trial {races}: result {win_type}, ranking #{ranking}"
@@ -336,7 +338,7 @@ class DailiesRunner:
                 detail += f", {rp} RP left"
             self._log(detail + ".")
 
-            if rp is None or int(rp or 0) <= 0:
+            if rp is not None and int(rp or 0) <= 0:
                 self._log(f"Team Trials: no more RP (server said {rp}). Ran {races}.")
                 break
 

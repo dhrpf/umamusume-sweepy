@@ -295,6 +295,15 @@
 
                         <div class="start-panel">
                             <button id="start-career-btn" class="btn btn-primary" type="button" disabled>RUN CAREER</button>
+                            <div id="career-loop-indicator" class="career-loop-indicator" aria-hidden="true" hidden>
+                                <div class="career-loop-indicator-head">
+                                    <span class="career-loop-pulse" aria-hidden="true"></span>
+                                    <strong id="career-loop-phase">LOOP ACTIVE</strong>
+                                    <span id="career-loop-countdown" class="career-loop-countdown"></span>
+                                </div>
+                                <div id="career-loop-message" class="career-loop-message"></div>
+                                <button id="career-loop-stop-btn" class="btn btn-sm btn-danger" type="button">STOP LOOP</button>
+                            </div>
                             <div id="start-status" class="start-status"></div>
                         </div>
 
@@ -533,6 +542,48 @@
                 </section>
             </div>
         </main>
+        <div id="deck-editor-modal" class="deck-editor-modal" aria-hidden="true">
+            <div class="deck-editor-panel">
+                <div class="deck-editor-topbar">
+                    <div>
+                        <div class="deck-editor-kicker">SUPPORT DECK</div>
+                        <div class="deck-editor-title">EDIT DECK <span id="deck-editor-deck-id"></span></div>
+                    </div>
+                    <button id="deck-editor-cancel" type="button" class="btn btn-sm">CLOSE</button>
+                </div>
+                <div class="deck-editor-body">
+                    <label class="deck-editor-field">
+                        <span>DECK NAME</span>
+                        <input id="deck-editor-name" class="form-input" type="text" maxlength="32" autocomplete="off">
+                    </label>
+
+                    <div class="deck-editor-selected-head">
+                        <span>SELECTED SUPPORTS</span>
+                        <span id="deck-editor-count">0 / 5</span>
+                    </div>
+                    <div id="deck-editor-slots" class="deck-editor-slots"></div>
+
+                    <div class="deck-editor-toolbar">
+                        <input id="deck-editor-search" class="form-input" type="text" placeholder="Search owned support cards..." autocomplete="off">
+                        <select id="deck-editor-type-filter" class="filter-select">
+                            <option value="">All Types</option>
+                            <option value="Speed">Speed</option>
+                            <option value="Stamina">Stamina</option>
+                            <option value="Power">Power</option>
+                            <option value="Guts">Guts</option>
+                            <option value="Wit">Wit</option>
+                            <option value="Pal">Pal</option>
+                        </select>
+                    </div>
+                    <div id="deck-editor-status" class="friend-status"></div>
+                    <div id="deck-editor-owned" class="deck-editor-owned"></div>
+                </div>
+                <div class="deck-editor-actions">
+                    <button id="deck-editor-save" type="button" class="btn btn-primary">SAVE DECK</button>
+                </div>
+            </div>
+        </div>
+
         <div id="career-modal" class="modal-backdrop">
             <div class="modal-panel">
                 <div class="modal-title">Delete Career?</div>

@@ -139,6 +139,40 @@ def test_team_trials_selects_requested_strength_and_stops_when_rp_is_zero(tmp_pa
     assert client.replay_rounds == [5, 5]
 
 
+class TeamTrialsStartRpClient(TeamTrialsClient):
+    def __init__(self):
+        super().__init__()
+        self.rp = 5
+
+    def team_stadium_index(self):
+        return {"data": {}}
+
+    def team_stadium_start(self, item_id_array=None):
+        assert item_id_array == []
+        self.rp -= 1
+        return {"data": {"rp_info": {"current_rp": self.rp}}}
+
+    def team_stadium_all_race_end(self):
+        self.ends += 1
+        return {
+            "data": {
+                "final_win_type": 1,
+                "ranking_rank": 0,
+            }
+        }
+
+
+def test_team_trials_uses_start_response_rp_when_all_race_end_omits_it(tmp_path):
+    runner = DailiesRunner(tmp_path)
+    client = TeamTrialsStartRpClient()
+
+    result = runner._team_trials(client, 2)
+
+    assert result == {"races": 5}
+    assert client.ends == 5
+    assert client.replay_rounds == [5, 5, 5, 5, 5]
+
+
 class RaceClient:
     def __init__(self, scenario):
         self.scenario = scenario

@@ -18,6 +18,16 @@ FastAPI server that automates Uma Musume career runs via intercepted auth + msgp
 | MCTS planner (alpha) | `career_bot/mcts/` |
 | Frontend (vanilla JS SPA) | `public/` |
 
+## Privacy and Repository Hygiene
+
+Before committing or publishing any change, redact personal, account-specific, machine-specific, and secret data from tracked files, examples, fixtures, documentation, logs, prompts, and generated artifacts.
+
+- Never commit real names, usernames, email addresses, phone numbers, home-directory paths, hostnames, account labels, Discord/user IDs, viewer IDs, device IDs, tokens, credentials, session IDs, auth material, cookies, private URLs, or raw runtime data unless the value is intentionally public and explicitly required.
+- Treat local account names and nicknames as private identifiers. Use neutral placeholders such as `acct01`, `acct02`, `user@example.com`, `/absolute/path/to/project`, `<viewer_id>`, and `<redacted>`.
+- Do not copy values verbatim from `accounts.json`, `.env`, auth caches, trace logs, API captures, runtime databases, local paths, or user-provided logs into tracked content.
+- Before committing, scan the staged diff and newly added documentation/examples for leaked identifiers. When a real value is discovered after commit, sanitize the content and rewrite unpublished history instead of adding a follow-up commit that leaves the value in history.
+- When unsure whether a value identifies a person, machine, account, or private environment, redact it. False anonymity is a particularly stupid way to publish private data.
+
 ## Path-Scoped Rules
 
 Rules auto-load when you touch matching paths.

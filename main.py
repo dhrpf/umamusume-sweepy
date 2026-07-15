@@ -403,6 +403,72 @@ def _deck_meta_from_ids(card_ids):
     }
 
 
+def _dashboard_deck_from_raw(deck, owned_supports=None):
+    lb_by_id = {
+        str(item.get('id')): int(item.get('limit_break_count') or 0)
+        for item in (owned_supports or [])
+        if item.get('id') is not None
+    }
+    cards = []
+    for card_id in deck.get('support_card_id_array') or []:
+        sid = str(int(card_id or 0))
+        if sid == '0':
+            continue
+        info = support_map.get(sid) or {}
+        cards.append({
+            'id': sid,
+            'limit_break_count': lb_by_id.get(sid, 0),
+            'name': info.get('name', f'Unknown ({sid})'),
+            'rarity': info.get('rarity', '?'),
+            'type': display_support_type(info.get('type', 'Unknown')),
+        })
+    deck_id = int(deck.get('deck_id') or 0)
+    return {
+        'id': deck_id,
+        'name': str(deck.get('name') or f'Deck {deck_id}'),
+        'cards': cards,
+    }
+
+
+def _replace_support_deck_party(current_decks, deck_id, name, support_card_ids):
+    deck_id = int(deck_id or 0)
+    if deck_id < 1 or deck_id > 10:
+        raise ValueError('deck_id must be between 1 and 10')
+    card_ids = [int(card_id or 0) for card_id in (support_card_ids or []) if int(card_id or 0)]
+    if len(card_ids) > 5:
+        raise ValueError('A support deck can contain at most 5 owned cards')
+    if len(set(card_ids)) != len(card_ids):
+        raise ValueError('A support deck cannot contain duplicate cards')
+
+    by_id = {
+        int(deck.get('deck_id') or 0): dict(deck)
+        for deck in (current_decks or [])
+        if 1 <= int(deck.get('deck_id') or 0) <= 10
+    }
+    normalized = []
+    for current_id in range(1, 11):
+        deck = by_id.get(current_id) or {
+            'deck_id': current_id,
+            'name': f'Deck {current_id}',
+            'support_card_id_array': [0, 0, 0, 0, 0],
+        }
+        if current_id == deck_id:
+            deck = {
+                'deck_id': current_id,
+                'name': str(name or '').strip() or f'Deck {current_id}',
+                'support_card_id_array': card_ids + [0] * (5 - len(card_ids)),
+            }
+        else:
+            existing_ids = [int(value or 0) for value in (deck.get('support_card_id_array') or [])][:5]
+            deck = {
+                'deck_id': current_id,
+                'name': str(deck.get('name') or f'Deck {current_id}'),
+                'support_card_id_array': existing_ids + [0] * (5 - len(existing_ids)),
+            }
+        normalized.append(deck)
+    return normalized
+
+
 FRIEND_VETERAN_KEYS = ('succession_trained_chara_array',)
 FRIEND_VETERAN_CONTAINER_KEYS = (
     'succession_trained_chara_data',
@@ -476,17 +542,45 @@ def normalize_friend_veterans(data):
 
         factors = []
         try:
-            factors = get_factors(row.get('factor_id_array') or [], card_id)
+            factors = get_factors(get_chara_factor_ids(row), card_id)
         except Exception:
             factors = []
 
+        tree = {
+            'self': {
+                'card_id': int(card_id),
+                'name': chara_name,
+                'factors': factors,
+                'wins': get_win_summary(row.get('win_saddle_id_array') or []),
+            },
+            'p1': {'card_id': 0, 'name': '', 'factors': [], 'wins': get_win_summary([])},
+            'p2': {'card_id': 0, 'name': '', 'factors': [], 'wins': get_win_summary([])},
+            'gp1': {'card_id': 0, 'name': '', 'factors': [], 'wins': get_win_summary([])},
+            'gp2': {'card_id': 0, 'name': '', 'factors': [], 'wins': get_win_summary([])},
+            'gp3': {'card_id': 0, 'name': '', 'factors': [], 'wins': get_win_summary([])},
+            'gp4': {'card_id': 0, 'name': '', 'factors': [], 'wins': get_win_summary([])},
+        }
         parent_card_ids = []
+        lineage_keys = {10: 'p1', 20: 'p2', 11: 'gp1', 12: 'gp2', 21: 'gp3', 22: 'gp4'}
         for sc in row.get('succession_chara_array') or []:
             pos = sc.get('position_id')
-            if pos in (10, 20):
-                pid = int(sc.get('card_id') or 0)
-                if pid:
-                    parent_card_ids.append(pid)
+            tree_key = lineage_keys.get(pos)
+            if not tree_key:
+                continue
+            lineage_card_id = int(sc.get('card_id') or 0)
+            factor_ids = sc.get('factor_id_array') or [
+                int(info.get('factor_id') or 0)
+                for info in (sc.get('factor_info_array') or [])
+                if int(info.get('factor_id') or 0)
+            ]
+            tree[tree_key] = {
+                'card_id': lineage_card_id,
+                'name': chara_map.get(str(lineage_card_id), f'Unknown ({lineage_card_id})') if lineage_card_id else '',
+                'factors': get_factors(factor_ids, lineage_card_id) if lineage_card_id else [],
+                'wins': get_win_summary(sc.get('win_saddle_id_array') or []),
+            }
+            if pos in (10, 20) and lineage_card_id:
+                parent_card_ids.append(lineage_card_id)
 
         deck_support_ids = [
             int(item.get('support_card_id') or 0)
@@ -514,6 +608,7 @@ def normalize_friend_veterans(data):
             'aptitudes': get_trained_aptitudes(row),
             'wins': len(row.get('win_saddle_id_array') or []),
             'factors': factors,
+            'tree': tree,
             'parent_card_ids': parent_card_ids,
             'deck_support_ids': deck_support_ids,
             'deck_support_cards': deck_meta['deck_support_cards'],
@@ -1128,6 +1223,11 @@ class FriendManageRequest(BaseModel):
 class VeteranRemoveRequest(BaseModel):
     trained_chara_id_array: list[int] = []
 
+class SupportDeckUpdateRequest(BaseModel):
+    deck_id: int
+    name: str = Field(default="", max_length=32)
+    support_card_ids: list[int] = []
+
 class AdvisorRequest(BaseModel):
     trainee_card_id: int = 0
     running_style: int = 0
@@ -1597,17 +1697,10 @@ def _build_dashboard_from_login_response(res):
             supports.append({'id': sid, 'limit_break_count': support_lb[sid], 'name': info['name'], 'type': display_support_type(info['type']), 'rarity': info['rarity']})
         else:
             supports.append({'id': sid, 'limit_break_count': support_lb[sid], 'name': f"Unknown ({sid})", 'type': 'Unknown', 'rarity': '?'})
-    decks = []
-    for deck in d.get('support_card_deck_array', []):
-        cards = []
-        for cid in deck.get('support_card_id_array', []):
-            sid = str(cid)
-            info = support_map.get(sid)
-            if info:
-                cards.append({'id': sid, 'limit_break_count': support_lb.get(sid, 0), 'name': info['name'], 'rarity': info['rarity'], 'type': display_support_type(info['type'])})
-            else:
-                cards.append({'id': sid, 'limit_break_count': support_lb.get(sid, 0), 'name': f'Unknown ({sid})', 'rarity': '?', 'type': '?'})
-        decks.append({'id': deck.get('deck_id'), 'name': deck.get('name', f'Deck {deck.get("deck_id")}'), 'cards': cards})
+    decks = [
+        _dashboard_deck_from_raw(deck, supports)
+        for deck in d.get('support_card_deck_array', [])
+    ]
     parents = []
     for chara in d.get('trained_chara', []):
         raw_id = str(chara.get('card_id', ''))
@@ -1767,6 +1860,57 @@ async def update_selection(req: UISelectionRequest):
     active_selection = req.selection
     return {"success": True}
 
+@app.post("/api/support-decks/update")
+async def update_support_deck(req: SupportDeckUpdateRequest):
+    global active_support_card_deck_array, active_dashboard_data
+    if not active_client:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    if dailies_runner.running:
+        raise HTTPException(status_code=409, detail="Cannot edit support decks while dailies are active")
+    if career_runner.snapshot().get("running"):
+        raise HTTPException(status_code=409, detail="Cannot edit support decks while a career is active")
+
+    cached_deck_ids = {
+        int(deck.get('deck_id') or 0)
+        for deck in (active_support_card_deck_array or [])
+        if 1 <= int(deck.get('deck_id') or 0) <= 10
+    }
+    if cached_deck_ids != set(range(1, 11)):
+        raise HTTPException(status_code=409, detail="Support deck state is incomplete; reload the account before editing")
+
+    owned_supports = list((active_dashboard_data or {}).get('supports') or [])
+    owned_ids = {int(item.get('id') or 0) for item in owned_supports if int(item.get('id') or 0)}
+    requested_ids = [int(card_id or 0) for card_id in (req.support_card_ids or []) if int(card_id or 0)]
+    unavailable = [card_id for card_id in requested_ids if card_id not in owned_ids]
+    if unavailable:
+        raise HTTPException(status_code=400, detail=f"Support cards are not owned: {unavailable}")
+
+    try:
+        updated_party = _replace_support_deck_party(
+            active_support_card_deck_array,
+            req.deck_id,
+            req.name,
+            requested_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    active_client.change_support_card_deck_party(updated_party)
+    active_support_card_deck_array = updated_party
+    dashboard_decks = [
+        _dashboard_deck_from_raw(deck, owned_supports)
+        for deck in updated_party
+    ]
+    if active_dashboard_data is None:
+        active_dashboard_data = {}
+    active_dashboard_data['decks'] = dashboard_decks
+    return {
+        'success': True,
+        'deck_id': int(req.deck_id),
+        'decks': dashboard_decks,
+    }
+
+
 @app.post("/api/veteran/remove")
 async def remove_veterans(req: VeteranRemoveRequest):
     global active_dashboard_data, active_account, active_selection
@@ -1919,6 +2063,38 @@ async def start_career(req: StartCareerRequest):
 
 backend_loop_thread = None
 backend_loop_stop = False
+backend_loop_status = {
+    "active": False,
+    "phase": "idle",
+    "message": "",
+    "wait_until": 0.0,
+}
+
+
+def _set_backend_loop_status(*, active=None, phase=None, message=None, wait_seconds=None):
+    global backend_loop_status
+    next_status = dict(backend_loop_status)
+    if active is not None:
+        next_status["active"] = bool(active)
+    if phase is not None:
+        next_status["phase"] = str(phase)
+    if message is not None:
+        next_status["message"] = str(message)
+    if wait_seconds is not None:
+        wait_seconds = max(0.0, float(wait_seconds or 0.0))
+        next_status["wait_until"] = time.time() + wait_seconds if wait_seconds > 0 else 0.0
+    backend_loop_status = next_status
+    return dict(next_status)
+
+
+def _career_runner_snapshot():
+    snapshot = career_runner.snapshot()
+    loop = dict(backend_loop_status)
+    wait_until = float(loop.get("wait_until") or 0.0)
+    loop["remaining_sec"] = max(0, int(round(wait_until - time.time()))) if wait_until else 0
+    snapshot["loop"] = loop
+    return snapshot
+
 
 def _interruptible_sleep(total_sec):
     """Sleep total_sec in 1s slices; return False if backend_loop_stop is set."""
@@ -1937,6 +2113,7 @@ def manage_career_loop(req, preset, initial_result):
     max_steps = max(1, min(int(req.max_steps or 2500), 3000))
     consecutive_fails = 0
     auth_failures = 0
+    _set_backend_loop_status(active=True, phase="starting", message="Starting career loop", wait_seconds=0)
 
     # Pacing: preset is the source of truth; req may have defaults if the
     # frontend's activeCareer branch skipped these fields.
@@ -1956,6 +2133,7 @@ def manage_career_loop(req, preset, initial_result):
         nonlocal consecutive_fails, auth_failures
         while not backend_loop_stop:
             try:
+                _set_backend_loop_status(active=True, phase="starting", message="Starting next career", wait_seconds=0)
                 started = start_career_from_request(req)
                 if not started.get("success"):
                     detail = started.get("detail")
@@ -1963,8 +2141,15 @@ def manage_career_loop(req, preset, initial_result):
                         print(f'[loop] TP exhausted ({started.get("current_tp")} < {req.use_tp}), stopping.', flush=True)
                         return None
                     if detail == "TP_REGEN_WAIT":
-                        wait_sec = compute_regen_wait_seconds(req.use_tp, started.get("current_tp") or 0)
-                        print(f'[loop] waiting {wait_sec/60:.0f}m for TP regen ({started.get("current_tp")} < {req.use_tp})', flush=True)
+                        current_tp = int(started.get("current_tp") or 0)
+                        wait_sec = compute_regen_wait_seconds(req.use_tp, current_tp)
+                        _set_backend_loop_status(
+                            active=True,
+                            phase="waiting_tp",
+                            message=f"Waiting for TP regen ({current_tp}/{req.use_tp})",
+                            wait_seconds=wait_sec,
+                        )
+                        print(f'[loop] waiting {wait_sec/60:.0f}m for TP regen ({current_tp} < {req.use_tp})', flush=True)
                         if not _interruptible_sleep(wait_sec):
                             return None
                         # Session may have expired during long wait; re-init before
@@ -2030,6 +2215,7 @@ def manage_career_loop(req, preset, initial_result):
             account, chara_info = apply_career_result(current_result)
             active_account = account
 
+        _set_backend_loop_status(active=True, phase="running", message="Career in progress", wait_seconds=0)
         career_runner.start(active_client, preset, current_result, max_steps, burn_clocks=req.burn_clocks, dev_mode=req.dev_mode)
 
         while career_runner.snapshot().get("running"):
@@ -2072,12 +2258,26 @@ def manage_career_loop(req, preset, initial_result):
             break
 
         delay_sec = pick_delay_seconds(loop_run_delay_min, loop_run_delay_max)
+        _set_backend_loop_status(
+            active=True,
+            phase="waiting_delay",
+            message="Waiting before next career",
+            wait_seconds=delay_sec,
+        )
         print(f'[loop] waiting {delay_sec/60:.1f}m before next career', flush=True)
         if not _interruptible_sleep(delay_sec):
             return
 
         # Force re-acquire of the next career at the top of the loop.
         current_result = None
+
+
+def _manage_career_loop_thread(req, preset, initial_result):
+    try:
+        manage_career_loop(req, preset, initial_result)
+    finally:
+        _set_backend_loop_status(active=False, phase="idle", message="", wait_seconds=0)
+
 
 @app.post("/api/career/run")
 async def run_career(req: RunCareerRequest):
@@ -2153,19 +2353,21 @@ async def run_career(req: RunCareerRequest):
         
         if req.dev_mode:
             backend_loop_stop = False
-            backend_loop_thread = threading.Thread(target=manage_career_loop, args=(req, preset, result), daemon=True)
+            _set_backend_loop_status(active=True, phase="starting", message="Starting career loop", wait_seconds=0)
+            backend_loop_thread = threading.Thread(target=_manage_career_loop_thread, args=(req, preset, result), daemon=True)
             backend_loop_thread.start()
             dna_sleep(0.5, 0.5)
         else:
+            _set_backend_loop_status(active=False, phase="idle", message="", wait_seconds=0)
             career_runner.start(active_client, preset, result, max(1, min(int(req.max_steps or 2500), 3000)), burn_clocks=req.burn_clocks, dev_mode=req.dev_mode)
             
-        return {"success": True, "account": account, "chara_info": chara_info, "runner": career_runner.snapshot()}
+        return {"success": True, "account": account, "chara_info": chara_info, "runner": _career_runner_snapshot()}
     except Exception as e:
         return {"success": False, "detail": str(e)}
 
 @app.get("/api/career/runner")
 async def career_runner_status():
-    return {"success": True, "runner": career_runner.snapshot()}
+    return {"success": True, "runner": _career_runner_snapshot()}
 
 
 def _walk_dicts(value):
@@ -2421,8 +2623,11 @@ async def stop_career_runner():
     global backend_loop_stop
     with global_lock:
         backend_loop_stop = True
+        loop_active = bool(backend_loop_status.get("active"))
+        if loop_active:
+            _set_backend_loop_status(active=True, phase="stopping", message="Stopping career loop", wait_seconds=0)
     career_runner.stop()
-    return {"success": True, "runner": career_runner.snapshot()}
+    return {"success": True, "runner": _career_runner_snapshot()}
 
 class BurnClocksRequest(BaseModel):
     burn_clocks: bool
