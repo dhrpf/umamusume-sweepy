@@ -21,6 +21,11 @@ from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
+from career_bot.campaigns.models import ParentCampaignSpec
+from career_bot.campaigns.planner import CampaignPlanner
+from career_bot.campaigns.runner import CampaignRunner
+from career_bot.campaigns.service import CampaignService
+from career_bot.campaigns.store import CampaignError, CampaignStore, InvalidTransition
 from uma_api.client import UmaClient, runtime_output_root
 from career_bot.delay import (
     GateKeeper, dna_sleep, dna_uniform,
@@ -235,6 +240,180 @@ dailies_runner = DailiesRunner(DIR)
 global_lock = threading.Lock()
 
 base_dir = Path(__file__).parent.absolute()
+
+class _CampaignPresetStore:
+    def load(self, name):
+        preset = preset_store.read_one(name)
+        if not preset:
+            raise ValueError(f"Campaign preset not found: {name}")
+        return preset
+
+def _current_campaign_account():
+    dashboard = active_dashboard_data or {}
+    account = active_account or dashboard.get("account") or {}
+    return str(
+        dashboard.get("account_name")
+        or account.get("name")
+        or account.get("account")
+        or ""
+    )
+
+def _campaign_runtime_snapshot(account):
+    dashboard = active_dashboard_data or {}
+    display_rows = [
+        *(dashboard.get("displayVeterans") or []),
+        *(dashboard.get("parents") or []),
+        *(dashboard.get("friendVeterans") or []),
+    ]
+    display_by_id = {
+        int(row.get("trained_chara_id") or row.get("instance_id") or 0): dict(row)
+        for row in display_rows
+        if isinstance(row, dict) and int(row.get("trained_chara_id") or row.get("instance_id") or 0)
+    }
+    owned_chara_ids = {
+        _base_chara_id(row.get("id") or row.get("card_id"))
+        for row in (dashboard.get("umas") or [])
+        if isinstance(row, dict)
+    }
+    rental_candidates = [
+        dict(row)
+        for row in (
+            dashboard.get("rentalCandidates")
+            or dashboard.get("rental_candidates")
+            or dashboard.get("friendVeterans")
+            or []
+        )
+        if isinstance(row, dict)
+    ]
+    current_account = active_account or dashboard.get("account") or {}
+    return {
+        "account": account,
+        "current_account": current_account,
+        "current_career": current_account.get("career") if isinstance(current_account, dict) else None,
+        "owned_candidates": [dict(row) for row in active_parent_full.values()],
+        "rental_candidates": rental_candidates,
+        "veteran_records": [dict(row) for row in active_parent_full.values()],
+        "display_by_id": display_by_id,
+        "owned_chara_ids": {value for value in owned_chara_ids if value > 0},
+        "runtime": {
+            "api_reachable": active_client is not None,
+            "logged_in": active_client is not None,
+        },
+        "bot_state": {
+            "logged_in": active_client is not None,
+            "career_running": bool(career_runner.snapshot().get("running")),
+            "dailies_running": bool(dailies_runner.running),
+        },
+    }
+
+def _campaign_master_mdb_path():
+    path = master_data.configured_master_mdb_path(base_dir)
+    if not path or not Path(path).exists():
+        raise ValueError("Campaign recommendations require configured master.mdb data")
+    return str(path)
+
+def _campaign_race_rows():
+    path = base_dir / "public" / "assets" / "data" / "uma_race_data.json"
+    if not path.exists():
+        path = base_dir / "public" / "uma_race_data.json"
+    if not path.exists():
+        raise ValueError("Campaign recommendations require generated race data")
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    rows = raw.get("races") if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        raise ValueError("Campaign race data has no races array")
+    return rows
+
+def _campaign_affinity(final_uma, first, second):
+    card_id = int((final_uma or {}).get("card_id") or 0) if isinstance(final_uma, dict) else int(final_uma or 0)
+    if card_id <= 0:
+        raise ValueError("Campaign final Uma card_id is required for affinity")
+    return affinity_calc.calculate_affinity(_campaign_master_mdb_path(), card_id, first, second)
+
+class _ConfiguredCampaignPlanner(CampaignPlanner):
+    def __init__(self, *, mdb_path, **kwargs):
+        super().__init__(**kwargs)
+        self.mdb_path = mdb_path
+
+    def recommend_loops(self, *, pinned_chara_ids=None, limit=3, mdb_path=""):
+        return super().recommend_loops(
+            pinned_chara_ids=pinned_chara_ids,
+            limit=limit,
+            mdb_path=mdb_path or self.mdb_path,
+        )
+
+def _campaign_planner_factory(request):
+    payload = dict(request)
+    snapshot = _campaign_runtime_snapshot(payload.get("account") or _current_campaign_account())
+    mdb_path = str(payload.get("mdb_path") or _campaign_master_mdb_path())
+    final_uma = payload.get("final_uma") or {}
+    return _ConfiguredCampaignPlanner(
+        mdb_path=mdb_path,
+        owned_chara_ids=set(snapshot["owned_chara_ids"]),
+        veteran_records=list(snapshot["veteran_records"]),
+        display_by_id=dict(snapshot["display_by_id"]),
+        g1_saddle_ids=set(affinity_calc._load_g1_saddles(mdb_path)),
+        race_rows=_campaign_race_rows(),
+        affinity_for_pair=lambda trainee, first, second: affinity_calc.calculate_affinity(
+            mdb_path, trainee, first, second
+        ),
+        factor_map=payload.get("factor_map") or factor_map,
+        spark_targets=payload.get("spark_targets") or [],
+        final_uma_card_id=int(payload.get("final_uma_card_id") or final_uma.get("card_id") or 0),
+    )
+
+def _campaign_start_career(request):
+    if not active_client:
+        raise ValueError("Campaign career start requires login")
+    preset = dict(request.get("preset") or {})
+    slots = list(request.get("legacy_slots") or request.get("parents") or [])
+    parent_ids = [int(row.get("trained_chara_id") or 0) for row in slots if isinstance(row, dict)]
+    if len(parent_ids) < 2 or not all(parent_ids[:2]):
+        raise ValueError("Campaign prepared run requires two resolved parents")
+    support_ids = list(preset.get("support_card_ids") or preset.get("support_card_id_array") or [])
+    friend_viewer_id = int(preset.get("friend_viewer_id") or 0)
+    friend_card_id = int(preset.get("friend_card_id") or 0)
+    if len(support_ids) != 5 or not friend_viewer_id or not friend_card_id:
+        raise ValueError("Campaign preset requires five supports and a friend support")
+    trainee_chara_id = int(request.get("trainee_chara_id") or 0)
+    card_id = next(
+        (
+            int(row.get("id") or row.get("card_id") or 0)
+            for row in ((active_dashboard_data or {}).get("umas") or [])
+            if _base_chara_id(row.get("id") or row.get("card_id")) == trainee_chara_id
+        ),
+        trainee_chara_id,
+    )
+    result = start_career_from_request(StartCareerRequest(
+        card_id=card_id,
+        support_card_ids=support_ids,
+        friend_viewer_id=friend_viewer_id,
+        friend_card_id=friend_card_id,
+        parent_id_1=parent_ids[0],
+        parent_id_2=parent_ids[1],
+        scenario_id=int(preset.get("scenario_id") or preset.get("scenario") or 4),
+        deck_id=int(preset.get("deck_id") or 1),
+        use_tp=int(preset.get("use_tp") or 30),
+    ))
+    if not result.get("success"):
+        raise ValueError(result.get("detail") or "Campaign career start failed")
+    return {"success": True, "result": result.get("result")}
+
+campaign_store = CampaignStore(
+    os.environ.get("SWEEPY_CAMPAIGNS_DB")
+    or base_dir / "uma_runtime" / "campaigns.sqlite3"
+)
+campaign_runner = CampaignRunner(campaign_store)
+campaign_service = CampaignService(
+    store=campaign_store,
+    runner=campaign_runner,
+    preset_store=_CampaignPresetStore(),
+    runtime_snapshot=_campaign_runtime_snapshot,
+    affinity_for_setup=_campaign_affinity,
+    start_career=_campaign_start_career,
+    planner_factory=_campaign_planner_factory,
+)
+
 master_data_startup_status = master_data.status(base_dir)
 if master_data_startup_status.get("exists"):
     master_data_startup_result = master_data.generate(base_dir)
@@ -1269,6 +1448,21 @@ class InheritanceRecommendRequest(BaseModel):
     def clamp_limit(cls, value):
         return max(1, min(int(value or 10), 50))
 
+class CampaignRecommendationRequest(BaseModel):
+    request: dict = Field(default_factory=dict)
+
+class CampaignCreateRequest(BaseModel):
+    spec: ParentCampaignSpec
+
+class CampaignApproveRunRequest(BaseModel):
+    selection_override: dict | None = None
+
+class CampaignSelectCandidateRequest(BaseModel):
+    candidate_id: str
+
+class CampaignCancelRequest(BaseModel):
+    reason: str = ""
+
 
 @app.post("/api/inheritance/recommend")
 async def inheritance_recommend(req: InheritanceRecommendRequest):
@@ -1412,6 +1606,69 @@ async def save_preset(req: SavePresetRequest):
 @app.post("/api/presets/delete")
 async def delete_preset(req: DeletePresetByNameRequest):
     return {"success": preset_store.delete(req.name)}
+
+def _campaign_api_call(method, *args):
+    try:
+        return method(*args)
+    except InvalidTransition as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CampaignError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/api/campaigns")
+async def list_campaigns(account: str | None = None):
+    resolved_account = account if account is not None else _current_campaign_account()
+    return {"success": True, "campaigns": _campaign_api_call(campaign_service.list_campaigns, resolved_account)}
+
+@app.post("/api/campaigns/recommend-final-parents")
+async def recommend_campaign_final_parents(req: CampaignRecommendationRequest):
+    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_final_parents, req.request)}
+
+@app.post("/api/campaigns/recommend-loop")
+async def recommend_campaign_loop(req: CampaignRecommendationRequest):
+    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_loops, req.request)}
+
+@app.post("/api/campaigns")
+async def create_campaign(req: CampaignCreateRequest):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.create_campaign, req.spec)}
+
+@app.get("/api/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: str):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.get_campaign, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/activate")
+async def activate_campaign(campaign_id: str):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.activate, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/pause")
+async def pause_campaign(campaign_id: str):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.pause, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/resume")
+async def resume_campaign(campaign_id: str):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.resume, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/prepare-next-run")
+async def prepare_campaign_next_run(campaign_id: str):
+    return {"success": True, "result": _campaign_api_call(campaign_service.prepare_next_run, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/approve-run")
+async def approve_campaign_run(campaign_id: str, req: CampaignApproveRunRequest):
+    return {"success": True, "result": _campaign_api_call(campaign_service.approve_run, campaign_id, req.selection_override)}
+
+@app.post("/api/campaigns/{campaign_id}/select-candidate")
+async def select_campaign_candidate(campaign_id: str, req: CampaignSelectCandidateRequest):
+    return {"success": True, "result": _campaign_api_call(campaign_service.select_candidate, campaign_id, req.candidate_id)}
+
+@app.post("/api/campaigns/{campaign_id}/continue-preferred")
+async def continue_campaign_preferred(campaign_id: str):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.continue_for_preferred, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/cancel")
+async def cancel_campaign(campaign_id: str, req: CampaignCancelRequest):
+    return {"success": True, "campaign": _campaign_api_call(campaign_service.cancel, campaign_id, req.reason)}
 
 @app.get("/api/skills")
 async def get_skills():
@@ -2968,6 +3225,30 @@ async def root():
     if index_path.exists():
         return FileResponse(index_path, media_type="text/html", headers={"Cache-Control": "no-cache"})
     return "index.html not found"
+
+@app.get("/campaigns", response_class=HTMLResponse)
+async def campaigns_page():
+    return FileResponse(
+        base_dir / "public" / "campaigns.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+@app.get("/campaigns.js")
+async def campaigns_js():
+    return FileResponse(
+        base_dir / "public" / "campaigns.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+@app.get("/campaigns.css")
+async def campaigns_css():
+    return FileResponse(
+        base_dir / "public" / "campaigns.css",
+        media_type="text/css",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 def set_console_topmost():
     if os.name != 'nt':
