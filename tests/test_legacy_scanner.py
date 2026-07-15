@@ -149,3 +149,41 @@ def test_scanner_requires_four_distinct_base_characters(tmp_path):
     assert result["distinct_characters_available"] == 3
     assert result["pool_count"] == 0
     assert result["pools"] == []
+
+
+def test_scanner_keeps_required_character_below_normal_character_cap(tmp_path):
+    records = [
+        record(index, base_id * 100 + 1, rank_score=30000 - index)
+        for index, base_id in enumerate(range(1001, 1014), start=1)
+    ]
+    records[-1]["rank_score"] = 1
+
+    result = scan_legacy_loop_pools(
+        records,
+        mdb_path=tmp_path / "unused.mdb",
+        max_characters=12,
+        limit=50,
+        required_base_chara_ids={1013},
+        affinity_calculator=fake_affinity,
+        g1_saddle_ids={10, 20},
+    )
+
+    assert result["characters_considered"] == 12
+    assert any(1013 in pool["base_chara_ids"] for pool in result["pools"])
+
+
+def test_scanner_is_deterministic_for_equal_quality_input_permutations(tmp_path):
+    records = [record(base_id, base_id * 100 + 1) for base_id in range(1001, 1006)]
+    kwargs = {
+        "mdb_path": tmp_path / "unused.mdb",
+        "max_characters": 5,
+        "limit": 10,
+        "affinity_calculator": fake_affinity,
+        "g1_saddle_ids": {10, 20},
+    }
+
+    forward = scan_legacy_loop_pools(records, **kwargs)
+    reversed_result = scan_legacy_loop_pools(list(reversed(records)), **kwargs)
+
+    assert forward == reversed_result
+    assert all(pool["base_chara_ids"] == sorted(pool["base_chara_ids"]) for pool in forward["pools"])

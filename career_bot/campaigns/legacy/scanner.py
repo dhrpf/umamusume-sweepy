@@ -66,6 +66,11 @@ def _record_quality(record: dict[str, Any], g1_ids: set[int]) -> tuple[int, int,
     )
 
 
+def _record_order(record: dict[str, Any], g1_ids: set[int]) -> tuple[int, ...]:
+    quality = _record_quality(record, g1_ids)
+    return (*(-value for value in quality), _record_id(record), _int(record.get("card_id")))
+
+
 def _best_style(record: dict[str, Any]) -> tuple[str, int]:
     rows = [
         (name, _int(record.get(field)))
@@ -130,20 +135,21 @@ def _best_rotation(
                 "total": total,
                 "chara_compat": _int(affinity.get("chara_compat")),
                 "race_compat": _int(affinity.get("race_compat")),
-                "parent_ids": [_record_id(parent1), _record_id(parent2)],
-                "parent_base_chara_ids": [
-                    _base_chara_id(parent1),
-                    _base_chara_id(parent2),
-                ],
+                "parent_ids": sorted([_record_id(parent1), _record_id(parent2)]),
+                "parent_base_chara_ids": sorted(
+                    [_base_chara_id(parent1), _base_chara_id(parent2)]
+                ),
             }
             if best is None or (
                 candidate["total"],
                 candidate["race_compat"],
                 candidate["chara_compat"],
+                tuple(-value for value in candidate["parent_ids"]),
             ) > (
                 best["total"],
                 best["race_compat"],
                 best["chara_compat"],
+                tuple(-value for value in best["parent_ids"]),
             ):
                 best = candidate
     return best
@@ -160,6 +166,7 @@ def scan_legacy_loop_pools(
     limit: int = 10,
     affinity_calculator: Callable[..., dict[str, Any]] = calculate_affinity,
     g1_saddle_ids: set[int] | None = None,
+    required_base_chara_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     """Rank four-character bootstrap pools using cached, actual lineage records.
 
@@ -186,14 +193,24 @@ def scan_legacy_loop_pools(
 
     per_character = max(1, min(int(records_per_character), 5))
     for base_id, rows in grouped.items():
-        rows.sort(key=lambda row: _record_quality(row, g1_ids), reverse=True)
+        rows.sort(key=lambda row: _record_order(row, g1_ids))
         grouped[base_id] = rows[:per_character]
 
-    ranked_characters = sorted(
+    ranked_all = sorted(
         grouped,
-        key=lambda base_id: _record_quality(grouped[base_id][0], g1_ids),
-        reverse=True,
-    )[: max(4, min(int(max_characters), 20))]
+        key=lambda base_id: (*_record_order(grouped[base_id][0], g1_ids), base_id),
+    )
+    required = {
+        int(base_id)
+        for base_id in (required_base_chara_ids or set())
+        if int(base_id) in grouped
+    }
+    character_cap = max(4, min(int(max_characters), 20))
+    ranked_characters = sorted(
+        [*required, *[base_id for base_id in ranked_all if base_id not in required]][
+            : max(character_cap, len(required))
+        ]
+    )
 
     pools: list[dict[str, Any]] = []
     for base_ids in itertools.combinations(ranked_characters, 4):
@@ -267,15 +284,15 @@ def scan_legacy_loop_pools(
     tier_rank = {"double_circle": 2, "single_circle": 1, "triangle": 0}
     pools.sort(
         key=lambda pool: (
-            bool(pool["affinity"]["meets_target"]),
-            tier_rank.get(pool["affinity"]["tier"]["name"], -1),
-            pool["affinity"]["worst"],
-            pool["shared_g1_count"],
-            pool["running_style"]["matching_members"],
-            len(pool["distance_overlap"]["usable_b_or_better"]),
-            pool["affinity"]["average"],
-        ),
-        reverse=True,
+            -int(bool(pool["affinity"]["meets_target"])),
+            -tier_rank.get(pool["affinity"]["tier"]["name"], -1),
+            -pool["affinity"]["worst"],
+            -pool["shared_g1_count"],
+            -pool["running_style"]["matching_members"],
+            -len(pool["distance_overlap"]["usable_b_or_better"]),
+            -pool["affinity"]["average"],
+            tuple(pool["base_chara_ids"]),
+        )
     )
     capped = max(1, min(int(limit), 50))
     return {

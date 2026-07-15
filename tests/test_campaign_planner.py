@@ -96,3 +96,48 @@ def test_loop_recommendations_are_owned_pinned_enriched_and_separate_upgrades(tm
     assert result["ideal_upgrades"]
     assert all(1005 in row["chara_ids"] for row in result["ideal_upgrades"])
     assert all(row["owned"] is False for row in result["ideal_upgrades"])
+
+
+def test_loop_recommendations_preserve_low_ranked_pin_past_scanner_cap(tmp_path):
+    records = [
+        veteran(base_id, base_id * 100 + 1, rank_score=30000 - base_id)
+        for base_id in range(1001, 1014)
+    ]
+    records[-1]["rank_score"] = 1
+    campaign_planner = CampaignPlanner(
+        owned_chara_ids=set(range(1001, 1014)),
+        veteran_records=records,
+        display_by_id={},
+        g1_saddle_ids={10, 20},
+        race_rows=[],
+        affinity_for_pair=affinity,
+    )
+
+    result = campaign_planner.recommend_loops(
+        pinned_chara_ids={1013},
+        limit=3,
+        mdb_path=tmp_path / "unused.mdb",
+    )
+
+    assert result["loops"]
+    assert all(1013 in row["chara_ids"] for row in result["loops"])
+
+
+def test_loop_recommendations_are_deterministic_for_input_permutations(tmp_path):
+    records = [veteran(base_id, base_id * 100 + 1) for base_id in range(1001, 1006)]
+
+    def recommend(rows):
+        campaign_planner = CampaignPlanner(
+            owned_chara_ids=set(range(1001, 1006)),
+            veteran_records=rows,
+            display_by_id={},
+            g1_saddle_ids={10, 20},
+            race_rows=[],
+            affinity_for_pair=affinity,
+        )
+        return campaign_planner.recommend_loops(
+            limit=5,
+            mdb_path=tmp_path / "unused.mdb",
+        )
+
+    assert recommend(records) == recommend(list(reversed(records)))

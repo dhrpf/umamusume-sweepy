@@ -198,6 +198,7 @@ class CampaignPlanner:
                     trainee, first, second
                 ),
                 g1_saddle_ids=self.g1_saddle_ids,
+                required_base_chara_ids=pinned,
             )
             return [
                 pool
