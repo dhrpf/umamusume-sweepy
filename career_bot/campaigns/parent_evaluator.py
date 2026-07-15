@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .models import FactorAggregation, FactorScope, LineageDepth, ParentGoal
+from .targets import evaluate_spark_targets
 
 
 RANK_ORDER = [
@@ -99,6 +100,20 @@ def _factor_stars(
     if aggregation is FactorAggregation.SUM:
         return int(sum(rows))
     return int(max(rows))
+
+
+def _spark_totals(candidate: dict[str, Any]) -> dict[tuple[str, str], int]:
+    totals = candidate.get("spark_totals")
+    if isinstance(totals, dict):
+        return dict(totals)
+    return {}
+
+
+def evaluate_candidate_spark_targets(
+    targets: list[Any],
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    return evaluate_spark_targets(targets, _spark_totals(dict(candidate or {})))
 
 
 def evaluate_parent_candidate(
