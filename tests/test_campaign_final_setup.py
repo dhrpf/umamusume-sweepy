@@ -80,6 +80,21 @@ def test_owned_pairing_wins_equal_affinity_tie_over_rental():
     assert result["best_pairing"]["key"] == "owned-a"
 
 
+def test_passing_owned_pairing_wins_over_higher_affinity_rental():
+    result = evaluate_final_setup(
+        True,
+        [
+            {"key": "rental-a", "affinity": 220, "rental": True},
+            {"key": "owned-a", "affinity": 150, "rental": False},
+        ],
+        allow_rental=True,
+    )
+
+    assert result["status"] == "READY"
+    assert result["best_affinity"] == 150
+    assert result["best_pairing"]["key"] == "owned-a"
+
+
 def test_no_pairings_returns_empty_in_progress_result():
     assert evaluate_final_setup(True, [], allow_rental=True) == {
         "status": "IN_PROGRESS",

@@ -74,18 +74,40 @@ def evaluate_final_setup(
             "best_pairing": None,
         }
 
-    best_pairing = sorted(
-        allowed_pairings,
-        key=lambda row: (
-            -_pairing_affinity(row),
-            _pairing_is_rental(row),
-            _key_string(row),
-        ),
-    )[0]
-    best_affinity = _pairing_affinity(best_pairing)
+    def best_from(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        return sorted(
+            rows,
+            key=lambda row: (
+                -_pairing_affinity(row),
+                _pairing_is_rental(row),
+                _key_string(row),
+            ),
+        )[0]
+
+    best_pairing = best_from(allowed_pairings)
     status = IN_PROGRESS
-    if _boolish(required_complete) and best_affinity >= MIN_FINAL_AFFINITY:
-        status = READY_WITH_RENTAL if _pairing_is_rental(best_pairing) else READY
+    if _boolish(required_complete):
+        owned_passing = [
+            row
+            for row in allowed_pairings
+            if not _pairing_is_rental(row)
+            and _pairing_affinity(row) >= MIN_FINAL_AFFINITY
+        ]
+        if owned_passing:
+            best_pairing = best_from(owned_passing)
+            status = READY
+        else:
+            rental_passing = [
+                row
+                for row in allowed_pairings
+                if _pairing_is_rental(row)
+                and _pairing_affinity(row) >= MIN_FINAL_AFFINITY
+            ]
+            if rental_passing:
+                best_pairing = best_from(rental_passing)
+                status = READY_WITH_RENTAL
+
+    best_affinity = _pairing_affinity(best_pairing)
 
     return {
         "status": status,
