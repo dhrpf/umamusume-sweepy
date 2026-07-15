@@ -10,9 +10,20 @@ class RotationState:
     produced: tuple[tuple[int, str], ...]
 
     def __post_init__(self) -> None:
-        if len(self.loop_chara_ids) != 4 or len(set(self.loop_chara_ids)) != 4:
+        loop_chara_ids = tuple(self.loop_chara_ids)
+        produced = tuple(tuple(entry) for entry in self.produced)
+        object.__setattr__(self, "loop_chara_ids", loop_chara_ids)
+        object.__setattr__(self, "produced", produced)
+
+        if len(loop_chara_ids) != 4 or len(set(loop_chara_ids)) != 4:
             raise ValueError("rotation requires four unique characters")
-        if len(self.produced) > 8:
+        if (
+            isinstance(self.run_index, bool)
+            or not isinstance(self.run_index, int)
+            or self.run_index < 0
+        ):
+            raise ValueError("rotation run_index must be a non-negative integer")
+        if len(produced) > 8:
             raise ValueError("rotation retains at most eight produced legacies")
 
     @classmethod
@@ -33,9 +44,11 @@ class RotationState:
 
 
 def advance_rotation(state: RotationState, *, produced_legacy_id: str) -> RotationState:
+    if not isinstance(produced_legacy_id, str) or not produced_legacy_id.strip():
+        raise ValueError("produced_legacy_id must be a non-empty string")
     produced = [
         *state.produced,
-        (state.next_trainee_chara_id, str(produced_legacy_id)),
+        (state.next_trainee_chara_id, produced_legacy_id),
     ]
     return RotationState(
         state.loop_chara_ids,

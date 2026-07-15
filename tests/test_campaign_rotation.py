@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from career_bot.campaigns.rotation import RotationState, advance_rotation
@@ -38,6 +40,32 @@ def test_bootstrap_rejects_invalid_character_pool(chara_ids):
         RotationState.bootstrap(chara_ids)
 
 
+def test_direct_construction_normalizes_mutable_inputs():
+    loop_chara_ids = [1001, 1002, 1003, 1004]
+    produced = [[1001, "legacy-a"]]
+
+    state = RotationState(loop_chara_ids, 1, produced)
+    loop_chara_ids[0] = 9999
+    produced[0][1] = "changed"
+
+    assert state.loop_chara_ids == (1001, 1002, 1003, 1004)
+    assert state.produced == ((1001, "legacy-a"),)
+
+
+@pytest.mark.parametrize("run_index", [-1, 1.5, "1", True, None])
+def test_rotation_state_rejects_invalid_run_index(run_index):
+    with pytest.raises(ValueError, match="non-negative integer"):
+        RotationState((1001, 1002, 1003, 1004), run_index, ())
+
+
+@pytest.mark.parametrize("produced_legacy_id", [None, True, False, 123, "", "   "])
+def test_advance_rotation_rejects_invalid_produced_legacy_id(produced_legacy_id):
+    state = RotationState.bootstrap([1001, 1002, 1003, 1004])
+
+    with pytest.raises(ValueError, match="non-empty string"):
+        advance_rotation(state, produced_legacy_id=produced_legacy_id)
+
+
 def test_produced_inventory_retains_only_latest_eight_entries():
     state = RotationState.bootstrap([1001, 1002, 1003, 1004])
 
@@ -66,8 +94,18 @@ def test_rotation_state_is_immutable_and_serializable():
     with pytest.raises(AttributeError):
         state.run_index = 2
 
-    assert state.to_dict() == {
+    expected = {
         "loop_chara_ids": (1001, 1002, 1003, 1004),
         "run_index": 1,
         "produced": ((1001, "legacy-a"),),
     }
+    serialized = json.dumps(state.to_dict())
+    decoded = json.loads(serialized)
+
+    assert state.to_dict() == expected
+    assert decoded == {
+        "loop_chara_ids": [1001, 1002, 1003, 1004],
+        "run_index": 1,
+        "produced": [[1001, "legacy-a"]],
+    }
+    assert RotationState(**decoded) == state
