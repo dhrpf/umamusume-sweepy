@@ -755,7 +755,14 @@ class CampaignStore:
                 }
             context = _json_loads(row["context_json"]) or {}
             run_start = context.get("run_start") if isinstance(context.get("run_start"), dict) else {}
-            if run_start.get("status") in {"STARTING", "STARTED"}:
+            reserved_at = run_start.get("reserved_at", row["updated_at"])
+            non_stale_starting = (
+                run_start.get("status") == "STARTING"
+                and isinstance(reserved_at, (int, float))
+                and not isinstance(reserved_at, bool)
+                and float(self.clock()) - float(reserved_at) < PREPARED_RUN_START_TIMEOUT_SECONDS
+            )
+            if non_stale_starting:
                 connection.execute("COMMIT")
                 return {
                     "recovered": False,

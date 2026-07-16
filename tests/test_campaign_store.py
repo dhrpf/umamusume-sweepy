@@ -412,6 +412,30 @@ def test_missing_active_career_recovery_is_atomic_and_blocks_reserved_run(tmp_pa
     assert persisted["state"] == CampaignState.RUNNING_CAREER.value
     assert persisted["context"]["run_start"]["status"] == "STARTING"
 
+def test_started_run_does_not_block_authoritative_missing_career_recovery(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    _running_campaign(store)
+    store.reserve_prepared_run_start("campaign-1", "operation-1")
+    store.finish_prepared_run_start(
+        "campaign-1",
+        "operation-1",
+        status="STARTED",
+        result={"job_id": "job-1"},
+    )
+    campaign = store.get("campaign-1")
+
+    result = store.recover_missing_active_career(
+        "campaign-1",
+        expected_version=campaign["version"],
+    )
+
+    assert result["recovered"] is True
+    persisted = result["campaign"]
+    assert persisted["state"] == CampaignState.PAUSED.value
+    assert persisted["error"] == "Persisted running career is no longer active"
+    assert persisted["context"]["run_start"]["status"] == "STARTED"
+    assert store.recent_events("campaign-1")[0]["event_type"] == "runtime_active_career_disappeared"
+
 def test_missing_active_career_recovery_rejects_version_change(tmp_path):
     store = CampaignStore(tmp_path / "campaigns.sqlite3")
     campaign = _running_campaign(store)

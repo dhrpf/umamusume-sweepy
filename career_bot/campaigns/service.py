@@ -128,6 +128,13 @@ class CampaignService:
     def activate(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
         snapshot = self._snapshot(campaign["account"])
+        current_career = self._trusted_current_career(campaign, snapshot)
+        if current_career is not None:
+            reconciled = self._campaign_from_reconciliation(
+                self.reconcile_runtime(campaign_id, current_career)
+            )
+            if not self._campaign_unchanged(campaign, reconciled):
+                return reconciled
         runtime = snapshot.get("runtime", snapshot)
         bot_state = snapshot.get("bot_state", snapshot)
         return self.runner.start(campaign_id, runtime=runtime, bot_state=bot_state)
@@ -136,6 +143,15 @@ class CampaignService:
         return self.runner.pause(campaign_id)
 
     def resume(self, campaign_id: str) -> dict[str, Any]:
+        campaign = self.store.get(campaign_id)
+        snapshot = self._snapshot(campaign["account"])
+        current_career = self._trusted_current_career(campaign, snapshot)
+        if current_career is not None:
+            reconciled = self._campaign_from_reconciliation(
+                self.reconcile_runtime(campaign_id, current_career)
+            )
+            if not self._campaign_unchanged(campaign, reconciled):
+                return reconciled
         return self.runner.resume(campaign_id)
 
     def reconcile_runtime(
@@ -148,6 +164,8 @@ class CampaignService:
         prepared_run = dict((campaign.get("context") or {}).get("prepared_run") or {})
         if current.get("active") is True:
             if self._career_matches_prepared_run(current, prepared_run):
+                if campaign["state"] == CampaignState.PAUSED.value:
+                    return campaign
                 return self.store.transition(
                     campaign_id,
                     CampaignState.RUNNING_CAREER,
@@ -197,6 +215,21 @@ class CampaignService:
                 error="Persisted rental is unavailable and no valid fallback was found",
             )
         return recovered
+
+    @staticmethod
+    def _campaign_from_reconciliation(result: Mapping[str, Any]) -> dict[str, Any]:
+        campaign = result.get("campaign", result)
+        return dict(campaign) if isinstance(campaign, Mapping) else {}
+
+    @staticmethod
+    def _campaign_unchanged(
+        before: Mapping[str, Any],
+        after: Mapping[str, Any],
+    ) -> bool:
+        return all(
+            after.get(key) == before.get(key)
+            for key in ("state", "version", "next_action", "error")
+        )
 
     def prepare_next_run(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
@@ -536,9 +569,13 @@ class CampaignService:
         current_career: Mapping[str, Any],
         prepared_run: Mapping[str, Any],
     ) -> bool:
-        expected = prepared_run.get("career_request") or prepared_run
-        if not isinstance(expected, Mapping):
+        nested = prepared_run.get("career_request")
+        expected = dict(nested) if isinstance(nested, Mapping) else dict(prepared_run)
+        if not expected:
             return False
+        for key in ("account", "campaign_id"):
+            if key not in expected and prepared_run.get(key):
+                expected[key] = prepared_run[key]
         expected_card = cls._career_card_id(expected)
         if expected_card:
             if cls._career_card_id(current_career) != expected_card:
@@ -559,9 +596,23 @@ class CampaignService:
         for key in ("account", "campaign_id"):
             expected_value = str(expected.get(key) or "")
             current_value = str(current_career.get(key) or "")
-            if expected_value and current_value and current_value != expected_value:
+            if expected_value and current_value != expected_value:
                 return False
         return True
+
+    @staticmethod
+    def _trusted_current_career(
+        campaign: Mapping[str, Any],
+        snapshot: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        current = snapshot.get("current_career")
+        if not isinstance(current, Mapping):
+            return None
+        return {
+            **dict(current),
+            "account": str(campaign["account"]),
+            "campaign_id": str(campaign["campaign_id"]),
+        }
 
     @staticmethod
     def _career_card_id(career: Mapping[str, Any]) -> int:

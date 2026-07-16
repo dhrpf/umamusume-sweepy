@@ -9,6 +9,7 @@ import pytest
 from career_bot.campaigns.models import ParentCampaignSpec
 from career_bot.campaigns.service import CampaignService
 from career_bot.campaigns.rotation import RotationState
+from career_bot.campaigns.runner import CampaignRunner
 from career_bot.campaigns.store import CampaignStore
 
 
@@ -406,6 +407,68 @@ def test_activate_uses_fresh_snapshot_and_runner_start():
         )
     ]
 
+def test_activate_real_store_reconciles_matching_active_career(tmp_path):
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    _, store, _, _ = real_running_service(tmp_path, prepared_run=prepared)
+    runner = CampaignRunner(store)
+    svc, _, _, _ = service(
+        store=store,
+        runner=runner,
+        snapshot=lambda _account: {
+            "current_career": {"active": True, "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11},
+            "runtime": {"api_reachable": True},
+            "bot_state": {"career_runner": {"running": False}},
+        },
+    )
+
+    result = svc.activate("cmp1")
+
+    assert result["state"] == "RUNNING_CAREER"
+    assert store.get("cmp1")["state"] == "RUNNING_CAREER"
+
+def test_activate_real_store_reconciles_mismatched_active_career(tmp_path):
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    _, store, _, _ = real_running_service(tmp_path, prepared_run=prepared)
+    svc, _, _, _ = service(
+        store=store,
+        runner=CampaignRunner(store),
+        snapshot=lambda _account: {"current_career": {"active": True, "card_id": 999999, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}},
+    )
+
+    result = svc.activate("cmp1")
+
+    assert result["state"] == "PAUSED"
+    assert result["next_action"] == "inspect_current_career"
+
+def test_resume_real_store_reconciles_matching_active_career(tmp_path):
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    _, store, _, _ = real_running_service(tmp_path, prepared_run=prepared)
+    store.pause("cmp1")
+    svc, _, _, _ = service(
+        store=store,
+        runner=CampaignRunner(store),
+        snapshot=lambda _account: {"current_career": {"active": True, "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}},
+    )
+
+    result = svc.resume("cmp1")
+
+    assert result["state"] == "RUNNING_CAREER"
+
+def test_resume_real_store_reconciles_mismatched_active_career_without_unpausing(tmp_path):
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    _, store, _, _ = real_running_service(tmp_path, prepared_run=prepared)
+    store.pause("cmp1")
+    svc, _, _, _ = service(
+        store=store,
+        runner=CampaignRunner(store),
+        snapshot=lambda _account: {"current_career": {"active": True, "card_id": 999999, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}},
+    )
+
+    result = svc.resume("cmp1")
+
+    assert result["state"] == "PAUSED"
+    assert result["paused_from_state"] == "RUNNING_CAREER"
+
 
 def test_runtime_snapshot_type_error_is_not_retried_or_masked():
     calls = []
@@ -548,6 +611,16 @@ def test_reconcile_rejects_wrong_optional_campaign_identity(field, value):
     })
     current = {"active": True, "account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
     current[field] = value
+
+    assert svc.reconcile_runtime("cmp1", current_career=current)["state"] == "PAUSED"
+
+@pytest.mark.parametrize("missing", ["account", "campaign_id"])
+def test_reconcile_rejects_missing_required_campaign_identity(missing):
+    svc, store, _, _ = service()
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    store.campaign.update({"state": "RUNNING_CAREER", "context": {"prepared_run": prepared}})
+    current = {"active": True, **prepared}
+    current.pop(missing)
 
     assert svc.reconcile_runtime("cmp1", current_career=current)["state"] == "PAUSED"
 
