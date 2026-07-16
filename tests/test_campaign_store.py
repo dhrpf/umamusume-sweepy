@@ -53,6 +53,14 @@ def test_campaign_create_and_reopen_are_durable(tmp_path):
     assert reopened["usage"] == {"runs": 0, "carats": 0, "clocks": 0}
 
 
+def test_create_persists_initial_context_atomically(tmp_path):
+    database = tmp_path / "campaigns.sqlite3"
+    store = CampaignStore(database)
+    campaign = store.create(sample_spec(), campaign_id="campaign-context", initial_context={"race_agenda": {"CORE": [1]}})
+    assert campaign["context"] == {"race_agenda": {"CORE": [1]}}
+    assert CampaignStore(database).get("campaign-context")["context"] == campaign["context"]
+
+
 def test_valid_transitions_are_recorded_and_invalid_transition_is_rejected(tmp_path):
     store = CampaignStore(tmp_path / "campaigns.sqlite3")
     store.create(sample_spec(), campaign_id="campaign-1")

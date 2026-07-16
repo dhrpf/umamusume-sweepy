@@ -3,11 +3,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 import hashlib
+import json
 from typing import Any
 
 from .final_setup import READY, READY_WITH_RENTAL, evaluate_final_setup
 from .models import CampaignState, ParentCampaignSpec, SparkPriority
 from .planner import CampaignPlanner
+from .preset_policy import build_campaign_base_preset, build_step_overrides
 from .resolver import LegacyResolver, LegacySlot
 from .rotation import RotationState, advance_rotation
 from .targets import evaluate_spark_targets
@@ -47,7 +49,12 @@ class CampaignService:
         return self.store.list(account=account)
 
     def get_campaign(self, campaign_id: str) -> dict[str, Any]:
-        return self.store.get(campaign_id)
+        campaign = self.store.get(campaign_id)
+        return {
+            **campaign,
+            "events": self.store.recent_events(campaign_id, limit=30),
+            "candidates": self.store.list_candidates(campaign_id, limit=30),
+        }
 
     def recommend_final_parents(self, request: Mapping[str, Any]) -> Any:
         payload = dict(request)
@@ -76,7 +83,47 @@ class CampaignService:
             raise ValueError("loop_members must contain exactly four members")
         if any(not 1 <= row.deck_id <= 10 for row in validated.loop_members):
             raise ValueError("each manual loop member deck_id must be between 1 and 10")
-        return self.store.create(validated)
+        base_preset_name = validated.strategy.preset_name
+        base_preset = deepcopy(self.preset_store.load(base_preset_name))
+        digest = hashlib.sha256(
+            json.dumps(validated.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()[:10]
+        generated_name = f"campaign-{validated.account.lower()}-{digest}"
+        policy = build_campaign_base_preset(
+            name=generated_name,
+            running_style=base_preset.get("running_style"),
+            scenario_id=base_preset.get("scenario_id"),
+            spark_targets=validated.spark_targets,
+            core_races=validated.race_plan.core,
+            optional_races=validated.race_plan.optional,
+        )
+        generated = {**base_preset, **policy}
+        for key in ("deck", "deck_id", "support_card_ids", "support_card_id_array"):
+            generated.pop(key, None)
+        stats = list(base_preset.get("expect_attribute") or [0, 0, 0, 0, 0])[:5]
+        stats += [0] * (5 - len(stats))
+        for index, name in enumerate(("speed", "stamina", "power", "guts", "wisdom")):
+            if f"expect_{name}" in policy:
+                stats[index] = max(int(stats[index]), int(policy[f"expect_{name}"]))
+            generated.pop(f"expect_{name}", None)
+        generated["expect_attribute"] = stats
+        self.preset_store.save(generated)
+        validated.strategy.preset_name = generated_name
+        initial_context = {
+            "base_preset_name": base_preset_name,
+            "generated_preset_name": generated_name,
+            "race_agenda": {
+                "CORE": list(validated.race_plan.core),
+                "OPTIONAL": list(validated.race_plan.optional),
+                "DEFERABLE": list(validated.race_plan.deferable),
+            },
+            "step_race_overrides": build_step_overrides(
+                core_races=validated.race_plan.core,
+                optional_races=validated.race_plan.optional,
+                parent_run=True,
+            ),
+        }
+        return self.store.create(validated, initial_context=initial_context)
 
     def activate(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
@@ -471,10 +518,16 @@ class CampaignService:
         _runtime: Mapping[str, Any],
     ) -> dict[str, Any]:
         spec = campaign["spec"]
+        members = spec.get("loop_members") or []
+        member = next((row for row in members if int(row.get("chara_id") or 0) == rotation.next_trainee_chara_id), None)
+        deck_id = int((member or {}).get("deck_id") or 0)
+        if not member or not 1 <= deck_id <= 10:
+            raise ValueError(f"No valid manual deck for trainee {rotation.next_trainee_chara_id}")
         return {
             "account": campaign["account"],
             "preset": self.preset_store.load(spec["strategy"]["preset_name"]),
             "trainee_chara_id": rotation.next_trainee_chara_id,
+            "deck_id": deck_id,
             "legacy_slots": list(resolved),
             "race_overrides": list(races),
             "campaign_id": campaign["campaign_id"],

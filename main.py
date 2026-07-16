@@ -249,6 +249,9 @@ class _CampaignPresetStore:
             raise ValueError(f"Campaign preset not found: {name}")
         return preset
 
+    def save(self, preset):
+        return preset_store.write(preset)
+
 def _current_campaign_account():
     dashboard = active_dashboard_data or {}
     account = active_account or dashboard.get("account") or {}
@@ -261,7 +264,7 @@ def _current_campaign_account():
         or dashboard.get("accountName")
         or account.get("name")
         or account.get("account")
-        or ""
+        or "local"
     )
 
 def _assert_campaign_account(account):
@@ -388,8 +391,14 @@ def _campaign_start_career(request):
     parent_ids = [int(row.get("trained_chara_id") or 0) for row in slots if isinstance(row, dict)]
     if len(parent_ids) < 2 or not all(parent_ids[:2]):
         raise ValueError("Campaign prepared run requires two resolved parents")
-    support_ids = list(preset.get("support_card_ids") or preset.get("support_card_id_array") or [])
-    friend_support = request.get("friend_support") or {}
+    deck_id = int(request.get("deck_id") or 0)
+    dashboard_deck = next((row for row in ((active_dashboard_data or {}).get("decks") or []) if int(row.get("id") or row.get("deck_id") or 0) == deck_id), None)
+    raw_deck = next((row for row in (active_support_card_deck_array or []) if int(row.get("deck_id") or row.get("id") or 0) == deck_id), None)
+    if dashboard_deck:
+        support_ids = [int(row.get("id") or row.get("support_card_id") or 0) for row in (dashboard_deck.get("cards") or [])]
+    else:
+        support_ids = [int(value or 0) for value in ((raw_deck or {}).get("support_card_id_array") or [])]
+    friend_support = request.get("friend_support") or (active_selection or {}).get("friend") or {}
     friend_viewer_id = int(
         friend_support.get("viewer_id")
         or friend_support.get("friend_viewer_id")
@@ -402,7 +411,7 @@ def _campaign_start_career(request):
         or preset.get("friend_card_id")
         or 0
     )
-    if len(support_ids) != 5 or not friend_viewer_id or not friend_card_id:
+    if len(support_ids) != 5 or not all(support_ids) or not friend_viewer_id or not friend_card_id:
         raise ValueError("Campaign preset requires five supports and a friend support")
     trainee_chara_id = int(request.get("trainee_chara_id") or 0)
     card_id = next(
@@ -433,7 +442,7 @@ def _campaign_start_career(request):
         parent_id_1=parent_ids[0],
         parent_id_2=parent_ids[1],
         scenario_id=int(preset.get("scenario_id") or preset.get("scenario") or 4),
-        deck_id=int(preset.get("deck_id") or 1),
+        deck_id=deck_id,
         use_tp=int(preset.get("use_tp") or 30),
         preset_name=str(preset.get("name") or preset.get("preset_name") or ""),
         preset_overrides=preset_overrides,
@@ -1673,7 +1682,8 @@ def _campaign_api_call(method, *args):
 @app.get("/api/campaigns")
 async def list_campaigns(account: str | None = None):
     resolved_account = account if account is not None else _current_campaign_account()
-    return {"success": True, "campaigns": _campaign_api_call(campaign_service.list_campaigns, resolved_account)}
+    _assert_campaign_account(resolved_account)
+    return {"success": True, "account": resolved_account, "campaigns": _campaign_api_call(campaign_service.list_campaigns, resolved_account)}
 
 @app.post("/api/campaigns/recommend-final-parents")
 async def recommend_campaign_final_parents(req: CampaignFinalParentsRecommendationRequest):

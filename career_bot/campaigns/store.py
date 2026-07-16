@@ -315,6 +315,7 @@ class CampaignStore:
         spec: ParentCampaignSpec | dict[str, Any],
         *,
         campaign_id: str | None = None,
+        initial_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         validated = ParentCampaignSpec.model_validate(spec)
         resolved_id = str(campaign_id or uuid.uuid4()).strip()
@@ -327,13 +328,14 @@ class CampaignStore:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 "INSERT INTO campaigns "
-                "(campaign_id, account, state, spec_json, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "(campaign_id, account, state, spec_json, context_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     resolved_id,
                     validated.account,
                     CampaignState.DRAFT.value,
                     spec_json,
+                    _json_dumps(initial_context or {}),
                     now,
                     now,
                 ),

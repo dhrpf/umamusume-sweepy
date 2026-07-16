@@ -337,6 +337,25 @@ class CampaignOptions(BaseModel):
     auto_use_best_veteran: bool = False
 
 
+class CampaignRacePlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    core: list[int] = Field(default_factory=list)
+    optional: list[int] = Field(default_factory=list)
+    deferable: list[int] = Field(default_factory=list)
+
+    @field_validator("core", "optional", "deferable", mode="before")
+    @classmethod
+    def validate_race_ids(cls, value: list[int]) -> list[int]:
+        if not isinstance(value, list):
+            raise ValueError("race IDs must be lists")
+        if any(isinstance(race_id, bool) or not isinstance(race_id, int) or race_id <= 0 for race_id in value):
+            raise ValueError("race IDs must be positive integers")
+        if len(set(value)) != len(value):
+            raise ValueError("race IDs must be unique within each group")
+        return value
+
+
 class ParentCampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -351,6 +370,7 @@ class ParentCampaignSpec(BaseModel):
     final_parent: FinalParentTarget = Field(default_factory=FinalParentTarget)
     loop_members: list[CampaignLoopMember] = Field(default_factory=list)
     options: CampaignOptions = Field(default_factory=CampaignOptions)
+    race_plan: CampaignRacePlan = Field(default_factory=CampaignRacePlan)
 
     @field_validator("account")
     @classmethod

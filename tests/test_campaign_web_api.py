@@ -130,6 +130,7 @@ def test_campaign_list_uses_current_account_when_omitted(client, fake_campaign_s
 
     assert response.status_code == 200
     assert fake_campaign_service.calls[-1] == ("list_campaigns", ("acct-current",), {})
+    assert response.json()["account"] == "acct-current"
 
 
 @pytest.mark.parametrize(
@@ -210,7 +211,7 @@ def test_campaign_start_propagates_friend_and_races(monkeypatch):
     captured = []
     monkeypatch.setattr(main, "active_account", {"name": "acct01"})
     monkeypatch.setattr(main, "active_client", object())
-    monkeypatch.setattr(main, "active_dashboard_data", {"umas": [{"id": 100101}]})
+    monkeypatch.setattr(main, "active_dashboard_data", {"umas": [{"id": 100101}], "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}]})
     monkeypatch.setattr(
         main,
         "start_career_from_request",
@@ -219,13 +220,13 @@ def test_campaign_start_propagates_friend_and_races(monkeypatch):
 
     result = main._campaign_start_career({
         "account": "acct01",
+        "deck_id": 3,
         "trainee_chara_id": 1001,
         "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
         "friend_support": {"viewer_id": 33, "support_card_id": 44},
         "race_overrides": {"mandatory_race_list": [7], "extra_race_list": [8]},
         "preset": {
             "name": "parent",
-            "support_card_ids": [1, 2, 3, 4, 5],
             "friend_viewer_id": 99,
             "friend_card_id": 100,
             "parent_run": True,
@@ -236,6 +237,8 @@ def test_campaign_start_propagates_friend_and_races(monkeypatch):
     assert result["success"] is True
     assert request.friend_viewer_id == 33
     assert request.friend_card_id == 44
+    assert request.support_card_ids == [1, 2, 3, 4, 5]
+    assert request.deck_id == 3
     assert request.preset_overrides["mandatory_race_list"] == [7]
     assert request.preset_overrides["extra_race_list"] == [8]
     assert request.preset_overrides["parent_run"] is True

@@ -268,6 +268,8 @@ function buildSpec() {
     const account = accountName();
     if (!account) throw new Error('Backend session exposes no usable campaign account name.');
     if (!state.draft.options.presetName) throw new Error('Select a persisted base preset.');
+    const agenda = state.draft.selectedLoop?.shared_g1_agenda || {};
+    const raceIds = (rows) => [...new Set((Array.isArray(rows) ? rows : []).map((row) => numberFrom(row, ['program_id', 'id'])).filter((id) => id > 0))];
     return {
         account, spec_version: 2,
         goal: { purpose: 'parent', target_factors: [] },
@@ -281,6 +283,7 @@ function buildSpec() {
         spark_targets: context.spark_targets,
         final_parent: { chara_id: Number(state.draft.selectedFinalParent.chara_id), trained_chara_id: parentTrainedId(state.draft.selectedFinalParent) },
         loop_members: loopMembers,
+        race_plan: { core: raceIds(agenda.agenda), optional: raceIds(agenda.optional), deferable: raceIds(agenda.skipped) },
         options: { allow_rental: state.draft.options.allowRental, auto_use_best_veteran: state.draft.options.autoUseBestVeteran },
     };
 }

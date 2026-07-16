@@ -8,6 +8,7 @@ from career_bot.campaigns.models import (
     FactorScope,
     LineageDepth,
     ParentCampaignSpec,
+    CampaignRacePlan,
     FinalParentTarget,
     ParentGoal,
     ParentStrategy,
@@ -15,6 +16,14 @@ from career_bot.campaigns.models import (
     SparkPriority,
     TraineeSelectionMode,
 )
+
+def test_campaign_race_plan_defaults_and_validates_unique_positive_ids():
+    spec = ParentCampaignSpec.model_validate({"account": "acct01", "goal": {"surface_targets": ["turf"], "distance_targets": ["medium"]}, "strategy": {"preset_name": "base", "maximum_runs": 1, "maximum_runtime_hours": 1}})
+    assert spec.race_plan == CampaignRacePlan()
+    assert CampaignRacePlan(core=[1, 2], optional=[3], deferable=[4]).core == [1, 2]
+    for value in ([1, 1], [0], [True], ["1"]):
+        with pytest.raises(ValidationError):
+            CampaignRacePlan(core=value)
 
 
 def test_medium_turf_goal_normalizes_and_builds_default_lineage_targets():

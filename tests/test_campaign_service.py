@@ -8,6 +8,7 @@ import pytest
 
 from career_bot.campaigns.models import ParentCampaignSpec
 from career_bot.campaigns.service import CampaignService
+from career_bot.campaigns.rotation import RotationState
 
 
 def valid_spec(**overrides):
@@ -54,9 +55,9 @@ class FakeStore:
         self.events = []
         self.lock = Lock()
 
-    def create(self, spec):
-        self.calls.append(("create", spec))
-        return {**self.campaign, "spec": spec.model_dump(mode="json")}
+    def create(self, spec, *, initial_context=None):
+        self.calls.append(("create", spec, deepcopy(initial_context)))
+        return {**self.campaign, "spec": spec.model_dump(mode="json"), "context": deepcopy(initial_context or {})}
 
     def list(self, *, account=None, limit=100):
         self.calls.append(("list", account, limit))
@@ -91,6 +92,9 @@ class FakeStore:
 
     def list_candidates(self, campaign_id, *, limit=100):
         return deepcopy(self.candidates)
+
+    def recent_events(self, campaign_id, *, limit=100):
+        return deepcopy(self.events[:limit])
 
     def get_candidate(self, campaign_id, candidate_id):
         return deepcopy(next(row for row in self.candidates if row["candidate_id"] == candidate_id))
@@ -200,14 +204,28 @@ class FakeRunner:
         return {"state": "CANCELLED"}
 
 
-def service(store=None, runner=None, *, start_career=None, snapshot=None):
+class FakePresetStore:
+    def __init__(self):
+        self.saved = []
+        self.presets = {"parent": {"name": "parent", "running_style": 2, "scenario_id": 4, "expect_attribute": [900, 1200, 800, 700, 600], "support_card_ids": [1, 2, 3, 4, 5]}}
+
+    def load(self, name):
+        return deepcopy(self.presets[name])
+
+    def save(self, preset):
+        self.saved.append(deepcopy(preset))
+        self.presets[preset["name"]] = deepcopy(preset)
+        return deepcopy(preset)
+
+
+def service(store=None, runner=None, *, start_career=None, snapshot=None, preset_store=None, default_career_request=False):
     store = store or FakeStore()
     runner = runner or FakeRunner()
     started = []
     svc = CampaignService(
         store=store,
         runner=runner,
-        preset_store=object(),
+        preset_store=preset_store or FakePresetStore(),
         runtime_snapshot=snapshot or (lambda account: {"account": account}),
         affinity_for_setup=lambda *_args, **_kwargs: 150,
         start_career=start_career or (lambda request: started.append(request) or {"started": True}),
@@ -218,7 +236,7 @@ def service(store=None, runner=None, *, start_career=None, snapshot=None):
             {"trained_chara_id": 11, "score": 20, "rental": False}
         ],
         race_overrides=lambda campaign, rotation, runtime: [101, 202],
-        career_request=lambda campaign, rotation, resolved, races, runtime: {
+        career_request=None if default_career_request else lambda campaign, rotation, resolved, races, runtime: {
             "campaign_id": campaign["campaign_id"],
             "trainee_chara_id": rotation.next_trainee_chara_id,
             "parents": resolved,
@@ -277,6 +295,29 @@ def test_create_list_get_and_recommend_delegate():
     assert svc.recommend_final_parents({"limit": 2}) == [1]
     assert svc.recommend_loops({"limit": 3}) == {"loops": [2]}
     assert planner_calls == [("parents", {"limit": 2}), ("loops", {"limit": 3})]
+
+
+def test_create_generates_deterministic_campaign_preset_and_context():
+    presets = FakePresetStore()
+    svc, *_ = service(preset_store=presets)
+    payload = valid_spec(spark_targets=[{"category": "blue", "name": "power", "minimum_stars": 9}], race_plan={"core": [101], "optional": [202], "deferable": [303]})
+    first = svc.create_campaign(payload)
+    second = svc.create_campaign(payload)
+    generated = presets.saved[-1]
+    assert generated["name"].startswith("campaign-acct01-")
+    assert presets.saved[-2]["name"] == generated["name"]
+    assert generated["expect_attribute"] == [900, 1200, 1100, 700, 600]
+    assert "support_card_ids" not in generated
+    assert first["spec"]["strategy"]["preset_name"] == generated["name"]
+    assert second["context"]["base_preset_name"] == "parent"
+    assert second["context"]["race_agenda"] == {"CORE": [101], "OPTIONAL": [202], "DEFERABLE": [303]}
+    assert second["context"]["step_race_overrides"] == {"mandatory_race_list": [101], "extra_race_list": [202], "parent_run": True}
+
+
+def test_default_career_request_uses_rotating_members_manual_deck():
+    svc, store, *_ = service(default_career_request=True)
+    request = svc._default_career_request(store.campaign, RotationState(loop_chara_ids=(1, 2, 3, 4), run_index=2, produced=()), [], [], {})
+    assert request["deck_id"] == 3
 
 
 def test_prepare_defaults_to_review_and_persists_before_return():
