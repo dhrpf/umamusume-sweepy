@@ -469,6 +469,30 @@ def test_resume_real_store_reconciles_mismatched_active_career_without_unpausing
     assert result["state"] == "PAUSED"
     assert result["paused_from_state"] == "RUNNING_CAREER"
 
+@pytest.mark.parametrize("method", ["activate", "resume"])
+def test_entry_flow_treats_explicit_none_career_as_authoritative_absence(tmp_path, method):
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101}
+    _, store, _, _ = real_running_service(tmp_path, prepared_run=prepared)
+    store.reserve_prepared_run_start("cmp1", "operation-1")
+    store.finish_prepared_run_start(
+        "cmp1",
+        "operation-1",
+        status="STARTED",
+        result={"job_id": "job-1"},
+    )
+    svc, _, _, _ = service(
+        store=store,
+        runner=CampaignRunner(store),
+        snapshot=lambda _account: {"current_career": None},
+    )
+
+    result = getattr(svc, method)("cmp1")
+
+    assert result["state"] == "PAUSED"
+    assert result["error"] == "Persisted running career is no longer active"
+    assert result["context"]["run_start"]["status"] == "STARTED"
+    assert store.recent_events("cmp1")[0]["event_type"] == "runtime_active_career_disappeared"
+
 
 def test_runtime_snapshot_type_error_is_not_retried_or_masked():
     calls = []

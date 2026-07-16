@@ -605,7 +605,11 @@ class CampaignService:
         campaign: Mapping[str, Any],
         snapshot: Mapping[str, Any],
     ) -> dict[str, Any] | None:
+        if "current_career" not in snapshot:
+            return None
         current = snapshot.get("current_career")
+        if current is None:
+            current = {"active": False}
         if not isinstance(current, Mapping):
             return None
         return {
