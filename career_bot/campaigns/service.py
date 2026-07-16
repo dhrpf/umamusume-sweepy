@@ -30,7 +30,7 @@ class CampaignService:
         planner_factory: Callable[[Mapping[str, Any]], Any] | None = None,
         planned_slots: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
         candidate_pool: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
-        race_overrides: Callable[..., Sequence[Any]] | None = None,
+        race_overrides: Callable[..., Any] | None = None,
         career_request: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self.store = store
@@ -172,7 +172,7 @@ class CampaignService:
                 review,
             )
             return {"campaign": persisted, "prepared_run": None, "resolved_slots": resolved}
-        races = list(self.race_overrides(campaign, rotation, runtime))
+        races = deepcopy(self.race_overrides(campaign, rotation, runtime))
         request = self.career_request(campaign, rotation, resolved, races, runtime)
         prepared_run_id = self._stable_id("prepared", request)
         replacements = [row for row in resolved if row.get("replacement")]
@@ -506,15 +506,15 @@ class CampaignService:
         return [dict(row) for row in rows]
 
     @staticmethod
-    def _default_races(campaign: Mapping[str, Any], _rotation: RotationState, _runtime: Mapping[str, Any]) -> list[Any]:
-        return list((campaign.get("context") or {}).get("step_race_overrides") or [])
+    def _default_races(campaign: Mapping[str, Any], _rotation: RotationState, _runtime: Mapping[str, Any]) -> Any:
+        return deepcopy((campaign.get("context") or {}).get("step_race_overrides") or [])
 
     def _default_career_request(
         self,
         campaign: Mapping[str, Any],
         rotation: RotationState,
         resolved: Sequence[Mapping[str, Any]],
-        races: Sequence[Any],
+        races: Any,
         _runtime: Mapping[str, Any],
     ) -> dict[str, Any]:
         spec = campaign["spec"]
@@ -529,7 +529,7 @@ class CampaignService:
             "trainee_chara_id": rotation.next_trainee_chara_id,
             "deck_id": deck_id,
             "legacy_slots": list(resolved),
-            "race_overrides": list(races),
+            "race_overrides": deepcopy(dict(races) if isinstance(races, Mapping) else list(races)),
             "campaign_id": campaign["campaign_id"],
         }
 

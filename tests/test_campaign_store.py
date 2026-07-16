@@ -335,6 +335,29 @@ def test_prepared_run_reservation_is_atomic_and_failed_start_can_retry(tmp_path)
     assert replay == {"acquired": False, "run_start": started}
 
 
+def test_non_stale_starting_reservation_blocks_replay(tmp_path):
+    clock = FakeClock()
+    store = CampaignStore(tmp_path / "campaigns.sqlite3", clock=clock)
+    store.create(sample_spec(), campaign_id="campaign-1")
+    first = store.reserve_prepared_run_start("campaign-1", "operation-a")
+    clock.advance(299)
+    blocked = store.reserve_prepared_run_start("campaign-1", "operation-b")
+    assert first["run_start"]["reserved_at"] == 1000.0
+    assert blocked == {"acquired": False, "run_start": first["run_start"]}
+
+
+def test_stale_starting_reservation_is_reclaimed_at_timeout(tmp_path):
+    clock = FakeClock()
+    store = CampaignStore(tmp_path / "campaigns.sqlite3", clock=clock)
+    store.create(sample_spec(), campaign_id="campaign-1")
+    store.reserve_prepared_run_start("campaign-1", "operation-a")
+    clock.advance(300)
+    reclaimed = store.reserve_prepared_run_start("campaign-1", "operation-b")
+    assert reclaimed["acquired"] is True
+    assert reclaimed["run_start"]["operation_id"] == "operation-b"
+    assert reclaimed["run_start"]["reserved_at"] == 1300.0
+
+
 def test_started_prepared_run_rejects_different_override_operation(tmp_path):
     store = CampaignStore(tmp_path / "campaigns.sqlite3")
     store.create(sample_spec(), campaign_id="campaign-1")

@@ -331,6 +331,17 @@ def test_prepare_defaults_to_review_and_persists_before_return():
     assert runner.calls[-1] == ("require_user_input", "cmp1", "approve_run")
 
 
+def test_prepare_preserves_mapping_race_overrides_for_default_request():
+    svc, store, *_ = service(default_career_request=True)
+    overrides = {"mandatory_race_list": [101], "extra_race_list": [202], "parent_run": True}
+    store.campaign["context"]["step_race_overrides"] = overrides
+    svc.race_overrides = svc._default_races
+
+    prepared = svc.prepare_next_run("cmp1")["prepared_run"]
+
+    assert prepared["race_overrides"] == overrides
+
+
 def test_prepare_next_run_resets_previous_run_start_reservation():
     svc, store, *_ = service()
     store.campaign["context"]["run_start"] = {

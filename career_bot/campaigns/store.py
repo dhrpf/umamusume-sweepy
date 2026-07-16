@@ -44,6 +44,9 @@ ACTIVE_EXECUTION_STATES = {
     CampaignState.NEEDS_USER_INPUT,
 }
 
+# STARTING is a lease, not a permanent replay lock. Five minutes bounds crash recovery.
+PREPARED_RUN_START_TIMEOUT_SECONDS = 300.0
+
 ALLOWED_TRANSITIONS: dict[CampaignState, set[CampaignState]] = {
     CampaignState.DRAFT: {CampaignState.READY, CampaignState.CANCELLED},
     CampaignState.READY: {
@@ -512,12 +515,22 @@ class CampaignStore:
                 raise CampaignNotFound(f"Campaign not found: {campaign_id}")
             context = _json_loads(row["context_json"]) or {}
             current = context.get("run_start") if isinstance(context.get("run_start"), dict) else {}
-            if current.get("status") in {"STARTING", "STARTED"}:
+            now = float(self.clock())
+            status = current.get("status")
+            reserved_at = current.get("reserved_at", row["updated_at"])
+            stale_starting = (
+                status == "STARTING"
+                and isinstance(reserved_at, (int, float))
+                and not isinstance(reserved_at, bool)
+                and now - float(reserved_at) >= PREPARED_RUN_START_TIMEOUT_SECONDS
+            )
+            if status == "STARTED" or (status == "STARTING" and not stale_starting):
                 connection.execute("COMMIT")
                 return {"acquired": False, "run_start": current}
             run_start = {
                 "operation_id": operation_id,
                 "status": "STARTING",
+                "reserved_at": now,
                 "result": None,
                 "error": "",
             }
@@ -529,7 +542,7 @@ class CampaignStore:
             connection.execute(
                 "UPDATE campaigns SET context_json=?, updated_at=?, version=version+1 "
                 "WHERE campaign_id=?",
-                (_json_dumps(context), float(self.clock()), str(campaign_id)),
+                (_json_dumps(context), now, str(campaign_id)),
             )
             self._insert_event(
                 connection,
