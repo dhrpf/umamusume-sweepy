@@ -105,7 +105,8 @@ def client():
         ("post", "/api/campaigns/cmp1/cancel", {"reason": "user"}, ("cancel", ("cmp1", "user"), {})),
     ],
 )
-def test_campaign_routes_delegate(client, fake_campaign_service, method, path, json_body, expected):
+def test_campaign_routes_delegate(client, fake_campaign_service, monkeypatch, method, path, json_body, expected):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
     response = client.request(method, path, json=json_body)
 
     assert response.status_code == 200
@@ -179,11 +180,14 @@ def test_campaign_recommendation_rejects_malformed_or_extra_fields(client, fake_
     assert fake_campaign_service.calls == []
 
 def test_campaign_runtime_snapshot_uses_nested_runner_contract(monkeypatch):
+    class FakeDailiesRunner:
+        running = True
+
     monkeypatch.setattr(main, "active_account", {"name": "acct01", "career": {"active": True}})
     monkeypatch.setattr(main, "active_dashboard_data", {"umas": []})
     monkeypatch.setattr(main, "active_client", object())
     monkeypatch.setattr(main.career_runner, "snapshot", lambda: {"running": True})
-    monkeypatch.setattr(main.dailies_runner, "running", True)
+    monkeypatch.setattr(main, "dailies_runner", FakeDailiesRunner())
 
     snapshot = main._campaign_runtime_snapshot("acct01")
 
