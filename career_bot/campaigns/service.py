@@ -138,6 +138,62 @@ class CampaignService:
     def resume(self, campaign_id: str) -> dict[str, Any]:
         return self.runner.resume(campaign_id)
 
+    def reconcile_runtime(
+        self,
+        campaign_id: str,
+        current_career: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        campaign = self.store.get(campaign_id)
+        current = dict(current_career or {})
+        prepared_run = dict((campaign.get("context") or {}).get("prepared_run") or {})
+        if bool(current.get("active")):
+            if self._career_matches_prepared_run(current, prepared_run):
+                return self.store.transition(
+                    campaign_id,
+                    CampaignState.RUNNING_CAREER,
+                    next_action="monitor_career",
+                )
+            error = "Current active career does not match the persisted prepared run"
+            self.store.append_event(
+                campaign_id,
+                "runtime_reconciliation_mismatch",
+                {"error": error},
+            )
+            return self.store.transition(
+                campaign_id,
+                CampaignState.PAUSED,
+                next_action="inspect_current_career",
+                error=error,
+                context_updates={"runtime_reconciliation": {"status": "MISMATCH"}},
+            )
+
+        if campaign["state"] == CampaignState.RUNNING_CAREER.value:
+            self.store.transition(
+                campaign_id,
+                CampaignState.SELECTING_LINEAGE,
+                next_action="prepare_next_run",
+            )
+        recovered = self.prepare_next_run(campaign_id)
+        unresolved = [
+            row for row in recovered.get("resolved_slots", [])
+            if row.get("status") != "RESOLVED"
+        ]
+        if any("locked veteran unavailable" in str(row.get("reason") or "") for row in unresolved):
+            recovered["campaign"] = self.store.transition(
+                campaign_id,
+                CampaignState.NEEDS_USER_INPUT,
+                next_action="resolve_missing_locked_veteran",
+                error="Persisted locked veteran is unavailable",
+            )
+        elif unresolved and self._prepared_run_used_rental(prepared_run):
+            recovered["campaign"] = self.store.transition(
+                campaign_id,
+                CampaignState.NEEDS_USER_INPUT,
+                next_action="review_unavailable_rental",
+                error="Persisted rental is unavailable and no valid fallback was found",
+            )
+        return recovered
+
     def prepare_next_run(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
         runtime = self._snapshot(campaign["account"])
@@ -469,6 +525,43 @@ class CampaignService:
     def _stable_id(prefix: str, value: Any) -> str:
         encoded = repr(value)
         return f"{prefix}-{hashlib.sha256(encoded.encode()).hexdigest()[:24]}"
+
+    @classmethod
+    def _career_matches_prepared_run(
+        cls,
+        current_career: Mapping[str, Any],
+        prepared_run: Mapping[str, Any],
+    ) -> bool:
+        expected = prepared_run.get("career_request") or prepared_run
+        if not isinstance(expected, Mapping):
+            return False
+        expected_card = cls._career_card_id(expected)
+        if expected_card:
+            if cls._career_card_id(current_career) != expected_card:
+                return False
+        else:
+            expected_trainee = int(expected.get("trainee_chara_id") or 0)
+            if not expected_trainee or int(current_career.get("trainee_chara_id") or 0) != expected_trainee:
+                return False
+        for key in ("deck_id", "parent_id_1", "parent_id_2"):
+            expected_value = int(expected.get(key) or 0)
+            if expected_value and int(current_career.get(key) or 0) != expected_value:
+                return False
+        return True
+
+    @staticmethod
+    def _career_card_id(career: Mapping[str, Any]) -> int:
+        trainee = career.get("trainee")
+        nested = trainee.get("card_id") if isinstance(trainee, Mapping) else 0
+        return int(career.get("card_id") or career.get("trainee_card_id") or nested or 0)
+
+    @staticmethod
+    def _prepared_run_used_rental(prepared_run: Mapping[str, Any]) -> bool:
+        request = prepared_run.get("career_request") or prepared_run
+        if not isinstance(request, Mapping):
+            return False
+        slots = request.get("legacy_slots") or request.get("parents") or []
+        return any(isinstance(row, Mapping) and row.get("rental") is True for row in slots)
 
     def _pairing_with_affinity(
         self,

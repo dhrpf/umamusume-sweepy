@@ -415,6 +415,126 @@ def test_prepare_unresolved_slot_persists_review_and_never_builds_request():
     assert store.campaign["context"]["pending_review"]["kind"] == "unresolved_legacy_slots"
     assert runner.calls[-1] == ("require_user_input", "cmp1", "prepare_next_run")
 
+def test_reconcile_matching_active_career_resumes_running_state():
+    svc, store, _, started = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {"career_request": {
+            "card_id": 100101,
+            "deck_id": 2,
+            "parent_id_1": 10,
+            "parent_id_2": 11,
+        }}},
+    })
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={"active": True, "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11},
+    )
+
+    assert result["state"] == "RUNNING_CAREER"
+    assert store.campaign["state"] == "RUNNING_CAREER"
+    assert started == []
+
+def test_reconcile_matching_active_career_supports_trainee_identity_contract():
+    svc, store, _, _ = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {"trainee_chara_id": 3, "deck_id": 2}},
+    })
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={"active": True, "trainee_chara_id": 3, "deck_id": 2},
+    )
+
+    assert result["state"] == "RUNNING_CAREER"
+
+def test_reconcile_mismatched_active_career_pauses_campaign_without_touching_career():
+    svc, store, runner, started = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {"career_request": {
+            "card_id": 100101,
+            "deck_id": 2,
+            "parent_id_1": 10,
+            "parent_id_2": 11,
+        }}},
+    })
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={"active": True, "card_id": 999999, "deck_id": 9},
+    )
+
+    assert result["state"] == "PAUSED"
+    assert "does not match" in result["error"].lower()
+    assert store.events[-1]["event_type"] == "runtime_reconciliation_mismatch"
+    assert runner.calls == []
+    assert started == []
+
+def test_reconcile_without_active_career_reprepares_from_persisted_rotation():
+    svc, store, _, started = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {
+            "rotation": {"loop_chara_ids": [1, 2, 3, 4], "run_index": 2, "produced": []},
+            "prepared_run": {"career_request": {"card_id": 100101}},
+        },
+    })
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": False})
+
+    assert result["prepared_run"]["trainee_chara_id"] == 3
+    assert store.campaign["context"]["rotation"]["run_index"] == 2
+    assert started == []
+
+def test_reconcile_missing_locked_veteran_requires_specific_user_action():
+    svc, store, _, started = service()
+    store.campaign.update({"state": "RUNNING_CAREER", "context": {"prepared_run": {}}})
+    svc.planned_slots = lambda *_args: [{"role": "parent1", "mode": "LOCKED", "trained_chara_id": 99}]
+    svc.candidate_pool = lambda *_args: []
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": False})
+
+    assert result["campaign"]["state"] == "NEEDS_USER_INPUT"
+    assert result["campaign"]["next_action"] == "resolve_missing_locked_veteran"
+    assert started == []
+
+def test_reconcile_unavailable_rental_uses_owned_fallback():
+    svc, store, _, started = service()
+    store.campaign["spec"]["options"]["allow_rental"] = True
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {"legacy_slots": [
+            {"trained_chara_id": 50, "score": 30, "rental": True, "status": "RESOLVED"}
+        ]}},
+    })
+    svc.candidate_pool = lambda *_args: [{"trained_chara_id": 51, "score": 20, "rental": False}]
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": False})
+
+    assert result["resolved_slots"][0]["trained_chara_id"] == 51
+    assert result["resolved_slots"][0]["rental"] is False
+    assert started == []
+
+def test_reconcile_unavailable_rental_without_fallback_requires_review():
+    svc, store, _, started = service()
+    store.campaign["spec"]["options"]["allow_rental"] = True
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {"legacy_slots": [
+            {"trained_chara_id": 50, "score": 30, "rental": True, "status": "RESOLVED"}
+        ]}},
+    })
+    svc.candidate_pool = lambda *_args: []
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": False})
+
+    assert result["campaign"]["state"] == "NEEDS_USER_INPUT"
+    assert result["campaign"]["next_action"] == "review_unavailable_rental"
+    assert started == []
+
 
 def test_approve_delegates_one_persisted_request_exactly_once():
     svc, store, _, started = service()
