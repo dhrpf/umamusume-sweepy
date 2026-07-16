@@ -4,7 +4,15 @@ import re
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 
 class ApprovalMode(str, Enum):
@@ -201,6 +209,24 @@ class ParentGoal(BaseModel):
             ]
             object.__setattr__(self, "target_factors", default_targets)
         return self
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def rollback_failed_assignment(
+        cls,
+        value: Any,
+        handler: ModelWrapValidatorHandler["ParentGoal"],
+    ) -> "ParentGoal":
+        if not isinstance(value, cls):
+            return handler(value)
+        previous_values = value.__dict__.copy()
+        previous_fields_set = value.__pydantic_fields_set__.copy()
+        try:
+            return handler(value)
+        except ValidationError:
+            object.__setattr__(value, "__dict__", previous_values)
+            object.__setattr__(value, "__pydantic_fields_set__", previous_fields_set)
+            raise
 
     @property
     def candidate_factors(self) -> list[FactorTarget]:

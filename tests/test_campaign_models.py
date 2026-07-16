@@ -107,6 +107,27 @@ def test_goal_rejects_explicit_false_generation_marker_without_factor_targets():
     ):
         ParentGoal.model_validate({"target_factors_generated": False})
 
+def test_goal_rejected_generation_marker_assignment_rolls_back_provenance():
+    goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
+    original_dump = goal.model_dump(mode="json")
+    original_fields_set = goal.model_fields_set.copy()
+
+    with pytest.raises(
+        ValidationError,
+        match="target_factors_generated=false requires explicit target_factors",
+    ):
+        goal.target_factors_generated = False
+
+    assert goal.target_factors_generated is True
+    assert goal.model_fields_set == original_fields_set
+    assert goal.model_dump(mode="json") == original_dump
+
+    reloaded = ParentGoal.model_validate(goal.model_dump(mode="json"))
+    reloaded.surface_targets = ["dirt"]
+
+    assert reloaded.target_factors_generated is True
+    assert [row.name for row in reloaded.target_factors] == ["dirt"]
+
 def test_goal_updates_generated_factor_targets_after_valid_aptitude_assignment():
     goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
 
