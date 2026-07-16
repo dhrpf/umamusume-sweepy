@@ -186,10 +186,12 @@ class ParentGoal(BaseModel):
     @model_validator(mode="after")
     def build_default_factor_targets(self) -> "ParentGoal":
         if not self.target_factors:
-            self.target_factors = [
+            default_targets = [
                 FactorTarget(name=name, minimum_stars=2, scope=FactorScope.LINEAGE)
                 for name in [*self.surface_targets, *self.distance_targets]
             ]
+            if default_targets:
+                object.__setattr__(self, "target_factors", default_targets)
         return self
 
     @property

@@ -43,6 +43,36 @@ def test_medium_turf_goal_normalizes_and_builds_default_lineage_targets():
         ("medium", 2, FactorScope.LINEAGE),
     ]
 
+def test_goal_parses_explicit_empty_factor_targets_without_aptitude_defaults():
+    goal = ParentGoal.model_validate({"target_factors": []})
+
+    assert goal.surface_targets == []
+    assert goal.distance_targets == []
+    assert goal.target_factors == []
+
+def test_campaign_spec_parses_explicit_empty_factor_targets_without_aptitude_defaults():
+    spec = ParentCampaignSpec.model_validate(
+        {
+            "account": "acct01",
+            "goal": {"target_factors": []},
+            "strategy": {
+                "preset_name": "base",
+                "maximum_runs": 1,
+                "maximum_runtime_hours": 1,
+            },
+        }
+    )
+
+    assert spec.goal.surface_targets == []
+    assert spec.goal.distance_targets == []
+    assert spec.goal.target_factors == []
+
+def test_goal_keeps_assignment_validation_enabled():
+    goal = ParentGoal()
+
+    with pytest.raises(ValidationError, match="unsupported surface target"):
+        goal.surface_targets = ["grass"]
+
 
 def test_goal_separates_candidate_and_lineage_requirements():
     goal = ParentGoal(
