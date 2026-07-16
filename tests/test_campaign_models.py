@@ -50,6 +50,49 @@ def test_goal_parses_explicit_empty_factor_targets_without_aptitude_defaults():
     assert goal.distance_targets == []
     assert goal.target_factors == []
 
+def test_goal_preserves_explicit_empty_factor_targets_with_aptitude_targets():
+    goal = ParentGoal.model_validate(
+        {"surface_targets": ["turf"], "target_factors": []}
+    )
+
+    assert goal.target_factors == []
+
+def test_goal_builds_factor_targets_when_the_field_is_omitted():
+    goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
+
+    assert [row.name for row in goal.target_factors] == ["turf"]
+
+def test_goal_updates_generated_factor_targets_after_valid_aptitude_assignment():
+    goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
+
+    goal.surface_targets = ["dirt"]
+
+    assert [row.name for row in goal.target_factors] == ["dirt"]
+    assert goal.model_dump(mode="json")["target_factors"][0]["name"] == "dirt"
+
+def test_goal_preserves_generated_factor_targets_after_invalid_aptitude_assignment():
+    goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
+
+    with pytest.raises(ValidationError, match="unsupported surface target"):
+        goal.surface_targets = ["grass"]
+
+    assert goal.surface_targets == ["turf"]
+    assert [row.name for row in goal.target_factors] == ["turf"]
+
+def test_goal_preserves_explicit_factor_targets_after_aptitude_assignment():
+    goal = ParentGoal.model_validate(
+        {
+            "surface_targets": ["turf"],
+            "target_factors": [
+                {"name": "speed", "minimum_stars": 3, "scope": "candidate"}
+            ],
+        }
+    )
+
+    goal.surface_targets = ["dirt"]
+
+    assert [row.name for row in goal.target_factors] == ["speed"]
+
 def test_campaign_spec_parses_explicit_empty_factor_targets_without_aptitude_defaults():
     spec = ParentCampaignSpec.model_validate(
         {
