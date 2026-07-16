@@ -9,6 +9,7 @@ import pytest
 from career_bot.campaigns.models import ParentCampaignSpec
 from career_bot.campaigns.service import CampaignService
 from career_bot.campaigns.rotation import RotationState
+from career_bot.campaigns.store import CampaignStore
 
 
 def valid_spec(**overrides):
@@ -101,6 +102,27 @@ class FakeStore:
 
     def append_event(self, campaign_id, event_type, data=None):
         self.events.append({"event_type": event_type, "data": deepcopy(data or {})})
+
+    def pause_for_runtime_mismatch(self, campaign_id, *, error, expected_version=None):
+        self.append_event(campaign_id, "runtime_reconciliation_mismatch", {"error": error})
+        return self.transition(
+            campaign_id,
+            "PAUSED",
+            next_action="inspect_current_career",
+            error=error,
+            context_updates={"runtime_reconciliation": {"status": "MISMATCH"}},
+        )
+
+    def recover_missing_active_career(self, campaign_id, *, expected_version=None):
+        run_start = (self.campaign.get("context") or {}).get("run_start") or {}
+        if run_start.get("status") in {"STARTING", "STARTED"}:
+            return {"recovered": False, "reason": "run_start_in_progress", "campaign": deepcopy(self.campaign)}
+        self.campaign["state"] = "PAUSED"
+        self.campaign["next_action"] = "review_missing_active_career"
+        self.campaign["error"] = "Persisted running career is no longer active"
+        self.campaign.setdefault("context", {}).setdefault("runtime_reconciliation", {})["status"] = "ACTIVE_CAREER_DISAPPEARED"
+        self.append_event(campaign_id, "runtime_active_career_disappeared")
+        return {"recovered": True, "reason": "", "campaign": deepcopy(self.campaign)}
 
     def reserve_prepared_run_start(self, campaign_id, operation_id, *, prepared_run=None):
         with self.lock:
@@ -243,6 +265,16 @@ def service(store=None, runner=None, *, start_career=None, snapshot=None, preset
             "race_overrides": races,
         },
     )
+    return svc, store, runner, started
+
+def real_running_service(tmp_path, *, prepared_run=None):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(ParentCampaignSpec.model_validate(valid_spec()), campaign_id="cmp1")
+    for state in ("READY", "STARTING_BOT", "SELECTING_LINEAGE", "RUNNING_CAREER"):
+        store.transition("cmp1", state)
+    if prepared_run is not None:
+        store.update_context("cmp1", {"prepared_run": prepared_run})
+    svc, _, runner, started = service(store=store)
     return svc, store, runner, started
 
 
@@ -450,6 +482,104 @@ def test_reconcile_matching_active_career_supports_trainee_identity_contract():
 
     assert result["state"] == "RUNNING_CAREER"
 
+def test_reconcile_normal_prepared_run_rejects_wrong_legacy_slot_parents():
+    svc, store, _, _ = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {
+            "card_id": 100101,
+            "deck_id": 2,
+            "legacy_slots": [
+                {"trained_chara_id": 10},
+                {"trained_chara_id": 11},
+            ],
+        }},
+    })
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={"active": True, "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 99},
+    )
+
+    assert result["state"] == "PAUSED"
+
+def test_reconcile_real_prepared_payload_rejects_wrong_parent(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(ParentCampaignSpec.model_validate(valid_spec()), campaign_id="cmp1")
+    for state in ("READY", "STARTING_BOT", "SELECTING_LINEAGE"):
+        store.transition("cmp1", state)
+    svc, _, _, _ = service(store=store)
+    svc.planned_slots = lambda *_args: [
+        {"role": "parent1", "mode": "FLEXIBLE", "trained_chara_id": 10},
+        {"role": "parent2", "mode": "FLEXIBLE", "trained_chara_id": 12},
+    ]
+    svc.candidate_pool = lambda *_args: [
+        {"trained_chara_id": 11, "score": 20, "rental": False},
+        {"trained_chara_id": 12, "score": 10, "rental": False},
+    ]
+    prepared = svc.prepare_next_run("cmp1")["prepared_run"]
+    store.transition("cmp1", "RUNNING_CAREER")
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={
+            "active": True,
+            "trainee_chara_id": prepared["trainee_chara_id"],
+            "parent_id_1": prepared["parents"][0]["trained_chara_id"],
+            "parent_id_2": 999,
+        },
+    )
+
+    assert result["state"] == "PAUSED"
+
+@pytest.mark.parametrize("field,value", [("account", "acct02"), ("campaign_id", "other")])
+def test_reconcile_rejects_wrong_optional_campaign_identity(field, value):
+    svc, store, _, _ = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {
+            "account": "acct01",
+            "campaign_id": "cmp1",
+            "card_id": 100101,
+            "deck_id": 2,
+            "parent_id_1": 10,
+            "parent_id_2": 11,
+        }},
+    })
+    current = {"active": True, "account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    current[field] = value
+
+    assert svc.reconcile_runtime("cmp1", current_career=current)["state"] == "PAUSED"
+
+@pytest.mark.parametrize("field,value", [("account", "acct02"), ("campaign_id", "other")])
+def test_reconcile_real_store_rejects_wrong_optional_campaign_identity(tmp_path, field, value):
+    prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
+    svc, _, _, _ = real_running_service(tmp_path, prepared_run=prepared)
+    current = {"active": True, **prepared}
+    current[field] = value
+
+    assert svc.reconcile_runtime("cmp1", current_career=current)["state"] == "PAUSED"
+
+def test_reconcile_string_false_active_is_not_active():
+    svc, store, _, _ = service()
+    store.campaign.update({"state": "PAUSED", "context": {"prepared_run": {}}})
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": "false"})
+
+    assert result["state"] == "PAUSED"
+    assert not any(call[0] == "update_context" for call in store.calls)
+
+def test_reconcile_real_paused_campaign_treats_string_false_as_noop(tmp_path):
+    svc, store, runner, started = real_running_service(tmp_path, prepared_run={"card_id": 100101})
+    store.pause("cmp1")
+    before = store.get("cmp1")
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": "false"})
+
+    assert result == before
+    assert runner.calls == []
+    assert started == []
+
 def test_reconcile_mismatched_active_career_pauses_campaign_without_touching_career():
     svc, store, runner, started = service()
     store.campaign.update({
@@ -473,25 +603,36 @@ def test_reconcile_mismatched_active_career_pauses_campaign_without_touching_car
     assert runner.calls == []
     assert started == []
 
-def test_reconcile_without_active_career_reprepares_from_persisted_rotation():
-    svc, store, _, started = service()
-    store.campaign.update({
-        "state": "RUNNING_CAREER",
-        "context": {
-            "rotation": {"loop_chara_ids": [1, 2, 3, 4], "run_index": 2, "produced": []},
-            "prepared_run": {"career_request": {"card_id": 100101}},
-        },
-    })
+def test_reconcile_running_without_active_career_uses_real_store_safe_pause(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(ParentCampaignSpec.model_validate(valid_spec()), campaign_id="cmp1")
+    for state in ("READY", "STARTING_BOT", "WAITING_FOR_LOGIN", "SELECTING_LINEAGE", "RUNNING_CAREER"):
+        store.transition("cmp1", state)
+    store.update_context("cmp1", {"prepared_run": {"card_id": 100101}, "run_start": None})
+    svc, _, _, started = service(store=store)
 
     result = svc.reconcile_runtime("cmp1", current_career={"active": False})
 
-    assert result["prepared_run"]["trainee_chara_id"] == 3
-    assert store.campaign["context"]["rotation"]["run_index"] == 2
+    assert result["state"] == "PAUSED"
+    assert result["next_action"] == "review_missing_active_career"
+    assert result["context"]["prepared_run"] == {"card_id": 100101}
+    assert result["context"]["runtime_reconciliation"]["status"] == "ACTIVE_CAREER_DISAPPEARED"
+    assert started == []
+
+@pytest.mark.parametrize("state", ["PAUSED", "NEEDS_USER_INPUT", "COMPLETED"])
+def test_reconcile_no_active_career_is_noop_for_nonrecoverable_states(state):
+    svc, store, runner, started = service()
+    store.campaign["state"] = state
+
+    result = svc.reconcile_runtime("cmp1", current_career={"active": False})
+
+    assert result["state"] == state
+    assert runner.calls == []
     assert started == []
 
 def test_reconcile_missing_locked_veteran_requires_specific_user_action():
     svc, store, _, started = service()
-    store.campaign.update({"state": "RUNNING_CAREER", "context": {"prepared_run": {}}})
+    store.campaign.update({"state": "SELECTING_LINEAGE", "context": {"prepared_run": {}}})
     svc.planned_slots = lambda *_args: [{"role": "parent1", "mode": "LOCKED", "trained_chara_id": 99}]
     svc.candidate_pool = lambda *_args: []
 
@@ -505,7 +646,7 @@ def test_reconcile_unavailable_rental_uses_owned_fallback():
     svc, store, _, started = service()
     store.campaign["spec"]["options"]["allow_rental"] = True
     store.campaign.update({
-        "state": "RUNNING_CAREER",
+        "state": "SELECTING_LINEAGE",
         "context": {"prepared_run": {"legacy_slots": [
             {"trained_chara_id": 50, "score": 30, "rental": True, "status": "RESOLVED"}
         ]}},
@@ -522,7 +663,7 @@ def test_reconcile_unavailable_rental_without_fallback_requires_review():
     svc, store, _, started = service()
     store.campaign["spec"]["options"]["allow_rental"] = True
     store.campaign.update({
-        "state": "RUNNING_CAREER",
+        "state": "SELECTING_LINEAGE",
         "context": {"prepared_run": {"legacy_slots": [
             {"trained_chara_id": 50, "score": 30, "rental": True, "status": "RESOLVED"}
         ]}},

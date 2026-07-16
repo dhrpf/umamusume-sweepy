@@ -146,7 +146,7 @@ class CampaignService:
         campaign = self.store.get(campaign_id)
         current = dict(current_career or {})
         prepared_run = dict((campaign.get("context") or {}).get("prepared_run") or {})
-        if bool(current.get("active")):
+        if current.get("active") is True:
             if self._career_matches_prepared_run(current, prepared_run):
                 return self.store.transition(
                     campaign_id,
@@ -154,25 +154,29 @@ class CampaignService:
                     next_action="monitor_career",
                 )
             error = "Current active career does not match the persisted prepared run"
-            self.store.append_event(
+            return self.store.pause_for_runtime_mismatch(
                 campaign_id,
-                "runtime_reconciliation_mismatch",
-                {"error": error},
-            )
-            return self.store.transition(
-                campaign_id,
-                CampaignState.PAUSED,
-                next_action="inspect_current_career",
                 error=error,
-                context_updates={"runtime_reconciliation": {"status": "MISMATCH"}},
+                expected_version=campaign.get("version"),
             )
 
-        if campaign["state"] == CampaignState.RUNNING_CAREER.value:
-            self.store.transition(
+        state = CampaignState(campaign["state"])
+        if state in {
+            CampaignState.PAUSED,
+            CampaignState.NEEDS_USER_INPUT,
+            CampaignState.COMPLETED,
+            CampaignState.FAILED,
+            CampaignState.CANCELLED,
+        }:
+            return campaign
+        if state is CampaignState.RUNNING_CAREER:
+            recovery = self.store.recover_missing_active_career(
                 campaign_id,
-                CampaignState.SELECTING_LINEAGE,
-                next_action="prepare_next_run",
+                expected_version=campaign.get("version"),
             )
+            return recovery["campaign"]
+        if state is not CampaignState.SELECTING_LINEAGE:
+            return campaign
         recovered = self.prepare_next_run(campaign_id)
         unresolved = [
             row for row in recovered.get("resolved_slots", [])
@@ -543,9 +547,19 @@ class CampaignService:
             expected_trainee = int(expected.get("trainee_chara_id") or 0)
             if not expected_trainee or int(current_career.get("trainee_chara_id") or 0) != expected_trainee:
                 return False
-        for key in ("deck_id", "parent_id_1", "parent_id_2"):
-            expected_value = int(expected.get(key) or 0)
-            if expected_value and int(current_career.get(key) or 0) != expected_value:
+        expected_parents = cls._prepared_parent_ids(expected)
+        identity = {
+            "deck_id": cls._integer_identity(expected.get("deck_id")),
+            "parent_id_1": expected_parents[0],
+            "parent_id_2": expected_parents[1],
+        }
+        for key, expected_value in identity.items():
+            if cls._integer_identity(current_career.get(key)) != expected_value:
+                return False
+        for key in ("account", "campaign_id"):
+            expected_value = str(expected.get(key) or "")
+            current_value = str(current_career.get(key) or "")
+            if expected_value and current_value and current_value != expected_value:
                 return False
         return True
 
@@ -553,7 +567,35 @@ class CampaignService:
     def _career_card_id(career: Mapping[str, Any]) -> int:
         trainee = career.get("trainee")
         nested = trainee.get("card_id") if isinstance(trainee, Mapping) else 0
-        return int(career.get("card_id") or career.get("trainee_card_id") or nested or 0)
+        return CampaignService._integer_identity(
+            career.get("card_id") or career.get("trainee_card_id") or nested
+        )
+
+    @staticmethod
+    def _integer_identity(value: Any) -> int:
+        if isinstance(value, bool):
+            return 0
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @classmethod
+    def _prepared_parent_ids(cls, prepared_run: Mapping[str, Any]) -> tuple[int, int]:
+        direct = (
+            cls._integer_identity(prepared_run.get("parent_id_1")),
+            cls._integer_identity(prepared_run.get("parent_id_2")),
+        )
+        slots = prepared_run.get("legacy_slots") or prepared_run.get("parents") or []
+        resolved = [
+            cls._integer_identity(row.get("trained_chara_id"))
+            for row in slots
+            if isinstance(row, Mapping)
+        ]
+        return (
+            direct[0] or (resolved[0] if resolved else 0),
+            direct[1] or (resolved[1] if len(resolved) > 1 else 0),
+        )
 
     @staticmethod
     def _prepared_run_used_rental(prepared_run: Mapping[str, Any]) -> bool:

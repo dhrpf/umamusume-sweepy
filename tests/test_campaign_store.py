@@ -297,6 +297,17 @@ def _evaluating_campaign(store, campaign_id="campaign-1"):
         store.transition(campaign_id, state)
     return store.get(campaign_id)
 
+def _running_campaign(store, campaign_id="campaign-1"):
+    store.create(sample_spec(), campaign_id=campaign_id)
+    for state in (
+        CampaignState.READY,
+        CampaignState.STARTING_BOT,
+        CampaignState.SELECTING_LINEAGE,
+        CampaignState.RUNNING_CAREER,
+    ):
+        store.transition(campaign_id, state)
+    return store.get(campaign_id)
+
 
 def test_public_append_event_is_append_only(tmp_path):
     store = CampaignStore(tmp_path / "campaigns.sqlite3")
@@ -367,6 +378,50 @@ def test_started_prepared_run_rejects_different_override_operation(tmp_path):
     )
     replay = store.reserve_prepared_run_start("campaign-1", "operation-b")
     assert replay == {"acquired": False, "run_start": started}
+
+def test_runtime_mismatch_pause_is_atomic_when_transition_is_invalid(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+
+    with pytest.raises(InvalidTransition):
+        store.pause_for_runtime_mismatch(
+            "campaign-1",
+            error="Current active career does not match",
+        )
+
+    campaign = store.get("campaign-1")
+    assert campaign["state"] == CampaignState.DRAFT.value
+    assert not any(
+        row["event_type"] == "runtime_reconciliation_mismatch"
+        for row in store.recent_events("campaign-1")
+    )
+
+def test_missing_active_career_recovery_is_atomic_and_blocks_reserved_run(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    campaign = _running_campaign(store)
+    store.reserve_prepared_run_start("campaign-1", "operation-1")
+
+    result = store.recover_missing_active_career(
+        "campaign-1",
+        expected_version=campaign["version"] + 1,
+    )
+
+    assert result["recovered"] is False
+    assert result["reason"] == "run_start_in_progress"
+    persisted = store.get("campaign-1")
+    assert persisted["state"] == CampaignState.RUNNING_CAREER.value
+    assert persisted["context"]["run_start"]["status"] == "STARTING"
+
+def test_missing_active_career_recovery_rejects_version_change(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    campaign = _running_campaign(store)
+    store.update_context("campaign-1", {"concurrent": True})
+
+    with pytest.raises(CampaignError, match="version changed"):
+        store.recover_missing_active_career(
+            "campaign-1",
+            expected_version=campaign["version"],
+        )
 
 
 def test_candidate_result_transaction_replays_without_duplicate_and_selects_completion(tmp_path):

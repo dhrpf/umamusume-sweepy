@@ -713,6 +713,156 @@ class CampaignStore:
         finally:
             connection.close()
 
+    def pause_for_runtime_mismatch(
+        self,
+        campaign_id: str,
+        *,
+        error: str,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        return self._pause_for_runtime_reconciliation(
+            campaign_id,
+            event_type="runtime_reconciliation_mismatch",
+            next_action="inspect_current_career",
+            error=error,
+            status="MISMATCH",
+            expected_version=expected_version,
+        )
+
+    def recover_missing_active_career(
+        self,
+        campaign_id: str,
+        *,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            if expected_version is not None and int(row["version"]) != int(expected_version):
+                raise CampaignError("campaign version changed during runtime reconciliation")
+            if CampaignState(row["state"]) is not CampaignState.RUNNING_CAREER:
+                connection.execute("COMMIT")
+                return {
+                    "recovered": False,
+                    "reason": "state_not_running",
+                    "campaign": self._campaign_from_row(row),
+                }
+            context = _json_loads(row["context_json"]) or {}
+            run_start = context.get("run_start") if isinstance(context.get("run_start"), dict) else {}
+            if run_start.get("status") in {"STARTING", "STARTED"}:
+                connection.execute("COMMIT")
+                return {
+                    "recovered": False,
+                    "reason": "run_start_in_progress",
+                    "campaign": self._campaign_from_row(row),
+                }
+            error = "Persisted running career is no longer active"
+            context = _deep_merge(
+                context,
+                {"runtime_reconciliation": {"status": "ACTIVE_CAREER_DISAPPEARED"}},
+            )
+            now = float(self.clock())
+            connection.execute(
+                "UPDATE campaigns SET state=?, paused_from_state=?, updated_at=?, next_action=?, "
+                "error_text=?, context_json=?, version=version+1 WHERE campaign_id=?",
+                (
+                    CampaignState.PAUSED.value,
+                    CampaignState.RUNNING_CAREER.value,
+                    now,
+                    "review_missing_active_career",
+                    error,
+                    _json_dumps(context),
+                    str(campaign_id),
+                ),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                "runtime_active_career_disappeared",
+                {"from": CampaignState.RUNNING_CAREER.value, "error": error},
+            )
+            updated = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return {"recovered": True, "reason": "", "campaign": self._campaign_from_row(updated)}
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
+    def _pause_for_runtime_reconciliation(
+        self,
+        campaign_id: str,
+        *,
+        event_type: str,
+        next_action: str,
+        error: str,
+        status: str,
+        expected_version: int | None,
+    ) -> dict[str, Any]:
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFound(f"Campaign not found: {campaign_id}")
+            if expected_version is not None and int(row["version"]) != int(expected_version):
+                raise CampaignError("campaign version changed during runtime reconciliation")
+            current = CampaignState(row["state"])
+            if current is not CampaignState.PAUSED and CampaignState.PAUSED not in ALLOWED_TRANSITIONS[current]:
+                raise InvalidTransition(
+                    f"Campaign {campaign_id} cannot transition from {current.value} to PAUSED"
+                )
+            context = _deep_merge(
+                _json_loads(row["context_json"]) or {},
+                {"runtime_reconciliation": {"status": status}},
+            )
+            now = float(self.clock())
+            connection.execute(
+                "UPDATE campaigns SET state=?, paused_from_state=?, updated_at=?, next_action=?, "
+                "error_text=?, context_json=?, version=version+1 WHERE campaign_id=?",
+                (
+                    CampaignState.PAUSED.value,
+                    row["paused_from_state"] if current is CampaignState.PAUSED else current.value,
+                    now,
+                    next_action,
+                    str(error or "")[:4096],
+                    _json_dumps(context),
+                    str(campaign_id),
+                ),
+            )
+            self._insert_event(
+                connection,
+                str(campaign_id),
+                event_type,
+                {"from": current.value, "error": str(error or "")[:4096]},
+            )
+            updated = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id=?",
+                (str(campaign_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return self._campaign_from_row(updated)
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
     def reopen_completed(
         self,
         campaign_id: str,
