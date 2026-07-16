@@ -62,6 +62,51 @@ def test_goal_builds_factor_targets_when_the_field_is_omitted():
 
     assert [row.name for row in goal.target_factors] == ["turf"]
 
+def test_goal_round_trip_preserves_generated_factor_provenance():
+    goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
+
+    reloaded = ParentGoal.model_validate(goal.model_dump(mode="json"))
+    reloaded.surface_targets = ["dirt"]
+
+    assert reloaded.target_factors_generated is True
+    assert [row.name for row in reloaded.target_factors] == ["dirt"]
+
+@pytest.mark.parametrize(
+    "target_factors",
+    [
+        [],
+        [{"name": "speed", "minimum_stars": 3, "scope": "candidate"}],
+    ],
+)
+def test_goal_round_trip_preserves_explicit_factor_targets(target_factors):
+    goal = ParentGoal.model_validate(
+        {"surface_targets": ["turf"], "target_factors": target_factors}
+    )
+
+    reloaded = ParentGoal.model_validate(goal.model_dump(mode="json"))
+    reloaded.surface_targets = ["dirt"]
+
+    assert reloaded.target_factors_generated is False
+    assert reloaded.target_factors == goal.target_factors
+
+def test_goal_old_specs_without_generation_marker_remain_compatible():
+    generated = ParentGoal.model_validate({"surface_targets": ["turf"]})
+    explicit = ParentGoal.model_validate(
+        {"surface_targets": ["turf"], "target_factors": []}
+    )
+
+    assert generated.target_factors_generated is True
+    assert [row.name for row in generated.target_factors] == ["turf"]
+    assert explicit.target_factors_generated is False
+    assert explicit.target_factors == []
+
+def test_goal_rejects_explicit_false_generation_marker_without_factor_targets():
+    with pytest.raises(
+        ValidationError,
+        match="target_factors_generated=false requires explicit target_factors",
+    ):
+        ParentGoal.model_validate({"target_factors_generated": False})
+
 def test_goal_updates_generated_factor_targets_after_valid_aptitude_assignment():
     goal = ParentGoal.model_validate({"surface_targets": ["turf"]})
 

@@ -111,6 +111,7 @@ class ParentGoal(BaseModel):
     minimum_rank: str = "S"
     preferred_stats: list[str] = Field(default_factory=lambda: ["speed", "stamina"])
     target_factors: list[FactorTarget] = Field(default_factory=list)
+    target_factors_generated: bool = False
 
     @field_validator("surface_targets")
     @classmethod
@@ -185,7 +186,15 @@ class ParentGoal(BaseModel):
 
     @model_validator(mode="after")
     def build_default_factor_targets(self) -> "ParentGoal":
-        if "target_factors" not in self.model_fields_set:
+        target_factors_supplied = "target_factors" in self.model_fields_set
+        marker_supplied = "target_factors_generated" in self.model_fields_set
+        generated = self.target_factors_generated if marker_supplied else not target_factors_supplied
+        if marker_supplied and not generated and not target_factors_supplied:
+            raise ValueError(
+                "target_factors_generated=false requires explicit target_factors"
+            )
+        object.__setattr__(self, "target_factors_generated", generated)
+        if generated:
             default_targets = [
                 FactorTarget(name=name, minimum_stars=2, scope=FactorScope.LINEAGE)
                 for name in [*self.surface_targets, *self.distance_targets]
