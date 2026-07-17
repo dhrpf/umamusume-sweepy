@@ -71,9 +71,14 @@ class CampaignPlanner:
 
     def recommend_final_parents(self, *, limit: int = 3) -> list[dict[str, Any]]:
         rows = []
+        final_uma_chara_id = (
+            card_to_chara_id(self.final_uma_card_id)
+            if self.final_uma_card_id >= 100000
+            else self.final_uma_card_id
+        )
         for candidate in self.veteran_records:
             chara_id = self._chara_id(candidate)
-            if chara_id <= 0:
+            if chara_id <= 0 or chara_id == final_uma_chara_id:
                 continue
             summary = self._summary(candidate)
             target_progress = evaluate_spark_targets(
@@ -83,7 +88,11 @@ class CampaignPlanner:
             pairings = []
             for second_parent in self.veteran_records:
                 second_chara_id = self._chara_id(second_parent)
-                if second_parent is candidate or second_chara_id in {0, chara_id}:
+                if second_parent is candidate or second_chara_id in {
+                    0,
+                    chara_id,
+                    final_uma_chara_id,
+                }:
                     continue
                 affinity = self.affinity_for_pair(
                     self.final_uma_card_id,
@@ -179,10 +188,14 @@ class CampaignPlanner:
         self,
         *,
         pinned_chara_ids: set[int] | None = None,
+        final_parent_chara_id: int = 0,
         limit: int = 3,
         mdb_path: str | Path = "",
     ) -> dict[str, list[dict[str, Any]]]:
         pinned = {int(value) for value in (pinned_chara_ids or set())}
+        required_chara_ids = set(pinned)
+        if int(final_parent_chara_id or 0) > 0:
+            required_chara_ids.add(int(final_parent_chara_id))
         names = {
             trained_id: str(display.get("name") or "")
             for trained_id, display in self.display_by_id.items()
@@ -198,12 +211,12 @@ class CampaignPlanner:
                     trainee, first, second
                 ),
                 g1_saddle_ids=self.g1_saddle_ids,
-                required_base_chara_ids=pinned,
+                required_base_chara_ids=required_chara_ids,
             )
             return [
                 pool
                 for pool in result["pools"]
-                if pinned.issubset(set(pool["base_chara_ids"]))
+                if required_chara_ids.issubset(set(pool["base_chara_ids"]))
             ]
 
         owned_records = [

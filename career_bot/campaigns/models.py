@@ -358,12 +358,21 @@ class FinalParentTarget(BaseModel):
     trained_chara_id: int = Field(default=0, ge=0)
 
 
+class CampaignFriendSupport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    viewer_id: int = Field(gt=0)
+    support_card_id: int = Field(gt=0)
+    support_name: str = ""
+
+
 class CampaignLoopMember(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     chara_id: int = Field(gt=0)
     deck_id: int = Field(default=0, ge=0, le=10)
     pinned: bool = False
+    friend_support: CampaignFriendSupport | None = None
 
 
 class CampaignOptions(BaseModel):

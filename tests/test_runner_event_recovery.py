@@ -304,6 +304,99 @@ def test_race_entry_205_tries_eligible_fallback_on_same_turn(tmp_path):
     assert "Eligible Open" in runner.status["action_history"][0]["facility"]
 
 
+def test_race_end_1503_reloads_current_race_without_calling_race_out(tmp_path):
+    class Client:
+        api_jitter = 0
+
+        def __init__(self):
+            self.race_out_calls = []
+
+        def race_entry(self, **payload):
+            return {"data": {"chara_info": {"turn": 59, "playing_state": 2}}}
+
+        def race_start(self, **payload):
+            return {"data": {}}
+
+        def race_end(self, **payload):
+            raise Exception("API error 1503 on single_mode_team/race_end")
+
+        def race_out(self, **payload):
+            self.race_out_calls.append(payload)
+            return {"data": {"chara_info": {"turn": 60, "playing_state": 1}}}
+
+    runner = CareerRunner(tmp_path)
+    runner.burn_clocks = False
+    runner.status = {
+        "scenario_id": 2,
+        "turn": 59,
+        "log": [],
+        "clocks_used": 0,
+        "action_history": [],
+    }
+    runner.report = {"turns": [], "final_turn": 0}
+    runner._parse_race_rank = lambda _response: 1
+    fresh = {
+        "data": {
+            "chara_info": {
+                "turn": 59,
+                "state": 0,
+                "playing_state": 3,
+                "race_program_id": 73,
+            },
+            "race_start_info": {"program_id": 73},
+        }
+    }
+    runner._fresh_career_state = lambda client, strategy=None: fresh
+
+    client = Client()
+    out = runner._race(
+        client,
+        {"data": {"chara_info": {"turn": 59}, "home_info": {}}},
+        {"scenario_id": 2},
+        {"program_id": 73, "current_turn": 59},
+    )
+
+    assert out is fresh
+    assert client.race_out_calls == []
+    assert runner.status["log"][-1]["action"] == "race_end_reconciled"
+    assert "1503" in runner.status["log"][-1]["detail"]
+
+
+def test_race_progress_playing_state_3_calls_race_end_then_race_out(tmp_path):
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def race_end(self, **payload):
+            self.calls.append(("race_end", payload))
+            return {"data": {"chara_info": {"turn": 59, "playing_state": 4}}}
+
+        def race_out(self, **payload):
+            self.calls.append(("race_out", payload))
+            return {"data": {"chara_info": {"turn": 60, "playing_state": 1}}}
+
+    runner = CareerRunner(tmp_path)
+    runner.status = {"scenario_id": 2, "turn": 59, "log": []}
+    client = Client()
+
+    out = runner._race_progress(
+        client,
+        {
+            "current_turn": 59,
+            "chara_info": {"turn": 59, "state": 0, "playing_state": 3},
+            "race_start_info": {"program_id": 73},
+        },
+        {"scenario_id": 2},
+        None,
+    )
+
+    assert client.calls == [
+        ("race_end", {"current_turn": 59}),
+        ("race_out", {"current_turn": 59}),
+    ]
+    assert out["data"]["chara_info"]["turn"] == 60
+
+
 def test_race_result_is_reported_back_to_strategy():
     class Strategy:
         def __init__(self):

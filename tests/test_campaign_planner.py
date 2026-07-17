@@ -31,7 +31,7 @@ def affinity(trainee_card_id, parent1, parent2):
     return {"total": total, "chara_compat": total - 20, "race_compat": 20}
 
 
-def planner():
+def planner(final_uma_card_id=100601):
     records = [
         veteran(101, 100101, factor_id=303, rank_score=22000),
         veteran(102, 100102, factor_id=301, rank_score=18000),
@@ -48,7 +48,7 @@ def planner():
         spark_targets=[
             {"category": "blue", "name": "power", "minimum_stars": 3, "priority": "required"}
         ],
-        final_uma_card_id=100101,
+        final_uma_card_id=final_uma_card_id,
         g1_saddle_ids={10, 20},
         race_rows=[
             {"program_id": 10, "name": "G1 A", "type": "G1", "terrain": "Turf", "distance": "Medium", "turn": 30},
@@ -78,6 +78,30 @@ def test_final_parent_recommendations_are_deterministic_unique_characters():
         "remaining_effort": 0.0,
     }
 
+
+
+def test_final_parent_recommendations_exclude_final_uma_character():
+    campaign_planner = planner(final_uma_card_id=100101)
+
+    result = campaign_planner.recommend_final_parents(limit=10)
+
+    assert result
+    assert all(row["chara_id"] != 1001 for row in result)
+    assert all(row["pairing"].get("second_parent_chara_id") != 1001 for row in result)
+
+
+def test_loop_recommendations_require_selected_final_parent_character(tmp_path):
+    campaign_planner = planner()
+
+    result = campaign_planner.recommend_loops(
+        pinned_chara_ids={1001},
+        final_parent_chara_id=1004,
+        limit=3,
+        mdb_path=tmp_path / "unused.mdb",
+    )
+
+    assert result["loops"]
+    assert all({1001, 1004}.issubset(set(row["chara_ids"])) for row in result["loops"])
 
 def test_loop_recommendations_are_owned_pinned_enriched_and_separate_upgrades(tmp_path):
     campaign_planner = planner()

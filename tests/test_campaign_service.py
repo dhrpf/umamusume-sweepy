@@ -171,17 +171,19 @@ class FakeStore:
         self.campaign["next_action"] = kwargs["next_action"]
         return {"campaign": deepcopy(self.campaign), "candidate": deepcopy(row), "replayed": False}
 
-    def apply_candidate_selection(self, campaign_id, candidate_id, *, state, next_action, context_updates):
+    def apply_candidate_selection(self, campaign_id, candidate_id, *, state, next_action, context_updates, allowed_candidate_ids=None):
         review = self.campaign.get("context", {}).get("pending_review")
+        allowed = {str(value) for value in (allowed_candidate_ids or set())}
+        allowed.update({
+            str(review.get("candidate_id")) if isinstance(review, dict) and review.get("candidate_id") is not None else "",
+            *(str(value) for value in ((review or {}).get("candidate_ids") or [])),
+        })
         if not (
             self.campaign.get("state") == "NEEDS_USER_INPUT"
             and self.campaign.get("next_action") == "select_candidate"
             and isinstance(review, dict)
             and review.get("kind", review.get("type")) == "candidate_tradeoff"
-            and candidate_id in {
-                str(review.get("candidate_id")) if review.get("candidate_id") is not None else "",
-                *(str(value) for value in (review.get("candidate_ids") or [])),
-            }
+            and candidate_id in allowed
         ):
             raise ValueError("campaign has no matching candidate selection review")
         row = next(row for row in self.candidates if row["candidate_id"] == candidate_id)
@@ -205,6 +207,10 @@ class FakeRunner:
     def require_user_input(self, campaign_id, next_action, review):
         self.calls.append(("require_user_input", campaign_id, next_action))
         return {"campaign_id": campaign_id, "next_action": next_action}
+
+    def begin_run(self, campaign_id):
+        self.calls.append(("begin_run", campaign_id))
+        return {"state": "RUNNING_CAREER"}
 
     def select_candidate(self, campaign_id, candidate_id):
         self.calls.append(("select_candidate", campaign_id, candidate_id))
@@ -314,6 +320,34 @@ def test_create_rejects_boolean_integer_fields_before_pydantic(change, match):
         svc.create_campaign(valid_spec(**change))
 
 
+def test_get_campaign_enriches_legacy_candidate_sparks_from_runtime_cache():
+    store = FakeStore()
+    store.candidates.append({
+        "candidate_id": "legacy-candidate",
+        "trained_chara_id": 501,
+        "name": "Legacy Veteran",
+        "score": 100,
+        "selected": True,
+        "evaluation": {"required_progress": 1, "preferred_progress": 0, "best_affinity": 150},
+    })
+    tree = {
+        "self": {
+            "factors": [
+                {"factor_id": 303, "category": "stat", "name": "Stamina", "stars": 3}
+            ]
+        }
+    }
+    svc, *_ = service(
+        store=store,
+        snapshot=lambda _account: {"display_by_id": {501: {"tree": tree}}},
+    )
+
+    result = svc.get_campaign("cmp1")
+
+    assert result["candidates"][0]["evaluation"]["factor_tree"] == tree
+    assert "factor_tree" not in store.candidates[0]["evaluation"]
+
+
 def test_create_list_get_and_recommend_delegate():
     planner_calls = []
     svc, store, *_ = service()
@@ -326,8 +360,81 @@ def test_create_list_get_and_recommend_delegate():
     assert svc.list_campaigns("acct01") == [store.campaign]
     assert svc.get_campaign("cmp1")["campaign_id"] == "cmp1"
     assert svc.recommend_final_parents({"limit": 2}) == [1]
-    assert svc.recommend_loops({"limit": 3}) == {"loops": [2]}
-    assert planner_calls == [("parents", {"limit": 2}), ("loops", {"limit": 3})]
+    assert svc.recommend_loops({"limit": 3, "final_parent_chara_id": 1004, "pinned_chara_ids": [1001]}) == {"loops": [2]}
+    assert planner_calls == [("parents", {"limit": 2}), ("loops", {"limit": 3, "pinned_chara_ids": {1001}, "final_parent_chara_id": 1004})]
+
+
+def test_default_candidates_normalize_raw_runtime_rows_and_dedupe():
+    campaign = {
+        "context": {
+            "campaign_candidates": [
+                {"trained_chara_id": 11, "score": 99, "rental": False},
+                {"trained_chara_id": 33, "rank": 7},
+            ]
+        }
+    }
+    runtime = {
+        "owned_candidates": [
+            {"trained_chara_id": 11, "rank_score": 12345},
+            {"trained_chara_id": 22, "rank_score": 23456},
+        ],
+        "rental_candidates": [
+            {"trained_chara_id": 44, "score": float("nan"), "rank_score": 34567},
+        ],
+    }
+
+    result = CampaignService._default_candidates(
+        campaign,
+        RotationState.bootstrap([1, 2, 3, 4]),
+        runtime,
+    )
+
+    assert result == [
+        {"trained_chara_id": 11, "rank_score": 12345, "score": 12345.0, "rental": False},
+        {"trained_chara_id": 22, "rank_score": 23456, "score": 23456.0, "rental": False},
+        {"trained_chara_id": 33, "rank": 7, "score": 7.0, "rental": False},
+        {"trained_chara_id": 44, "score": 34567.0, "rank_score": 34567, "rental": True},
+    ]
+
+
+def test_default_career_request_uses_loop_member_friend_support():
+    spec = valid_spec(
+        loop_members=[
+            {
+                "chara_id": 1,
+                "deck_id": 1,
+                "friend_support": {
+                    "viewer_id": 501,
+                    "support_card_id": 9001,
+                    "support_name": "Kitasan Black",
+                },
+            },
+            {"chara_id": 2, "deck_id": 2},
+            {"chara_id": 3, "deck_id": 3},
+            {"chara_id": 4, "deck_id": 4},
+        ]
+    )
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "spec": spec,
+        "context": {},
+    }
+    svc, *_ = service(default_career_request=True)
+
+    request = svc._default_career_request(
+        campaign,
+        RotationState.bootstrap([1, 2, 3, 4]),
+        [{"trained_chara_id": 11, "score": 20, "rental": False}],
+        [],
+        {},
+    )
+
+    assert request["friend_support"] == {
+        "viewer_id": 501,
+        "support_card_id": 9001,
+        "support_name": "Kitasan Black",
+    }
 
 
 def test_create_generates_deterministic_campaign_preset_and_context():
@@ -353,6 +460,49 @@ def test_default_career_request_uses_rotating_members_manual_deck():
     assert request["deck_id"] == 3
 
 
+def test_default_lineage_resolves_two_distinct_non_trainee_parents():
+    svc, store, *_ = service()
+    store.campaign["spec"]["final_parent"] = {
+        "chara_id": 2,
+        "trained_chara_id": 50,
+    }
+    svc.planned_slots = svc._default_slots
+    svc.candidate_pool = lambda *_args: [
+        {"trained_chara_id": 70, "chara_id": 1, "score": 999, "rental": False},
+        {"trained_chara_id": 50, "chara_id": 2, "score": 100, "rental": False},
+        {"trained_chara_id": 51, "chara_id": 2, "score": 95, "rental": False},
+        {"trained_chara_id": 60, "chara_id": 3, "score": 90, "rental": False},
+    ]
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert [row["trained_chara_id"] for row in result["resolved_slots"]] == [50, 60]
+    assert len({row["trained_chara_id"] for row in result["resolved_slots"]}) == 2
+
+
+def test_default_lineage_does_not_lock_final_parent_when_it_is_the_trainee():
+    svc, store, *_ = service()
+    store.campaign["spec"]["final_parent"] = {
+        "chara_id": 2,
+        "trained_chara_id": 50,
+    }
+    store.campaign["context"]["rotation"] = RotationState(
+        loop_chara_ids=(1, 2, 3, 4),
+        run_index=1,
+        produced=(),
+    ).to_dict()
+    svc.planned_slots = svc._default_slots
+    svc.candidate_pool = lambda *_args: [
+        {"trained_chara_id": 50, "chara_id": 2, "score": 1000, "rental": False},
+        {"trained_chara_id": 70, "chara_id": 1, "score": 100, "rental": False},
+        {"trained_chara_id": 60, "chara_id": 3, "score": 90, "rental": False},
+    ]
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert [row["trained_chara_id"] for row in result["resolved_slots"]] == [70, 60]
+
+
 def test_prepare_defaults_to_review_and_persists_before_return():
     svc, store, runner, _ = service()
     result = svc.prepare_next_run("cmp1")
@@ -373,6 +523,22 @@ def test_prepare_preserves_mapping_race_overrides_for_default_request():
     prepared = svc.prepare_next_run("cmp1")["prepared_run"]
 
     assert prepared["race_overrides"] == overrides
+
+
+def test_prepare_next_run_captures_owned_parent_baseline():
+    svc, store, *_ = service(
+        snapshot=lambda _account: {
+            "owned_candidates": [
+                {"trained_chara_id": 11},
+                {"trained_chara_id": 12},
+                {"trained_chara_id": 0},
+            ]
+        }
+    )
+
+    svc.prepare_next_run("cmp1")
+
+    assert store.campaign["context"]["baseline_parent_ids"] == [11, 12]
 
 
 def test_prepare_next_run_resets_previous_run_start_reservation():
@@ -444,15 +610,19 @@ def test_resume_real_store_reconciles_matching_active_career(tmp_path):
     prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
     _, store, _, _ = real_running_service(tmp_path, prepared_run=prepared)
     store.pause("cmp1")
-    svc, _, _, _ = service(
+    svc, _, _, resumed = service(
         store=store,
         runner=CampaignRunner(store),
-        snapshot=lambda _account: {"current_career": {"active": True, "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}},
+        snapshot=lambda _account: {
+            "current_career": {"active": True, "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11},
+            "bot_state": {"career_runner": {"running": False}},
+        },
     )
 
     result = svc.resume("cmp1")
 
     assert result["state"] == "RUNNING_CAREER"
+    assert resumed == [prepared]
 
 def test_resume_real_store_reconciles_mismatched_active_career_without_unpausing(tmp_path):
     prepared = {"account": "acct01", "campaign_id": "cmp1", "card_id": 100101, "deck_id": 2, "parent_id_1": 10, "parent_id_2": 11}
@@ -568,6 +738,22 @@ def test_reconcile_matching_active_career_supports_trainee_identity_contract():
     )
 
     assert result["state"] == "RUNNING_CAREER"
+
+
+def test_reconcile_matches_prepared_base_trainee_to_runtime_card_id():
+    svc, store, _, _ = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": {"trainee_chara_id": 1001}},
+    })
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={"active": True, "card_id": 100101},
+    )
+
+    assert result["state"] == "RUNNING_CAREER"
+
 
 def test_reconcile_normal_prepared_run_rejects_wrong_legacy_slot_parents():
     svc, store, _, _ = service()
@@ -774,6 +960,53 @@ def test_reconcile_unavailable_rental_without_fallback_requires_review():
     assert started == []
 
 
+def test_approve_rebuilds_stale_one_parent_prepared_run_before_starting():
+    svc, store, _, started = service()
+    store.campaign["spec"]["final_parent"] = {
+        "chara_id": 2,
+        "trained_chara_id": 50,
+    }
+    store.campaign["context"]["prepared_run"] = {
+        "campaign_id": "cmp1",
+        "trainee_chara_id": 1,
+        "legacy_slots": [
+            {"trained_chara_id": 50, "status": "RESOLVED", "rental": False}
+        ],
+    }
+    svc.planned_slots = svc._default_slots
+    svc.candidate_pool = lambda *_args: [
+        {"trained_chara_id": 50, "chara_id": 2, "score": 100, "rental": False},
+        {"trained_chara_id": 60, "chara_id": 3, "score": 90, "rental": False},
+    ]
+
+    result = svc.approve_run("cmp1")
+
+    assert result == {"started": True}
+    assert len(started) == 1
+    assert [row["trained_chara_id"] for row in started[0]["parents"]] == [50, 60]
+
+
+def test_approve_moves_campaign_to_running_after_start(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(ParentCampaignSpec.model_validate(valid_spec()), campaign_id="cmp1")
+    for state in ("READY", "STARTING_BOT", "SELECTING_LINEAGE"):
+        store.transition("cmp1", state)
+    svc, _, _, _ = service(
+        store=store,
+        runner=CampaignRunner(store),
+        start_career=lambda _request: {"job_id": "job-1"},
+    )
+    svc.prepare_next_run("cmp1")
+
+    result = svc.approve_run("cmp1")
+    campaign = store.get("cmp1")
+
+    assert result == {"job_id": "job-1"}
+    assert campaign["state"] == "RUNNING_CAREER"
+    assert campaign["next_action"] == "monitor_career"
+    assert campaign["usage"]["runs"] == 1
+
+
 def test_approve_delegates_one_persisted_request_exactly_once():
     svc, store, _, started = service()
     svc.prepare_next_run("cmp1")
@@ -854,6 +1087,28 @@ def completed_candidate(affinity=150, required=9, preferred=0):
     }, [{"key": "pair", "affinity": affinity, "rental": False}]
 
 
+def test_completed_candidate_persists_spark_snapshot():
+    svc, _, *_ = service()
+    candidate, pairings = completed_candidate(required=9, preferred=2)
+    candidate["factor_tree"] = {
+        "self": {
+            "factors": [
+                {"factor_id": 303, "category": "stat", "name": "Stamina", "stars": 3},
+                {"factor_id": 2302, "category": "aptitude", "name": "Long", "stars": 2},
+            ]
+        }
+    }
+
+    result = svc.record_completed_veteran("cmp1", candidate, pairings)
+
+    evaluation = result["candidate"]["evaluation"]
+    assert evaluation["factor_tree"] == candidate["factor_tree"]
+    assert evaluation["spark_totals"] == {
+        "blue:stamina": 9,
+        "pink:long": 2,
+    }
+
+
 def test_required_targets_and_affinity_exactly_150_complete():
     svc, store, *_ = service()
     candidate, _ = completed_candidate()
@@ -862,7 +1117,44 @@ def test_required_targets_and_affinity_exactly_150_complete():
     assert result["final_setup"]["status"] == "READY"
     assert store.campaign["state"] == "COMPLETED"
     assert store.campaign["selected_candidate_id"] == result["candidate"]["candidate_id"]
+    assert store.campaign["context"]["rotation"]["run_index"] == 1
     assert result["candidate"]["evaluation"]["accepted"] is True
+
+
+def test_ready_candidate_auto_continues_when_target_stop_is_disabled():
+    svc, store, *_ = service()
+    store.campaign["spec"]["strategy"]["stop_when_target_reached"] = False
+    candidate, _ = completed_candidate()
+
+    result = svc.record_completed_veteran(
+        "cmp1",
+        candidate,
+        [{"key": "pair", "rental": False}],
+    )
+
+    assert result["final_setup"]["status"] == "READY"
+    assert store.campaign["selected_candidate_id"] == result["candidate"]["candidate_id"]
+    assert store.campaign["state"] == "SELECTING_LINEAGE"
+    assert store.campaign["next_action"] == "prepare_next_run"
+    assert store.campaign["context"]["required_target_achieved"] is True
+    assert store.campaign["context"]["continue_preferred"] is True
+    assert store.campaign["context"]["rotation"]["run_index"] == 1
+
+
+def test_continue_preferred_context_keeps_future_ready_candidates_running():
+    svc, store, *_ = service()
+    store.campaign["context"]["continue_preferred"] = True
+    candidate, _ = completed_candidate()
+
+    svc.record_completed_veteran(
+        "cmp1",
+        candidate,
+        [{"key": "pair", "rental": False}],
+    )
+
+    assert store.campaign["state"] == "SELECTING_LINEAGE"
+    assert store.campaign["next_action"] == "prepare_next_run"
+    assert store.campaign["context"]["continue_preferred"] is True
 
 
 def test_rental_disabled_does_not_complete():
@@ -944,6 +1236,40 @@ def test_changed_payload_replay_returns_stored_evaluation_only():
     assert second["targets"] == stored["targets"]
     assert second["final_setup"] == stored["final_setup"]
     assert len(store.candidates) == 1
+
+
+def test_tradeoff_allows_keeping_current_selected_candidate():
+    svc, store, *_ = service()
+    store.campaign.update({
+        "state": "NEEDS_USER_INPUT",
+        "next_action": "select_candidate",
+        "selected_candidate_id": "candidate-current",
+        "context": {
+            "pending_review": {
+                "kind": "candidate_tradeoff",
+                "candidate_id": "candidate-challenger",
+            }
+        },
+    })
+    store.candidates.extend([
+        {
+            "candidate_id": "candidate-current",
+            "score": 100,
+            "selected": True,
+            "evaluation": {"accepted": True, "final_setup": {"status": "READY"}},
+        },
+        {
+            "candidate_id": "candidate-challenger",
+            "score": 110,
+            "selected": False,
+            "evaluation": {"accepted": False, "final_setup": {"status": "IN_PROGRESS"}},
+        },
+    ])
+
+    result = svc.select_candidate("cmp1", "candidate-current")
+
+    assert result["candidate"]["candidate_id"] == "candidate-current"
+    assert result["candidate"]["selected"] is True
 
 
 def test_select_candidate_uses_stored_final_setup_semantics():

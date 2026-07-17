@@ -174,7 +174,14 @@ class CampaignRunner:
     def begin_run(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
         state = CampaignState(campaign["state"])
-        if state not in {CampaignState.SELECTING_LINEAGE, CampaignState.WAITING_FOR_TP}:
+        if state is CampaignState.RUNNING_CAREER:
+            return campaign
+        allowed = state in {CampaignState.SELECTING_LINEAGE, CampaignState.WAITING_FOR_TP}
+        allowed_review = (
+            state is CampaignState.NEEDS_USER_INPUT
+            and campaign.get("next_action") == "approve_run"
+        )
+        if not allowed and not allowed_review:
             raise InvalidTransition(
                 f"Campaign {campaign_id} cannot begin a run from {state.value}"
             )

@@ -13,6 +13,7 @@ from pathlib import Path
 import random
 import time
 import threading
+from copy import deepcopy
 import frida
 from account_snapshot import save_load_index_snapshot
 from career_bot import master_data
@@ -302,6 +303,7 @@ def _campaign_runtime_snapshot(account):
         if isinstance(row, dict)
     ]
     current_account = active_account or dashboard.get("account") or {}
+    current_runner = career_runner.snapshot()
     return {
         "account": account,
         "current_account": current_account,
@@ -316,10 +318,230 @@ def _campaign_runtime_snapshot(account):
         },
         "bot_state": {
             "session": {"logged_in": active_client is not None},
-            "career_runner": {"running": bool(career_runner.snapshot().get("running"))},
+            "career_runner": {
+                "running": bool(current_runner.get("running")),
+                "finished": bool(current_runner.get("finished")),
+            },
             "dailies": {"running": bool(dailies_runner.running)},
         },
     }
+
+def _campaign_parent_id(row):
+    if not isinstance(row, dict):
+        return 0
+    return _positive_runtime_id(
+        row.get("trained_chara_id") or row.get("instance_id") or row.get("id")
+    )
+
+
+def _campaign_spark_totals(display_parent):
+    totals = {}
+    tree = display_parent.get("tree") if isinstance(display_parent, dict) else {}
+    nodes = tree.values() if isinstance(tree, dict) else []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        for factor in node.get("factors") or []:
+            if not isinstance(factor, dict):
+                continue
+            category = str(factor.get("category") or "").strip().lower()
+            normalized_category = {
+                "stat": "blue",
+                "blue": "blue",
+                "aptitude": "pink",
+                "pink": "pink",
+            }.get(category)
+            name = str(factor.get("name") or "").strip().lower()
+            if not normalized_category or not name:
+                continue
+            try:
+                stars = max(0, int(factor.get("stars") or 0))
+            except (TypeError, ValueError):
+                stars = 0
+            key = (normalized_category, name)
+            totals[key] = totals.get(key, 0) + stars
+    return totals
+
+
+def _campaign_completed_result(campaign, snapshot):
+    context = campaign.get("context") or {}
+    prepared = context.get("prepared_run") or {}
+    expected_trainee = _positive_runtime_id(prepared.get("trainee_chara_id"))
+    baseline_ids = {
+        _positive_runtime_id(value)
+        for value in (context.get("baseline_parent_ids") or [])
+        if _positive_runtime_id(value)
+    }
+    owned = [dict(row) for row in (snapshot.get("owned_candidates") or []) if isinstance(row, dict)]
+    owned_by_id = {
+        _campaign_parent_id(row): row
+        for row in owned
+        if _campaign_parent_id(row)
+    }
+    parent_ids = sorted(owned_by_id)
+
+    candidates = []
+    for trained_id, row in owned_by_id.items():
+        if baseline_ids and trained_id in baseline_ids:
+            continue
+        if expected_trainee and _base_chara_id(row.get("card_id") or row.get("race_cloth_id")) != expected_trainee:
+            continue
+        candidates.append(row)
+    if not candidates:
+        raise ValueError("No new trained veteran was found after the completed Career")
+    candidates.sort(
+        key=lambda row: (
+            str(row.get("create_time") or row.get("register_time") or row.get("created_at") or ""),
+            int(row.get("rank_score") or 0),
+            _campaign_parent_id(row),
+        ),
+        reverse=True,
+    )
+    raw_candidate = candidates[0]
+    trained_id = _campaign_parent_id(raw_candidate)
+    display = (snapshot.get("display_by_id") or {}).get(trained_id) or {}
+    candidate = {
+        **raw_candidate,
+        "candidate_id": f"veteran-{trained_id}",
+        "trained_chara_id": trained_id,
+        "name": str(display.get("name") or raw_candidate.get("name") or f"Veteran #{trained_id}"),
+        "spark_totals": _campaign_spark_totals(display),
+        "factor_tree": deepcopy(display.get("tree") or {}),
+    }
+
+    final_parent_id = _positive_runtime_id(
+        ((campaign.get("spec") or {}).get("final_parent") or {}).get("trained_chara_id")
+    )
+    final_parent = owned_by_id.get(final_parent_id)
+    if not final_parent:
+        raise ValueError(f"Final parent veteran {final_parent_id} is unavailable")
+    pairings = [{**final_parent, "rental": False}]
+    return candidate, pairings, parent_ids
+
+
+def _refresh_campaign_runtime_snapshot(account):
+    if not active_client:
+        raise ValueError("Campaign result collection requires login")
+    response = active_client.call("load/index", {"adid": ""})
+    data = response.get("data", {}) if isinstance(response, dict) else {}
+    active_client.refresh_cached_account_state(data)
+    update_start_state(data)
+    _build_dashboard_from_login_response(response)
+    return _campaign_runtime_snapshot(account)
+
+
+def _campaign_advance(campaign_id):
+    campaign = campaign_store.get(campaign_id)
+    snapshot = _campaign_runtime_snapshot(campaign["account"])
+    runtime = snapshot.get("runtime", snapshot)
+    bot_state = snapshot.get("bot_state", snapshot)
+    current_career = snapshot.get("current_career")
+    runner_state = (
+        bot_state.get("career_runner")
+        if isinstance(bot_state.get("career_runner"), dict)
+        else {}
+    )
+    execution_state = campaign.get("state") in {"RUNNING_CAREER", "EVALUATING_RESULT"}
+    if (
+        execution_state
+        and isinstance(current_career, dict)
+        and current_career.get("active") is True
+        and runner_state.get("finished")
+    ):
+        # A finished local thread can mean either a genuinely completed Career
+        # or a crashed runner while the server Career is still active. Refresh
+        # the account before choosing between result collection and resume.
+        confirmed = _refresh_campaign_runtime_snapshot(campaign["account"])
+        confirmed_career = confirmed.get("current_career")
+        if isinstance(confirmed_career, dict) and confirmed_career.get("active") is True:
+            snapshot = confirmed
+            current_career = confirmed_career
+            runtime = confirmed.get("runtime", runtime)
+            bot_state = confirmed.get("bot_state", bot_state)
+            runner_state = (
+                bot_state.get("career_runner")
+                if isinstance(bot_state.get("career_runner"), dict)
+                else {}
+            )
+        else:
+            current_career = confirmed_career
+    if (
+        campaign.get("state") == "SELECTING_LINEAGE"
+        and not (isinstance(current_career, dict) and current_career.get("active") is True)
+    ):
+        context = campaign.get("context") or {}
+        if campaign.get("next_action") != "start_career" or not context.get("prepared_run"):
+            prepared = campaign_service.prepare_next_run(campaign_id)
+            campaign = prepared.get("campaign", prepared)
+            context = campaign.get("context") or {}
+        if (
+            campaign.get("state") == "SELECTING_LINEAGE"
+            and campaign.get("next_action") == "start_career"
+            and context.get("review_required") is False
+        ):
+            campaign_service.approve_run(campaign_id)
+            campaign = campaign_store.get(campaign_id)
+        return {"campaign": campaign}
+
+    if (
+        execution_state
+        and isinstance(current_career, dict)
+        and current_career.get("active") is True
+    ):
+        prepared = dict((campaign.get("context") or {}).get("prepared_run") or {})
+        trusted_current = {
+            **current_career,
+            "account": str(campaign.get("account") or ""),
+            "campaign_id": str(campaign_id),
+        }
+        if not CampaignService._career_matches_prepared_run(trusted_current, prepared):
+            reconciled = campaign_service.reconcile_runtime(campaign_id, trusted_current)
+            return {"campaign": CampaignService._campaign_from_reconciliation(reconciled)}
+        if not runner_state.get("running"):
+            campaign_service.start_career(deepcopy(prepared))
+        if campaign.get("state") != "RUNNING_CAREER" or campaign.get("next_action") != "monitor_career":
+            campaign = campaign_store.transition(
+                campaign_id,
+                "RUNNING_CAREER",
+                next_action="monitor_career",
+                context_updates={"runtime_reconciliation": {"status": "MATCHED"}},
+            )
+        return {"campaign": campaign}
+
+    advanced = campaign_runner.reconcile(
+        campaign_id,
+        runtime=runtime,
+        bot_state=bot_state,
+    )
+    if advanced.get("state") != "EVALUATING_RESULT":
+        return {"campaign": advanced}
+
+    refreshed = _refresh_campaign_runtime_snapshot(campaign["account"])
+    current = campaign_store.get(campaign_id)
+    candidate, pairings, parent_ids = _campaign_completed_result(current, refreshed)
+    result = campaign_service.record_completed_veteran(
+        campaign_id,
+        candidate,
+        pairings,
+    )
+    updated = campaign_store.update_context(
+        campaign_id,
+        {
+            "baseline_parent_ids": parent_ids,
+            "run_start": None,
+            "runtime_reconciliation": {"status": "MATCHED"},
+            "last_result": {
+                "trained_chara_id": candidate["trained_chara_id"],
+                "candidate_id": candidate["candidate_id"],
+                "decision": result.get("decision", ""),
+            },
+        },
+    )
+    return {
+        **result,
+        "campaign": updated,
+    }
+
 
 def _campaign_master_mdb_path():
     path = master_data.configured_master_mdb_path(base_dir)
@@ -350,9 +572,17 @@ class _ConfiguredCampaignPlanner(CampaignPlanner):
         super().__init__(**kwargs)
         self.mdb_path = mdb_path
 
-    def recommend_loops(self, *, pinned_chara_ids=None, limit=3, mdb_path=""):
+    def recommend_loops(
+        self,
+        *,
+        pinned_chara_ids=None,
+        final_parent_chara_id=0,
+        limit=3,
+        mdb_path="",
+    ):
         return super().recommend_loops(
             pinned_chara_ids=pinned_chara_ids,
+            final_parent_chara_id=final_parent_chara_id,
             limit=limit,
             mdb_path=mdb_path or self.mdb_path,
         )
@@ -382,6 +612,88 @@ def _campaign_planner_factory(request):
         final_uma_card_id=int(payload.get("final_uma_card_id") or final_uma.get("card_id") or 0),
     )
 
+def _positive_runtime_id(value):
+    if isinstance(value, bool):
+        return 0
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _campaign_runtime_friends():
+    global active_dashboard_data
+    dashboard = active_dashboard_data or {}
+    friends = [dict(row) for row in (dashboard.get("friends") or []) if isinstance(row, dict)]
+    if friends:
+        return friends
+    refresh = getattr(active_client, "pre_single_mode", None)
+    if not callable(refresh):
+        return []
+    result = refresh([])
+    data = result.get("data", {}) if isinstance(result, dict) else {}
+    update_start_state(data)
+    friends, exclude_viewer_ids, _source = normalize_friend_cards(data)
+    if active_dashboard_data is not None:
+        active_dashboard_data["friends"] = friends
+        active_dashboard_data["friendExcludeIds"] = exclude_viewer_ids
+        active_dashboard_data["friendsLoaded"] = True
+    return friends
+
+
+def _resolve_campaign_friend_support(friend_support, preset, *, support_ids, trainee_chara_id):
+    requested = friend_support if isinstance(friend_support, dict) else {}
+    support_card_id = _positive_runtime_id(
+        requested.get("support_card_id")
+        or requested.get("friend_card_id")
+        or preset.get("friend_card_id")
+    )
+    viewer_id = _positive_runtime_id(
+        requested.get("viewer_id")
+        or requested.get("friend_viewer_id")
+        or preset.get("friend_viewer_id")
+    )
+    if support_card_id <= 0:
+        return 0, 0
+    if support_card_id in set(support_ids):
+        raise ValueError(f"Friend support {support_card_id} is already present in campaign deck")
+    if viewer_id > 0:
+        return viewer_id, support_card_id
+
+    trainee_name = next(
+        (
+            str(row.get("name") or "")
+            for row in ((active_dashboard_data or {}).get("umas") or [])
+            if _base_chara_id(row.get("id") or row.get("card_id")) == trainee_chara_id
+        ),
+        "",
+    )
+    normalized_trainee = normalize_card_name(trainee_name)
+    candidates = []
+    for row in _campaign_runtime_friends():
+        if _positive_runtime_id(row.get("support_card_id")) != support_card_id:
+            continue
+        candidate_viewer_id = _positive_runtime_id(row.get("viewer_id"))
+        if candidate_viewer_id <= 0:
+            continue
+        support_name = str(row.get("support_name") or "")
+        if normalized_trainee and normalize_card_name(support_name) == normalized_trainee:
+            continue
+        candidates.append((
+            -int(_positive_runtime_id(row.get("friend_state")) >= 2),
+            -int(bool(_positive_runtime_id(row.get("favorite_flag")))),
+            -_positive_runtime_id(row.get("exp")),
+            candidate_viewer_id,
+        ))
+    if not candidates:
+        raise ValueError(
+            f"Friend support {support_card_id} is no longer available; reload friend supports and rebuild the prepared run"
+        )
+    candidates.sort()
+    return candidates[0][3], support_card_id
+
+
 def _campaign_start_career(request):
     _assert_campaign_account(request.get("account"))
     if not active_client:
@@ -398,22 +710,16 @@ def _campaign_start_career(request):
         support_ids = [int(row.get("id") or row.get("support_card_id") or 0) for row in (dashboard_deck.get("cards") or [])]
     else:
         support_ids = [int(value or 0) for value in ((raw_deck or {}).get("support_card_id_array") or [])]
+    trainee_chara_id = int(request.get("trainee_chara_id") or 0)
     friend_support = request.get("friend_support") or (active_selection or {}).get("friend") or {}
-    friend_viewer_id = int(
-        friend_support.get("viewer_id")
-        or friend_support.get("friend_viewer_id")
-        or preset.get("friend_viewer_id")
-        or 0
-    )
-    friend_card_id = int(
-        friend_support.get("support_card_id")
-        or friend_support.get("friend_card_id")
-        or preset.get("friend_card_id")
-        or 0
+    friend_viewer_id, friend_card_id = _resolve_campaign_friend_support(
+        friend_support,
+        preset,
+        support_ids=support_ids,
+        trainee_chara_id=trainee_chara_id,
     )
     if len(support_ids) != 5 or not all(support_ids) or not friend_viewer_id or not friend_card_id:
         raise ValueError("Campaign preset requires five supports and a friend support")
-    trainee_chara_id = int(request.get("trainee_chara_id") or 0)
     card_id = next(
         (
             int(row.get("id") or row.get("card_id") or 0)
@@ -434,7 +740,7 @@ def _campaign_start_career(request):
         raise ValueError("Campaign race_overrides must be a list or mapping")
     if "parent_run" in preset:
         preset_overrides["parent_run"] = bool(preset["parent_run"])
-    result = start_career_from_request(RunCareerRequest(
+    career_request = RunCareerRequest(
         card_id=card_id,
         support_card_ids=support_ids,
         friend_viewer_id=friend_viewer_id,
@@ -446,10 +752,55 @@ def _campaign_start_career(request):
         use_tp=int(preset.get("use_tp") or 30),
         preset_name=str(preset.get("name") or preset.get("preset_name") or ""),
         preset_overrides=preset_overrides,
-    ))
-    if not result.get("success"):
-        raise ValueError(result.get("detail") or "Campaign career start failed")
-    return {"success": True, "result": result.get("result")}
+    )
+    current_career = (
+        active_account.get("career")
+        if isinstance(active_account, dict) and isinstance(active_account.get("career"), dict)
+        else {}
+    )
+    if current_career.get("active") is True:
+        trusted_current = {
+            **current_career,
+            "account": str(request.get("account") or ""),
+            "campaign_id": str(request.get("campaign_id") or ""),
+        }
+        if not CampaignService._career_matches_prepared_run(trusted_current, request):
+            raise ValueError("Current active career does not match the campaign prepared run")
+        career_result = active_client.load_career(scenario_id=career_request.scenario_id)
+        if not ((career_result.get("data") or {}).get("chara_info")):
+            raise ValueError("Current active career could not be loaded for resume")
+    else:
+        started = start_career_from_request(career_request)
+        if not started.get("success"):
+            raise ValueError(started.get("detail") or "Campaign career start failed")
+        career_result = started.get("result") or {}
+    runtime_preset = apply_runtime_preset_overrides(preset, preset_overrides)
+    _apply_preset_turn_delay(runtime_preset)
+    account, chara_info = apply_career_result(career_result)
+    career_status = account.get("career") if isinstance(account, dict) else None
+    if isinstance(career_status, dict):
+        career_status.update({
+            "trainee_chara_id": trainee_chara_id,
+            "deck_id": deck_id,
+            "parent_id_1": parent_ids[0],
+            "parent_id_2": parent_ids[1],
+        })
+    apply_deck_type_counts(runtime_preset, req=career_request, chara_info=chara_info)
+    career_runner.start(
+        active_client,
+        runtime_preset,
+        career_result,
+        career_request.max_steps,
+        burn_clocks=bool(runtime_preset.get("burn_clocks", False)),
+        dev_mode=False,
+    )
+    return {
+        "success": True,
+        "result": career_result,
+        "account": account,
+        "chara_info": chara_info,
+        "runner": _career_runner_snapshot(),
+    }
 
 campaign_store = CampaignStore(
     os.environ.get("SWEEPY_CAMPAIGNS_DB")
@@ -1509,6 +1860,7 @@ class CampaignFinalParentsRecommendationRequest(BaseModel):
     limit: int = Field(default=3, ge=1, le=50)
 
 class CampaignLoopRecommendationRequest(CampaignFinalParentsRecommendationRequest):
+    final_parent_chara_id: int = Field(gt=0)
     pinned_chara_ids: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
 
 class CampaignCreateRequest(BaseModel):
@@ -1714,6 +2066,11 @@ async def pause_campaign(campaign_id: str):
 @app.post("/api/campaigns/{campaign_id}/resume")
 async def resume_campaign(campaign_id: str):
     return {"success": True, "campaign": _campaign_api_call(campaign_service.resume, campaign_id)}
+
+@app.post("/api/campaigns/{campaign_id}/advance")
+async def advance_campaign(campaign_id: str):
+    return {"success": True, "result": _campaign_api_call(_campaign_advance, campaign_id)}
+
 
 @app.post("/api/campaigns/{campaign_id}/prepare-next-run")
 async def prepare_campaign_next_run(campaign_id: str):
@@ -2024,6 +2381,9 @@ def _build_dashboard_from_login_response(res):
         for deck in d.get('support_card_deck_array', [])
     ]
     parents = []
+    veteran_affinity_mdb = master_data.configured_master_mdb_path(base_dir)
+    if not veteran_affinity_mdb or not Path(veteran_affinity_mdb).exists():
+        veteran_affinity_mdb = None
     for chara in d.get('trained_chara', []):
         raw_id = str(chara.get('card_id', ''))
         if '{' in raw_id or '-' in raw_id or not raw_id.isdigit():
@@ -2059,6 +2419,18 @@ def _build_dashboard_from_login_response(res):
                 tree[key]["wins"] = get_win_summary(sc.get('win_saddle_id_array', []))
         stats = get_trained_stats(chara)
         skills = get_skill_names(get_trained_skill_ids(chara))
+        veteran_affinity = {}
+        if veteran_affinity_mdb:
+            try:
+                veteran_affinity = affinity_calc.calculate_veteran_affinity(
+                    str(veteran_affinity_mdb),
+                    chara,
+                )
+            except Exception as exc:
+                print(
+                    f"[veteran] affinity unavailable for {chara.get('trained_chara_id')}: {exc}",
+                    flush=True,
+                )
         parents.append({
             'instance_id': chara.get('trained_chara_id'),
             'card_id': cid,
@@ -2071,6 +2443,7 @@ def _build_dashboard_from_login_response(res):
             'skills': skills,
             'factors': tree['self']['factors'],
             'wins': tree['self']['wins'],
+            'affinity': veteran_affinity,
             'tree': tree,
         })
         lineage_cards = [int(cid)]

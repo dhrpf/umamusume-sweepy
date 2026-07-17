@@ -93,7 +93,7 @@ def client():
     [
         ("get", "/api/campaigns?account=acct01", None, ("list_campaigns", ("acct01",), {})),
         ("post", "/api/campaigns/recommend-final-parents", {"final_uma_card_id": 100101, "limit": 2}, ("recommend_final_parents", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 2},), {})),
-        ("post", "/api/campaigns/recommend-loop", {"final_uma_card_id": 100101, "limit": 3, "pinned_chara_ids": [1, 2]}, ("recommend_loops", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 3, "pinned_chara_ids": [1, 2]},), {})),
+        ("post", "/api/campaigns/recommend-loop", {"final_uma_card_id": 100101, "final_parent_chara_id": 1004, "limit": 3, "pinned_chara_ids": [1, 2]}, ("recommend_loops", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 3, "pinned_chara_ids": [1, 2], "final_parent_chara_id": 1004},), {})),
         ("get", "/api/campaigns/cmp1", None, ("get_campaign", ("cmp1",), {})),
         ("post", "/api/campaigns/cmp1/activate", None, ("activate", ("cmp1",), {})),
         ("post", "/api/campaigns/cmp1/pause", None, ("pause", ("cmp1",), {})),
@@ -112,6 +112,22 @@ def test_campaign_routes_delegate(client, fake_campaign_service, monkeypatch, me
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert fake_campaign_service.calls[-1] == expected
+
+
+def test_campaign_advance_route_runs_lifecycle_reconciliation(client, monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "_campaign_advance",
+        lambda campaign_id: {"campaign": {"campaign_id": campaign_id, "state": "SELECTING_LINEAGE"}},
+    )
+
+    response = client.post("/api/campaigns/cmp1/advance")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "result": {"campaign": {"campaign_id": "cmp1", "state": "SELECTING_LINEAGE"}},
+    }
 
 def test_campaign_create_delegates_to_service(client, fake_campaign_service):
     response = client.post("/api/campaigns", json={"spec": valid_web_spec()})
@@ -167,6 +183,7 @@ def test_campaign_unexpected_errors_propagate(client, fake_campaign_service):
         {"final_uma_card_id": 100101, "mdb_path": "/tmp/master.mdb"},
         {"final_uma_card_id": 100101, "factor_map": {}},
         {"final_uma_card_id": 100101, "pinned_chara_ids": [0]},
+        {"final_uma_card_id": 100101, "final_parent_chara_id": 0, "pinned_chara_ids": []},
         {"final_uma_card_id": 100101, "spark_targets": [{"category": "blue", "name": "", "minimum_stars": 0}]},
         {"account": "bad account", "final_uma_card_id": 100101},
     ],
@@ -186,7 +203,7 @@ def test_campaign_runtime_snapshot_uses_nested_runner_contract(monkeypatch):
     monkeypatch.setattr(main, "active_account", {"name": "acct01", "career": {"active": True}})
     monkeypatch.setattr(main, "active_dashboard_data", {"umas": []})
     monkeypatch.setattr(main, "active_client", object())
-    monkeypatch.setattr(main.career_runner, "snapshot", lambda: {"running": True})
+    monkeypatch.setattr(main.career_runner, "snapshot", lambda: {"running": True, "finished": False})
     monkeypatch.setattr(main, "dailies_runner", FakeDailiesRunner())
 
     snapshot = main._campaign_runtime_snapshot("acct01")
@@ -194,7 +211,7 @@ def test_campaign_runtime_snapshot_uses_nested_runner_contract(monkeypatch):
     assert snapshot["runtime"] == {"api_reachable": True, "logged_in": True}
     assert snapshot["bot_state"] == {
         "session": {"logged_in": True},
-        "career_runner": {"running": True},
+        "career_runner": {"running": True, "finished": False},
         "dailies": {"running": True},
     }
 
@@ -211,8 +228,23 @@ def test_campaign_start_rejects_active_account_mismatch(monkeypatch):
     with pytest.raises(ValueError, match="acct02.*acct01"):
         main._campaign_start_career({"account": "acct02"})
 
+def _stub_campaign_runtime_launch(monkeypatch):
+    class FakeCareerRunner:
+        def start(self, *_args, **_kwargs):
+            return None
+
+        def snapshot(self):
+            return {"running": True}
+
+    monkeypatch.setattr(main, "apply_career_result", lambda _result: ({"career": {"active": True}}, {}))
+    monkeypatch.setattr(main, "apply_deck_type_counts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "_apply_preset_turn_delay", lambda _preset: None)
+    monkeypatch.setattr(main, "career_runner", FakeCareerRunner())
+
+
 def test_campaign_start_propagates_friend_and_races(monkeypatch):
     captured = []
+    _stub_campaign_runtime_launch(monkeypatch)
     monkeypatch.setattr(main, "active_account", {"name": "acct01"})
     monkeypatch.setattr(main, "active_client", object())
     monkeypatch.setattr(main, "active_dashboard_data", {"umas": [{"id": 100101}], "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}]})
@@ -246,6 +278,550 @@ def test_campaign_start_propagates_friend_and_races(monkeypatch):
     assert request.preset_overrides["mandatory_race_list"] == [7]
     assert request.preset_overrides["extra_race_list"] == [8]
     assert request.preset_overrides["parent_run"] is True
+
+
+def test_campaign_advance_auto_prepares_and_starts_selecting_lineage(monkeypatch):
+    calls = []
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "SELECTING_LINEAGE",
+        "next_action": "prepare_next_run",
+        "context": {},
+    }
+
+    class FakeStore:
+        def get(self, _campaign_id):
+            return dict(campaign)
+
+    class FakeCampaignRunner:
+        def reconcile(self, *_args, **_kwargs):
+            raise AssertionError("selecting lineage must prepare before runtime reconciliation")
+
+    class FakeCampaignService:
+        def prepare_next_run(self, campaign_id):
+            calls.append(("prepare", campaign_id))
+            campaign.update({
+                "state": "SELECTING_LINEAGE",
+                "next_action": "start_career",
+                "context": {
+                    "prepared_run": {"account": "acct01", "campaign_id": "cmp1"},
+                    "review_required": False,
+                },
+            })
+            return {"campaign": dict(campaign), "prepared_run": campaign["context"]["prepared_run"]}
+
+        def approve_run(self, campaign_id):
+            calls.append(("approve", campaign_id))
+            campaign.update({"state": "RUNNING_CAREER", "next_action": "monitor_career"})
+            return {"runner": {"running": True}}
+
+    monkeypatch.setattr(main, "campaign_store", FakeStore())
+    monkeypatch.setattr(main, "campaign_runner", FakeCampaignRunner())
+    monkeypatch.setattr(main, "campaign_service", FakeCampaignService())
+    monkeypatch.setattr(
+        main,
+        "_campaign_runtime_snapshot",
+        lambda _account: {
+            "current_career": None,
+            "runtime": {"api_reachable": True, "logged_in": True},
+            "bot_state": {"career_runner": {"running": False}},
+        },
+    )
+
+    result = main._campaign_advance("cmp1")
+
+    assert calls == [("prepare", "cmp1"), ("approve", "cmp1")]
+    assert result["campaign"]["state"] == "RUNNING_CAREER"
+    assert result["campaign"]["next_action"] == "monitor_career"
+
+
+def test_campaign_advance_restarts_matching_active_career_before_collecting(monkeypatch):
+    calls = {}
+    prepared = {
+        "account": "acct01",
+        "campaign_id": "cmp1",
+        "trainee_chara_id": 1001,
+        "deck_id": 4,
+        "legacy_slots": [
+            {"trained_chara_id": 11},
+            {"trained_chara_id": 12},
+        ],
+    }
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "RUNNING_CAREER",
+        "context": {"prepared_run": prepared},
+    }
+
+    class FakeStore:
+        def get(self, _campaign_id):
+            return dict(campaign)
+
+        def transition(self, campaign_id, state, **kwargs):
+            calls["transition"] = (campaign_id, state, kwargs)
+            return {**campaign, "state": getattr(state, "value", state), **kwargs}
+
+    class FakeCampaignRunner:
+        def reconcile(self, *_args, **_kwargs):
+            raise AssertionError("active career must be resumed before result reconciliation")
+
+    class FakeCampaignService:
+        def start_career(self, request):
+            calls["start"] = request
+            return {"success": True, "runner": {"running": True}}
+
+        def record_completed_veteran(self, *_args, **_kwargs):
+            raise AssertionError("active career is not a completed result")
+
+    monkeypatch.setattr(main, "campaign_store", FakeStore())
+    monkeypatch.setattr(main, "campaign_runner", FakeCampaignRunner())
+    monkeypatch.setattr(main, "campaign_service", FakeCampaignService())
+    monkeypatch.setattr(
+        main,
+        "_campaign_runtime_snapshot",
+        lambda _account: {
+            "current_career": {
+                "active": True,
+                "trainee_chara_id": 1001,
+                "deck_id": 4,
+                "parent_id_1": 11,
+                "parent_id_2": 12,
+                "account": "acct01",
+                "campaign_id": "cmp1",
+            },
+            "runtime": {"api_reachable": True, "logged_in": True},
+            "bot_state": {"career_runner": {"running": False}},
+        },
+    )
+
+    result = main._campaign_advance("cmp1")
+
+    assert calls["start"] == prepared
+    assert result["campaign"]["state"] == "RUNNING_CAREER"
+    assert result["campaign"]["next_action"] == "monitor_career"
+
+
+def test_campaign_advance_refreshes_finished_runner_and_resumes_live_career(monkeypatch):
+    calls = {}
+    prepared = {
+        "account": "acct01",
+        "campaign_id": "cmp1",
+        "trainee_chara_id": 1001,
+        "deck_id": 4,
+        "legacy_slots": [
+            {"trained_chara_id": 11},
+            {"trained_chara_id": 12},
+        ],
+    }
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "EVALUATING_RESULT",
+        "next_action": "evaluate_result",
+        "context": {"prepared_run": prepared},
+    }
+
+    class FakeStore:
+        def get(self, _campaign_id):
+            return dict(campaign)
+
+        def transition(self, campaign_id, state, **kwargs):
+            calls["transition"] = (campaign_id, state, kwargs)
+            return {**campaign, "state": getattr(state, "value", state), **kwargs}
+
+    class FakeCampaignRunner:
+        def reconcile(self, *_args, **_kwargs):
+            raise AssertionError("live career must be resumed before result collection")
+
+    class FakeCampaignService:
+        def start_career(self, request):
+            calls["start"] = request
+            return {"success": True, "runner": {"running": True}}
+
+        def reconcile_runtime(self, *_args, **_kwargs):
+            raise AssertionError("matching live career must not be treated as mismatch")
+
+    live_career = {
+        "active": True,
+        "trainee_chara_id": 1001,
+        "deck_id": 4,
+        "parent_id_1": 11,
+        "parent_id_2": 12,
+        "account": "acct01",
+        "campaign_id": "cmp1",
+    }
+    initial_snapshot = {
+        "current_career": dict(live_career),
+        "runtime": {"api_reachable": True, "logged_in": True},
+        "bot_state": {"career_runner": {"running": False, "finished": True}},
+    }
+    refreshed_snapshot = {
+        "current_career": dict(live_career),
+        "runtime": {"api_reachable": True, "logged_in": True},
+        "bot_state": {"career_runner": {"running": False, "finished": True}},
+    }
+    monkeypatch.setattr(main, "campaign_store", FakeStore())
+    monkeypatch.setattr(main, "campaign_runner", FakeCampaignRunner())
+    monkeypatch.setattr(main, "campaign_service", FakeCampaignService())
+    monkeypatch.setattr(main, "_campaign_runtime_snapshot", lambda _account: initial_snapshot)
+    monkeypatch.setattr(main, "_refresh_campaign_runtime_snapshot", lambda _account: refreshed_snapshot)
+
+    result = main._campaign_advance("cmp1")
+
+    assert calls["start"] == prepared
+    assert calls["transition"][0:2] == ("cmp1", "RUNNING_CAREER")
+    assert result["campaign"]["state"] == "RUNNING_CAREER"
+    assert result["campaign"]["next_action"] == "monitor_career"
+
+
+def test_campaign_advance_collects_result_after_runner_finishes(monkeypatch):
+    calls = {}
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "RUNNING_CAREER",
+        "spec": {},
+        "context": {},
+    }
+
+    class FakeStore:
+        def get(self, campaign_id):
+            assert campaign_id == "cmp1"
+            return dict(campaign)
+
+        def update_context(self, campaign_id, updates):
+            calls["context"] = updates
+            return {**campaign, "state": "SELECTING_LINEAGE", "context": updates}
+
+    class FakeCampaignRunner:
+        def reconcile(self, campaign_id, *, runtime, bot_state):
+            calls["reconcile"] = (campaign_id, runtime, bot_state)
+            campaign["state"] = "EVALUATING_RESULT"
+            return dict(campaign)
+
+    class FakeCampaignService:
+        def start_career(self, _request):
+            raise AssertionError("finished runner must not resume a stale cached career")
+
+        def record_completed_veteran(self, campaign_id, candidate, pairings):
+            calls["record"] = (campaign_id, candidate, pairings)
+            campaign["state"] = "SELECTING_LINEAGE"
+            return {
+                "campaign": dict(campaign),
+                "candidate": {"trained_chara_id": 12},
+                "decision": "reject",
+            }
+
+    initial_snapshot = {
+        "current_career": {
+            "active": True,
+            "trainee_chara_id": 1001,
+            "deck_id": 4,
+            "parent_id_1": 11,
+            "parent_id_2": 12,
+            "account": "acct01",
+            "campaign_id": "cmp1",
+        },
+        "runtime": {"api_reachable": True, "logged_in": True},
+        "bot_state": {"career_runner": {"running": False, "finished": True}},
+    }
+    refreshed_snapshot = {"owned_candidates": [{"trained_chara_id": 12}]}
+    monkeypatch.setattr(main, "campaign_store", FakeStore())
+    monkeypatch.setattr(main, "campaign_runner", FakeCampaignRunner())
+    monkeypatch.setattr(main, "campaign_service", FakeCampaignService())
+    monkeypatch.setattr(main, "_campaign_runtime_snapshot", lambda account: initial_snapshot)
+    monkeypatch.setattr(main, "_refresh_campaign_runtime_snapshot", lambda account: refreshed_snapshot)
+    monkeypatch.setattr(
+        main,
+        "_campaign_completed_result",
+        lambda current, snapshot: (
+            {"trained_chara_id": 12, "candidate_id": "veteran-12"},
+            [{"trained_chara_id": 11}],
+            [10, 11, 12],
+        ),
+    )
+
+    result = main._campaign_advance("cmp1")
+
+    assert calls["reconcile"] == (
+        "cmp1",
+        initial_snapshot["runtime"],
+        initial_snapshot["bot_state"],
+    )
+    assert calls["record"] == (
+        "cmp1",
+        {"trained_chara_id": 12, "candidate_id": "veteran-12"},
+        [{"trained_chara_id": 11}],
+    )
+    assert calls["context"]["baseline_parent_ids"] == [10, 11, 12]
+    assert calls["context"]["run_start"] is None
+    assert result["campaign"]["state"] == "SELECTING_LINEAGE"
+
+
+def test_campaign_completed_result_uses_new_matching_trainee_and_lineage_sparks():
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "spec": {
+            "final_parent": {"trained_chara_id": 11},
+        },
+        "context": {
+            "baseline_parent_ids": [10, 11],
+            "prepared_run": {"trainee_chara_id": 1001},
+        },
+    }
+    snapshot = {
+        "owned_candidates": [
+            {"trained_chara_id": 10, "card_id": 101401},
+            {"trained_chara_id": 11, "card_id": 101401, "win_saddle_id_array": []},
+            {
+                "trained_chara_id": 12,
+                "card_id": 100101,
+                "rank_score": 3517,
+                "create_time": "2026-07-16 11:05:12",
+                "win_saddle_id_array": [1],
+                "succession_chara_array": [],
+            },
+            {"trained_chara_id": 13, "card_id": 101801},
+        ],
+        "display_by_id": {
+            12: {
+                "instance_id": 12,
+                "name": "Special Week",
+                "tree": {
+                    "self": {
+                        "factors": [
+                            {"factor_id": 302, "category": "stat", "name": "Power", "stars": 2},
+                            {"factor_id": 10010101, "category": "unique", "name": "Shooting Star", "stars": 1},
+                            {"factor_id": 2003302, "category": "skill", "name": "Homestretch Haste", "stars": 2},
+                            {"factor_id": 3007401, "category": "race", "name": "Japan Cup", "stars": 1},
+                        ]
+                    },
+                    "p1": {"factors": [{"factor_id": 303, "category": "stat", "name": "Power", "stars": 3}]},
+                    "p2": {"factors": [{"factor_id": 301, "category": "stat", "name": "Power", "stars": 1}]},
+                    "gp1": {"factors": [{"factor_id": 2302, "category": "aptitude", "name": "Long", "stars": 2}]},
+                },
+            }
+        },
+    }
+
+    candidate, pairings, parent_ids = main._campaign_completed_result(campaign, snapshot)
+
+    assert candidate["candidate_id"] == "veteran-12"
+    assert candidate["trained_chara_id"] == 12
+    assert candidate["name"] == "Special Week"
+    assert candidate["spark_totals"] == {
+        ("blue", "power"): 6,
+        ("pink", "long"): 2,
+    }
+    assert candidate["factor_tree"] == snapshot["display_by_id"][12]["tree"]
+    assert pairings == [{
+        "trained_chara_id": 11,
+        "card_id": 101401,
+        "win_saddle_id_array": [],
+        "rental": False,
+    }]
+    assert parent_ids == [10, 11, 12, 13]
+
+
+def test_campaign_start_applies_result_and_launches_career_runner(monkeypatch):
+    calls = {}
+
+    class FakeCareerRunner:
+        def start(self, client, preset, initial_result, max_steps, *, burn_clocks, dev_mode):
+            calls["runner"] = {
+                "client": client,
+                "preset": preset,
+                "initial_result": initial_result,
+                "max_steps": max_steps,
+                "burn_clocks": burn_clocks,
+                "dev_mode": dev_mode,
+            }
+
+        def snapshot(self):
+            return {"running": True}
+
+    client = object()
+    start_result = {"data": {"chara_info": {"card_id": 100101, "turn": 1, "scenario_id": 2}}}
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_client", client)
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {"umas": [{"id": 100101}], "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}]},
+    )
+    monkeypatch.setattr(
+        main,
+        "start_career_from_request",
+        lambda _request: {"success": True, "result": start_result},
+    )
+    def fake_apply_career_result(result):
+        calls["applied_result"] = result
+        return {"career": {"active": True}}, result["data"]["chara_info"]
+
+    monkeypatch.setattr(main, "apply_career_result", fake_apply_career_result)
+    monkeypatch.setattr(
+        main,
+        "apply_deck_type_counts",
+        lambda preset, **kwargs: calls.setdefault("deck_meta", (preset, kwargs)),
+    )
+    monkeypatch.setattr(main, "_apply_preset_turn_delay", lambda preset: calls.setdefault("delay_preset", preset))
+    monkeypatch.setattr(main, "career_runner", FakeCareerRunner())
+
+    result = main._campaign_start_career({
+        "account": "acct01",
+        "deck_id": 3,
+        "trainee_chara_id": 1001,
+        "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+        "friend_support": {"viewer_id": 33, "support_card_id": 44},
+        "preset": {"name": "parent", "scenario_id": 2, "burn_clocks": True},
+    })
+
+    assert calls["applied_result"] == start_result
+    assert calls["runner"] == {
+        "client": client,
+        "preset": {"name": "parent", "scenario_id": 2, "burn_clocks": True, "extra_race_list": []},
+        "initial_result": start_result,
+        "max_steps": 2500,
+        "burn_clocks": True,
+        "dev_mode": False,
+    }
+    assert result["success"] is True
+    assert result["runner"]["running"] is True
+    assert result["account"]["career"] == {
+        "active": True,
+        "trainee_chara_id": 1001,
+        "deck_id": 3,
+        "parent_id_1": 11,
+        "parent_id_2": 22,
+    }
+
+
+def test_campaign_start_resumes_matching_active_career_without_starting_another(monkeypatch):
+    calls = {}
+
+    class FakeClient:
+        def load_career(self, *, scenario_id):
+            calls["load_scenario"] = scenario_id
+            return {"data": {"chara_info": {"card_id": 100101, "turn": 1, "scenario_id": 2}}}
+
+    _stub_campaign_runtime_launch(monkeypatch)
+    monkeypatch.setattr(
+        main,
+        "active_account",
+        {
+            "name": "acct01",
+            "career": {
+                "active": True,
+                "card_id": "100101",
+                "deck_id": 3,
+                "parent_id_1": 11,
+                "parent_id_2": 22,
+            },
+        },
+    )
+    monkeypatch.setattr(main, "active_client", FakeClient())
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {"umas": [{"id": 100101}], "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}]},
+    )
+    monkeypatch.setattr(
+        main,
+        "start_career_from_request",
+        lambda _request: (_ for _ in ()).throw(AssertionError("must not start another career")),
+    )
+
+    result = main._campaign_start_career({
+        "account": "acct01",
+        "campaign_id": "cmp1",
+        "deck_id": 3,
+        "trainee_chara_id": 1001,
+        "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+        "friend_support": {"viewer_id": 33, "support_card_id": 44},
+        "preset": {"name": "parent", "scenario_id": 2},
+    })
+
+    assert calls["load_scenario"] == 2
+    assert result["success"] is True
+
+
+def test_campaign_start_recovers_redacted_friend_viewer_id_from_runtime_cache(monkeypatch):
+    captured = []
+    _stub_campaign_runtime_launch(monkeypatch)
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {
+            "umas": [{"id": 100101, "name": "Special Week"}],
+            "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}],
+            "friends": [
+                {
+                    "viewer_id": 777,
+                    "support_card_id": 44,
+                    "support_name": "Super Creek",
+                    "limit_break_count": 4,
+                    "exp": 100,
+                    "favorite_flag": 1,
+                    "friend_state": 2,
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        main,
+        "start_career_from_request",
+        lambda request: captured.append(request) or {"success": True, "result": {"started": True}},
+    )
+
+    result = main._campaign_start_career({
+        "account": "acct01",
+        "deck_id": 3,
+        "trainee_chara_id": 1001,
+        "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+        "friend_support": {
+            "viewer_id": "<redacted>",
+            "support_card_id": 44,
+            "support_name": "Super Creek",
+        },
+        "preset": {"name": "parent"},
+    })
+
+    assert result["success"] is True
+    assert captured[0].friend_viewer_id == 777
+    assert captured[0].friend_card_id == 44
+
+
+def test_campaign_start_reports_unavailable_redacted_friend_support(monkeypatch):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {
+            "umas": [{"id": 100101, "name": "Special Week"}],
+            "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}],
+            "friends": [],
+        },
+    )
+
+    with pytest.raises(ValueError, match="Friend support 44 is no longer available"):
+        main._campaign_start_career({
+            "account": "acct01",
+            "deck_id": 3,
+            "trainee_chara_id": 1001,
+            "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+            "friend_support": {
+                "viewer_id": "<redacted>",
+                "support_card_id": 44,
+                "support_name": "Super Creek",
+            },
+            "preset": {"name": "parent"},
+        })
 
 def test_campaign_planner_includes_rentals_without_duplicate_trained_ids(monkeypatch):
     monkeypatch.setattr(

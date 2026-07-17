@@ -102,6 +102,73 @@ def race_compat(p1_saddles, p1_gp_saddles, p2_saddles, p2_gp_saddles, g1_saddle_
     return score
 
 
+def _pair_relation_score(mdb_path, first_chara_id, second_chara_id):
+    """Return the base compatibility shared by one veteran and one direct parent."""
+    if not first_chara_id or not second_chara_id:
+        return 0
+    points, groups = _load_relations(mdb_path)
+    return sum(
+        int(points or 0)
+        for relation_type, points in points.items()
+        if first_chara_id in groups.get(relation_type, ())
+        and second_chara_id in groups.get(relation_type, ())
+    )
+
+
+def _shared_g1_score(first_saddles, second_saddles, g1_saddle_ids):
+    """uma.moe-style veteran race affinity: +3 per shared G1, non-G1 ignored."""
+    shared = set(first_saddles or []) & set(second_saddles or []) & set(g1_saddle_ids or [])
+    return len(shared) * 3
+
+
+def calculate_veteran_affinity(mdb_path, veteran):
+    """Score a completed veteran against its two direct inheritance parents.
+
+    This is the per-veteran affinity shown by uma.moe: the veteran is the main
+    character, direct lineage entries at position 10 and 20 are the two sides,
+    and each side contributes base character compatibility plus shared G1 wins.
+    """
+    main_card_id = int((veteran or {}).get("card_id") or 0)
+    main_chara_id = card_to_chara_id(main_card_id) if main_card_id else 0
+    main_saddles = (veteran or {}).get("win_saddle_id_array") or []
+    direct_by_position = {
+        int(row.get("position_id") or 0): row
+        for row in ((veteran or {}).get("succession_chara_array") or [])
+        if isinstance(row, dict)
+    }
+    g1_saddle_ids = _load_g1_saddles(mdb_path)
+
+    def side(position_id):
+        row = direct_by_position.get(position_id) or {}
+        card_id = int(row.get("card_id") or 0)
+        chara_id = card_to_chara_id(card_id) if card_id else 0
+        base = _pair_relation_score(mdb_path, main_chara_id, chara_id)
+        race = _shared_g1_score(
+            main_saddles,
+            row.get("win_saddle_id_array") or [],
+            g1_saddle_ids,
+        )
+        return {
+            "position_id": position_id,
+            "card_id": card_id,
+            "base": base,
+            "race": race,
+            "total": base + race,
+        }
+
+    parent_1 = side(10)
+    parent_2 = side(20)
+    base = parent_1["base"] + parent_2["base"]
+    race = parent_1["race"] + parent_2["race"]
+    return {
+        "total": base + race,
+        "base": base,
+        "race": race,
+        "parent_1": parent_1,
+        "parent_2": parent_2,
+    }
+
+
 def _parent_tree(parent):
     """Extract (chara_id, win_saddles, gp_chara_ids[2], gp_saddles[2]) from a
     trained-chara dict (as returned by load/index / boot data).

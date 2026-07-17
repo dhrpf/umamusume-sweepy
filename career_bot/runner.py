@@ -1251,6 +1251,7 @@ class CareerRunner:
             candidates.append({
                 "chara_id": card_id // 100,
                 "card_id": card_id,
+                "is_trainee": True,
                 "rank_score": sum(
                     int((chara_info or {}).get(key) or 0)
                     for key in ("speed", "stamina", "power", "guts", "wiz")
@@ -1267,6 +1268,7 @@ class CareerRunner:
             candidates.append({
                 "chara_id": chara_id,
                 "card_id": chara_id * 100 + 1,
+                "is_trainee": False,
                 "rank_score": int((team_stats.get(target_id) or {}).get("rank_score") or 0),
             })
 
@@ -1296,7 +1298,11 @@ class CareerRunner:
         # every division at the API limit of three members.
         states = {(0, 0, 0, 0, 0): (0.0, [])}
         for candidate_index, candidate in enumerate(candidates):
-            next_states = dict(states)
+            # The player's trainee is mandatory in Unity Cup team_edit. Once
+            # the team grows beyond 15 candidates, treating every candidate as
+            # optional lets the optimizer discard the trainee for a higher
+            # rank-score guest, which the server rejects with result 205.
+            next_states = {} if candidate.get("is_trainee") else dict(states)
             for counts, (score, assignments) in states.items():
                 for distance_type in range(1, 6):
                     slot_index = distance_type - 1
@@ -1683,23 +1689,12 @@ class CareerRunner:
             self._log("race_end_transient", current_turn, "reloading after 5xx")
             return self._fresh_career_state(client, strategy) or out
         except Exception as e:
-            if any(err in str(e) for err in ("102", "1503")):
-                # 102 on race_end = server already past race results → relogin → load → race_out
-                self._log("race_end_reconciled", current_turn, f"race already done ({err}), relogin→race_out")
-                print(f"[DBG race_end 102] entering reconcile, calling _fresh_career_state", flush=True)
-                fresh = self._fresh_career_state(client, strategy)
-                print(f"[DBG race_end 102] fresh_returned={bool(fresh)} has_chara={bool((fresh.get('data') or {}).get('chara_info'))}", flush=True)
-                if not fresh:
-                    return out
-                fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
-                fresh_turn = int(fresh_chara.get("turn", current_turn))
-                try:
-                    return client.race_out(current_turn=fresh_turn)
-                except Exception as e2:
-                    if any(err in str(e2) for err in ("102", "1503", "217", "201", "StateRecoveryError")):
-                        self._log("race_out_after_reconcile", fresh_turn, f"graceful: {e2}")
-                        return fresh
-                    raise
+            if any(code in str(e) for code in ("102", "1503")):
+                # Reload the authoritative race state instead of guessing that
+                # race_end committed. In particular, 1503 can leave the server
+                # at playing_state=3, where race_end still needs to be retried.
+                self._log("race_end_reconciled", current_turn, f"reload after race_end error: {e}")
+                return self._fresh_career_state(client, strategy) or out
             raise
 
         try:
@@ -1742,11 +1737,6 @@ class CareerRunner:
             self._log("race_skip", current_turn, f"not in race (state={playing_state})")
             return payload
 
-        # Post-race results screen (playing_state=3) — race already done, skip
-        if playing_state == 3:
-            self._log("race_results", current_turn, "post-race screen, skipping race_end/out")
-            return payload
-
         # playing_state=5 + state=0 = still in career, reward card pick — need race_out to return home
         if playing_state == 5 and int(chara.get("state") or 0) == 0:
             self._log("race_out_pickup", current_turn, "playing_state=5 state=0, race_out to return home")
@@ -1760,31 +1750,17 @@ class CareerRunner:
                 raise
         
         if phase == "end":
-            if playing_state in {1}:
-                self._log("race_end_skip", current_turn, "resume already home")
+            if playing_state in {1, 4}:
+                self._log("race_end_skip", current_turn, f"resume state={playing_state}")
             else:
                 try:
                     client.race_end(current_turn=current_turn)
                     self._log("race_end", current_turn, "resume")
                 except Exception as e:
-                    if any(err in str(e) for err in ("102", "1503")):
-                        # 102 = server already past race results → relogin before race_out,
-                        # else race_out returns 217 (resource busy). Mirror _run_race path.
-                        self._log("race_end_reconciled", current_turn, "resume already done (102), relogin→race_out")
-                        fresh = self._fresh_career_state(client, strategy)
-                        if not fresh:
-                            return payload
-                        fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
-                        fresh_turn = int(fresh_chara.get("turn", current_turn))
-                        try:
-                            return client.race_out(current_turn=fresh_turn)
-                        except Exception as e2:
-                            if any(err in str(e2) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
-                                self._log("race_out_after_reconcile", fresh_turn, f"graceful: {e2}")
-                                return fresh
-                            raise
-                    else:
-                        raise
+                    if any(code in str(e) for code in ("102", "1503")):
+                        self._log("race_end_reconciled", current_turn, f"reload after resume race_end error: {e}")
+                        return self._fresh_career_state(client, strategy) or payload
+                    raise
             try:
                 return client.race_out(current_turn=current_turn)
             except Exception as e:
@@ -1870,34 +1846,20 @@ class CareerRunner:
                         raise
                 else:
                     raise
-        elif playing_state in (4, 5):
-            # Race already in progress or finishing — skip start
+        elif playing_state in (3, 4, 5):
+            # Race already started or is finishing — skip race_start.
             self._log("race_skip_start", current_turn, f"state={playing_state}")
-        if playing_state in {1}:
-            self._log("race_end_skip", current_turn, "resume already home")
+        if playing_state in {1, 4}:
+            self._log("race_end_skip", current_turn, f"resume state={playing_state}")
         else:
             try:
                 client.race_end(current_turn=current_turn)
                 self._log("race_end", current_turn, "resume")
             except Exception as e:
-                if any(err in str(e) for err in ("102", "1503")):
-                    # 102 = server already past race results → relogin before race_out,
-                    # else race_out returns 217 (resource busy). Mirror _run_race path.
-                    self._log("race_end_reconciled", current_turn, "resume already done (102), relogin→race_out")
-                    fresh = self._fresh_career_state(client, strategy)
-                    if not fresh:
-                        return payload
-                    fresh_chara = (fresh.get("data") or {}).get("chara_info") or {}
-                    fresh_turn = int(fresh_chara.get("turn", current_turn))
-                    try:
-                        return client.race_out(current_turn=fresh_turn)
-                    except Exception as e2:
-                        if any(err in str(e2) for err in ("102", "1503", "201", "217", "StateRecoveryError")):
-                            self._log("race_out_after_reconcile", fresh_turn, f"graceful: {e2}")
-                            return fresh
-                        raise
-                else:
-                    raise
+                if any(code in str(e) for code in ("102", "1503")):
+                    self._log("race_end_reconciled", current_turn, f"reload after resume race_end error: {e}")
+                    return self._fresh_career_state(client, strategy) or payload
+                raise
         try:
             return client.race_out(current_turn=current_turn)
         except Exception as e:

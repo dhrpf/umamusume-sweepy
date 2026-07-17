@@ -62,6 +62,61 @@ def test_forced_program_prefers_g1_when_only_race_command_available(tmp_path):
     assert planner.forced_program(state) == 1001
 
 
+def test_forced_program_prioritizes_active_route_objective_over_other_g1(tmp_path):
+    planner = _planner(tmp_path)
+    planner.objective_resolver.routes = {
+        1: {
+            "objectives": [
+                {
+                    "id": 1,
+                    "target_type": 1,
+                    "sort_id": 1,
+                    "turn": 12,
+                    "condition_type": 1,
+                    "condition_id": 1002,
+                    "condition_value_1": 5,
+                }
+            ]
+        }
+    }
+    state = _state(available=(1001, 1002))
+    state["data"]["chara_info"].update({
+        "route_id": 1,
+        "route_race_id_array": [1],
+    })
+
+    assert planner.forced_program(state, {"mandatory_race_list": [1001, 1002]}) == 1002
+
+
+def test_forced_program_chooses_special_week_derby_over_oaks_at_turn_34(tmp_path):
+    planner = _planner(tmp_path)
+    planner.program.update({
+        165: {"name": "Japanese Oaks", "race_instance_id": "100901"},
+        166: {"name": "Japanese Derby", "race_instance_id": "101001"},
+    })
+    planner.objective_resolver.routes = {
+        1: {
+            "objectives": [
+                {"id": 1, "target_type": 1, "sort_id": 1, "turn": 12, "condition_type": 1, "condition_id": 1069, "condition_value_1": 0},
+                {"id": 2, "target_type": 1, "sort_id": 2, "turn": 27, "condition_type": 1, "condition_id": 181, "condition_value_1": 5},
+                {"id": 3, "target_type": 1, "sort_id": 3, "turn": 34, "condition_type": 1, "condition_id": 166, "condition_value_1": 5},
+            ]
+        }
+    }
+    planner.record_race_result(12, 1069, 1)
+    planner.record_race_result(27, 181, 1)
+    state = _state(turn=34, available=(165, 166))
+    state["data"]["chara_info"].update({
+        "route_id": 1,
+        "route_race_id_array": [1, 2, 3],
+    })
+
+    assert planner.forced_program(
+        state,
+        {"mandatory_race_list": [165, 166]},
+    ) == 166
+
+
 def test_rejected_program_is_removed_from_wanted_available(tmp_path):
     planner = _planner(tmp_path)
     state = _state(available=(1001,))

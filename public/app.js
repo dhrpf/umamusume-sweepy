@@ -3128,6 +3128,18 @@ const els = {
                 <div class="vet-factor-row">${renderParentFactorChips(parent)}</div>
             </div>`;
         }
+        function veteranAffinity(parent) {
+            const value = parent?.affinity;
+            return value && typeof value === 'object' ? value : null;
+        }
+        function renderVeteranAffinityBadge(parent) {
+            const affinity = veteranAffinity(parent);
+            if (!affinity) return '<span class="veteran-affinity-badge is-unavailable">Affinity —</span>';
+            const total = Number(affinity.total) || 0;
+            const base = Number(affinity.base) || 0;
+            const race = Number(affinity.race) || 0;
+            return `<span class="veteran-affinity-badge" title="Base ${base} · Race ${race}">Affinity <strong>${total}</strong></span>`;
+        }
         function getFilteredVeteranPageParents() {
             const q = (state.veteranPageQuery || '').toLowerCase().trim();
             let parents = (dashData && dashData.parents) || [];
@@ -3152,6 +3164,7 @@ const els = {
                 return Number.isFinite(parsed) ? parsed : 0;
             };
             const value = p => {
+                if (sort.startsWith('affinity')) return numericValue(p.affinity?.total);
                 if (sort.startsWith('point')) return numericValue(p.rank_score);
                 if (sort.startsWith('rank')) return numericValue(p.rank);
                 // API often lacks explicit acquired timestamp; trained_chara_id tracks creation order reliably.
@@ -3186,10 +3199,31 @@ const els = {
                         <span class="veteran-page-name">${escapeHtml(parent.name || 'Unknown')}</span>
                         <span class="rank-badge veteran-rank-inline">${rankMap[parent.rank] || '??'}</span>
                         <span class="veteran-page-id">ID ${escapeHtml(parent.instance_id || '?')} · ${escapeHtml(parent.rank_score || 0)}</span>
+                        ${renderVeteranAffinityBadge(parent)}
                     </div>
                     <div class="vet-stat-row veteran-page-stats">${renderParentStats(parent)}</div>
                     <div class="vet-factor-row veteran-page-factors">${renderParentFactorChips(parent, 12)}</div>
                     <div class="vet-skill-list veteran-page-skills">${renderParentSkillList(parent, 60)}</div>
+                </div>
+            </div>`;
+        }
+        function renderVeteranAffinityBreakdown(parent) {
+            const affinity = veteranAffinity(parent);
+            if (!affinity) {
+                return `<div class="vet-tooltip-section"><div class="vet-tooltip-label">AFFINITY</div><div class="vet-empty">Affinity data unavailable.</div></div>`;
+            }
+            const parent1 = affinity.parent_1 || {};
+            const parent2 = affinity.parent_2 || {};
+            const parent1Name = parent?.tree?.p1?.name || 'Parent 1';
+            const parent2Name = parent?.tree?.p2?.name || 'Parent 2';
+            return `<div class="vet-tooltip-section">
+                <div class="vet-tooltip-label">AFFINITY BREAKDOWN</div>
+                <div class="veteran-affinity-breakdown">
+                    <div class="veteran-affinity-total"><span>Total</span><strong>${escapeHtml(affinity.total ?? 0)}</strong></div>
+                    <div><span>Base</span><strong>${escapeHtml(affinity.base ?? 0)}</strong></div>
+                    <div><span>Race</span><strong>${escapeHtml(affinity.race ?? 0)}</strong></div>
+                    <div><span>Parent 1 · ${escapeHtml(parent1Name)}</span><strong>${escapeHtml(parent1.total ?? 0)}</strong><small>Base ${escapeHtml(parent1.base ?? 0)} + Race ${escapeHtml(parent1.race ?? 0)}</small></div>
+                    <div><span>Parent 2 · ${escapeHtml(parent2Name)}</span><strong>${escapeHtml(parent2.total ?? 0)}</strong><small>Base ${escapeHtml(parent2.base ?? 0)} + Race ${escapeHtml(parent2.race ?? 0)}</small></div>
                 </div>
             </div>`;
         }
@@ -3204,6 +3238,7 @@ const els = {
                     <div class="vet-stat-row veteran-page-stats">${renderParentStats(parent)}</div>
                 </div>
             </div>
+            ${renderVeteranAffinityBreakdown(parent)}
             <div class="vet-tooltip-section">
                 <div class="vet-tooltip-label">SKILLS</div>
                 <div class="vet-skill-list">${renderParentSkillList(parent, 999)}</div>

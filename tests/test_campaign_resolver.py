@@ -22,6 +22,19 @@ def test_locked_slot_keeps_specific_campaign_legacy():
     assert result["reason"] == "locked campaign lineage"
 
 
+def test_locked_slot_does_not_require_unused_candidate_score():
+    resolver = LegacyResolver(allow_rental=False)
+
+    result = resolver.resolve_slot(
+        LegacySlot(role="parent1", mode="LOCKED", trained_chara_id=41),
+        candidates=[{"trained_chara_id": 41, "rental": False}],
+    )
+
+    assert result["status"] == "RESOLVED"
+    assert result["trained_chara_id"] == 41
+    assert result["reason"] == "locked campaign lineage"
+
+
 def test_locked_slot_is_unresolved_when_veteran_is_unavailable():
     resolver = LegacyResolver(allow_rental=False)
 

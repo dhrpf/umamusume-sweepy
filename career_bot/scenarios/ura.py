@@ -218,13 +218,18 @@ class UraStrategy(ScenarioStrategy):
             return Decision("event", payload, "event")
 
         # --- Active race ---
-        if data.get("race_start_info") or chara.get("playing_state") in (2, 4):
-            if chara.get("playing_state") != 3:
-                return Decision(
-                    "race_progress",
-                    {"current_turn": turn, "chara_info": chara, "race_start_info": data.get("race_start_info"), "_strategy": self},
-                    "continue race",
-                )
+        playing_state = int(chara.get("playing_state") or 0)
+        career_state = int(chara.get("state") or 0)
+        career_failed = playing_state == 5 and career_state == 2
+        if not career_failed and (
+            data.get("race_start_info")
+            or playing_state in (2, 3, 4, 5)
+        ):
+            return Decision(
+                "race_progress",
+                {"current_turn": turn, "chara_info": chara, "race_start_info": data.get("race_start_info"), "_strategy": self},
+                "continue race",
+            )
 
         # --- Forced target race (URA scenario) ---
         forced = self._forced_target_race(state, turn)
@@ -258,10 +263,7 @@ class UraStrategy(ScenarioStrategy):
                 )
 
         # --- Finish check (early: before any race fallback) ---
-        playing_state = int(chara.get("playing_state") or 0)
-        career_state = int(chara.get("state") or 0)
-        career_failed = playing_state == 5 and career_state == 2
-        if data.get("is_goal", False) or playing_state == 3 or career_failed:
+        if data.get("is_goal", False) or career_failed:
             payload = {"current_turn": turn}
             if career_failed:
                 payload["career_failed"] = True

@@ -1597,10 +1597,13 @@ class UmaClient:
         })
 
     def team_edit(self, team_data_array, current_turn=0):
+        # team_edit is best-effort in the Unity flow. Invalid roster payloads
+        # return 205 and should not trigger the generic 205/208/501 retry stack,
+        # which otherwise turns one optional edit into repeated full relogins.
         return self.call('single_mode_team/team_edit', {
             'team_data_array': team_data_array,
             'current_turn': current_turn,
-        })
+        }, retry_208=0, retry_205=0, retry_501=0)
 
     def team_race_analyze(self, race_set_id, current_turn=0):
         return self.call('single_mode_team/team_race_analyze', {

@@ -440,7 +440,18 @@ class RacePlanner:
             race = data.get("race_start_info") or {}
             return int(race.get("program_id") or 0)
 
-        # Priority 1: planned/wanted program matching this turn
+        # Priority 1: the active character objective. On forced-race turns the
+        # server can expose several G1 races, but only one advances the route.
+        objective = self.current_objective_status(state)
+        if objective and not objective.completed and objective.supported:
+            objective_programs = self.objective_resolver.qualifying_program_ids(
+                objective,
+                available,
+            )
+            if objective_programs:
+                return objective_programs[0]
+
+        # Priority 2: planned/wanted program matching this turn
         if preset:
             turn = int((data.get("chara_info") or {}).get("turn") or 0)
             wanted = self.wanted_programs(preset, turn)
@@ -448,7 +459,7 @@ class RacePlanner:
                 if pid in wanted:
                     return pid
 
-        # Priority 2: prefer G1 (race_instance_id leading 1) over lower grades
+        # Priority 3: prefer G1 (race_instance_id leading 1) over lower grades
         g1 = [pid for pid in available if str(self.program.get(pid, {}).get("race_instance_id", "0"))[0] == "1"]
         if g1:
             return g1[0]
@@ -683,7 +694,21 @@ class RacePlanner:
         turn = int((data.get("chara_info") or {}).get("turn") or 0)
         available = self.available_programs(state)
         wanted = self.wanted_programs({"extra_race_list": (preset or {}).get("mandatory_race_list") or []}, turn)
-        return [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
+        valid = [pid for pid in wanted if pid in available and (turn, pid) not in self.rejected]
+        if not valid:
+            return valid
+
+        status = self.current_objective_status(state)
+        if (
+            status
+            and not status.completed
+            and status.supported
+            and status.definition.condition_type == 1
+        ):
+            target = int(status.definition.condition_id or 0)
+            if target in available and (turn, target) not in self.rejected:
+                return [target, *(pid for pid in valid if pid != target)]
+        return valid
 
     def choose(self, state, preset):
         data = state.get("data") or {}

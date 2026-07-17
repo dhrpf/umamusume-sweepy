@@ -233,6 +233,27 @@ def test_unity_scenario_is_registered():
     assert STRATEGIES[2] is UnityStrategy
 
 
+def test_unity_playing_state_3_resumes_race_instead_of_finishing():
+    decision = UnityStrategy().next_decision(
+        {
+            "data": {
+                "chara_info": {
+                    "turn": 59,
+                    "state": 0,
+                    "playing_state": 3,
+                    "race_program_id": 73,
+                },
+                "race_start_info": {"program_id": 73},
+                "home_info": {},
+            }
+        },
+        {"scenario_id": 2},
+    )
+
+    assert decision.action == "race_progress"
+    assert decision.payload["current_turn"] == 59
+
+
 def test_runner_allows_unity_playing_states_for_unity_strategy():
     runner = CareerRunner.__new__(CareerRunner)
     strategy = UnityStrategy()
@@ -308,6 +329,40 @@ def test_build_unity_team_assigns_distance_and_style_from_aptitude():
         {"distance_type": 1, "member_id": 1, "chara_id": 2001, "running_style": 1},
         {"distance_type": 4, "member_id": 1, "chara_id": 1001, "running_style": 2},
     ]
+
+
+def test_build_unity_team_never_drops_the_trainee_when_roster_is_full():
+    runner = CareerRunner.__new__(CareerRunner)
+    aptitude = {
+        "turf": 7, "dirt": 7,
+        "short": 7, "mile": 7, "medium": 7, "long": 7,
+        "front": 7, "pace": 6, "late": 5, "end": 4,
+    }
+    runner._unity_aptitudes = {
+        100101: aptitude,
+        **{(2000 + index) * 100 + 1: aptitude for index in range(1, 16)},
+    }
+    team_data_set = {
+        "evaluation_info_array": [
+            {"target_id": index, "member_state": 1, "chara_id": 2000 + index}
+            for index in range(1, 16)
+        ],
+        "team_info": {
+            "team_chara_info_array": [
+                {"training_partner_id": index, "rank_score": 100000 + index}
+                for index in range(1, 16)
+            ],
+        },
+    }
+
+    roster = runner._build_unity_team(
+        team_data_set,
+        {"card_id": 100101, "speed": 1, "stamina": 1, "power": 1, "guts": 1, "wiz": 1},
+        {"unity_config": {"default_running_style": 1}},
+    )
+
+    assert len(roster) == 15
+    assert any(row["chara_id"] == 1001 for row in roster)
 
 
 class _FakeTeamRaceClient:
@@ -462,7 +517,11 @@ def test_unity_client_methods_use_expected_payloads():
 
     assert calls == [
         ("single_mode_team/opponent_list", {"current_turn": 24}, {}),
-        ("single_mode_team/team_edit", {"team_data_array": [{"member_id": 1}], "current_turn": 24}, {}),
+        (
+            "single_mode_team/team_edit",
+            {"team_data_array": [{"member_id": 1}], "current_turn": 24},
+            {"retry_208": 0, "retry_205": 0, "retry_501": 0},
+        ),
         ("single_mode_team/team_race_analyze", {"race_set_id": 777, "current_turn": 24}, {}),
         ("single_mode_team/team_race_start", {"team_race_set_id": 777, "current_turn": 24}, {}),
         ("single_mode_team/team_race_end", {"current_turn": 24}, {}),

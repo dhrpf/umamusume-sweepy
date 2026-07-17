@@ -98,3 +98,36 @@ def test_veteran_views_use_chrono_style_grouped_direct_lineage_sparks():
     assert ".stars.stars-own" in styles
     assert ".stars.stars-blue" in styles
     assert ".stars.stars-pink" in styles
+
+
+def test_veteran_page_renders_affinity_badge_breakdown_and_sorting():
+    html = (ROOT / "public" / "index.html").read_text(encoding="utf-8")
+    app_js = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
+    styles = (ROOT / "public" / "styles.css").read_text(encoding="utf-8")
+
+    assert '<option value="affinity_desc">Affinity ↓</option>' in html
+    assert '<option value="affinity_asc">Affinity ↑</option>' in html
+    assert "function renderVeteranAffinityBadge(parent)" in app_js
+    assert "function renderVeteranAffinityBreakdown(parent)" in app_js
+    assert "p.affinity?.total" in app_js
+
+    card_start = app_js.index("function veteranPageCard(parent)")
+    card_end = app_js.index("function renderVeteranDetail(parent)", card_start)
+    card_source = app_js[card_start:card_end]
+    assert "renderVeteranAffinityBadge(parent)" in card_source
+
+    breakdown_start = app_js.index("function renderVeteranAffinityBreakdown(parent)")
+    breakdown_end = app_js.index("function renderVeteranDetail(parent)", breakdown_start)
+    breakdown_source = app_js[breakdown_start:breakdown_end]
+    assert "Base" in breakdown_source
+    assert "Race" in breakdown_source
+    assert "Parent 1" in breakdown_source
+    assert "Parent 2" in breakdown_source
+
+    detail_start = app_js.index("function renderVeteranDetail(parent)")
+    detail_end = app_js.index("function openVeteranDetail", detail_start)
+    detail_source = app_js[detail_start:detail_end]
+    assert "renderVeteranAffinityBreakdown(parent)" in detail_source
+
+    assert ".veteran-affinity-badge" in styles
+    assert ".veteran-affinity-breakdown" in styles

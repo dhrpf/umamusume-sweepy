@@ -32,7 +32,11 @@ class LegacyResolver:
         self.allow_rental = allow_rental
 
     def resolve_slot(self, slot: LegacySlot, *, candidates: list[dict]) -> dict:
-        validated = [self._validate_candidate(row) for row in candidates]
+        require_score = slot.mode == "FLEXIBLE"
+        validated = [
+            self._validate_candidate(row, require_score=require_score)
+            for row in candidates
+        ]
         allowed = [row for row in validated if self.allow_rental or not row["rental"]]
         if slot.mode == "LOCKED":
             matches = [
@@ -78,15 +82,16 @@ class LegacyResolver:
         }
 
     @staticmethod
-    def _validate_candidate(candidate: dict) -> dict:
+    def _validate_candidate(candidate: dict, *, require_score: bool = True) -> dict:
         if not isinstance(candidate, dict):
             raise ValueError("candidate must be a dictionary")
         trained_chara_id = candidate.get("trained_chara_id")
         if type(trained_chara_id) is not int or trained_chara_id <= 0:
             raise ValueError("candidate trained_chara_id must be a positive integer")
-        score = candidate.get("score")
-        if isinstance(score, bool) or not isinstance(score, Real) or not isfinite(score):
-            raise ValueError("candidate score must be finite numeric")
+        if require_score:
+            score = candidate.get("score")
+            if isinstance(score, bool) or not isinstance(score, Real) or not isfinite(score):
+                raise ValueError("candidate score must be finite numeric")
         if type(candidate.get("rental")) is not bool:
             raise ValueError("candidate rental must be an explicit boolean")
         return candidate

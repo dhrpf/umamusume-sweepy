@@ -370,7 +370,16 @@ def test_campaign_spec_accepts_new_web_planner_shape():
         ],
         final_parent={"chara_id": 101, "trained_chara_id": 202},
         loop_members=[
-            {"chara_id": 11, "deck_id": 0, "pinned": True},
+            {
+                "chara_id": 11,
+                "deck_id": 0,
+                "pinned": True,
+                "friend_support": {
+                    "viewer_id": 501,
+                    "support_card_id": 9001,
+                    "support_name": "Kitasan Black",
+                },
+            },
             {"chara_id": 12, "deck_id": 3},
             {"chara_id": 13, "deck_id": 10},
             {"chara_id": 14},
@@ -402,6 +411,12 @@ def test_campaign_spec_accepts_new_web_planner_shape():
         (13, 10, False),
         (14, 0, False),
     ]
+    assert spec.loop_members[0].friend_support.model_dump() == {
+        "viewer_id": 501,
+        "support_card_id": 9001,
+        "support_name": "Kitasan Black",
+    }
+    assert spec.loop_members[1].friend_support is None
     assert spec.options.allow_rental is True
     assert spec.options.auto_use_best_veteran is True
 

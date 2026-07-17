@@ -100,6 +100,30 @@ def test_pause_and_resume_return_to_previous_state(tmp_path):
     assert resumed["paused_from_state"] == ""
 
 
+def test_resume_restores_start_career_for_prepared_auto_run(tmp_path):
+    store = CampaignStore(tmp_path / "campaigns.sqlite3")
+    store.create(sample_spec(), campaign_id="campaign-1")
+    store.transition("campaign-1", CampaignState.READY)
+    store.transition("campaign-1", CampaignState.STARTING_BOT)
+    store.transition("campaign-1", CampaignState.SELECTING_LINEAGE)
+    store.update_context(
+        "campaign-1",
+        {
+            "prepared_run": {"campaign_id": "campaign-1", "trainee_chara_id": 1001},
+            "prepared_run_id": "prepared-1",
+            "review_required": False,
+            "pending_review": None,
+            "run_start": None,
+        },
+    )
+
+    store.pause("campaign-1")
+    resumed = store.resume("campaign-1")
+
+    assert resumed["state"] == CampaignState.SELECTING_LINEAGE.value
+    assert resumed["next_action"] == "start_career"
+
+
 def test_usage_enforces_run_carrot_clock_and_runtime_budgets(tmp_path):
     clock = FakeClock()
     store = CampaignStore(tmp_path / "campaigns.sqlite3", clock=clock)

@@ -1007,10 +1007,21 @@ class CampaignStore:
                 campaign_id=str(campaign_id),
                 target=target,
             )
+            context = _json_loads(row["context_json"]) or {}
+            next_action = ""
+            prepared_run = context.get("prepared_run")
+            if (
+                target is CampaignState.SELECTING_LINEAGE
+                and isinstance(prepared_run, dict)
+                and prepared_run
+                and context.get("review_required") is False
+                and not context.get("run_start")
+            ):
+                next_action = "start_career"
             connection.execute(
                 "UPDATE campaigns SET state=?, paused_from_state='', updated_at=?, "
-                "next_action='', version=version+1 WHERE campaign_id=?",
-                (target.value, now, str(campaign_id)),
+                "next_action=?, version=version+1 WHERE campaign_id=?",
+                (target.value, now, next_action, str(campaign_id)),
             )
             self._insert_event(
                 connection,
