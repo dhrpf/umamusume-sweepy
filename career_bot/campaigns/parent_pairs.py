@@ -38,11 +38,18 @@ def _normalized_category(value: Any) -> str:
     }.get(normalized, normalized)
 
 
-def _spark_totals(row: Mapping[str, Any]) -> dict[tuple[str, str], int]:
+def _spark_totals(
+    row: Mapping[str, Any],
+    *,
+    factor_nodes: str = "all",
+) -> dict[tuple[str, str], int]:
+    if factor_nodes not in {"all", "self"}:
+        raise ValueError("factor_nodes must be all or self")
     totals: dict[tuple[str, str], int] = {}
     tree = row.get("factor_tree") if isinstance(row.get("factor_tree"), Mapping) else row.get("tree")
     tree = tree if isinstance(tree, Mapping) else {}
-    for node in tree.values():
+    nodes = [tree.get("self")] if factor_nodes == "self" else tree.values()
+    for node in nodes:
         if not isinstance(node, Mapping):
             continue
         bucket_rows = []
@@ -64,9 +71,14 @@ def _spark_totals(row: Mapping[str, Any]) -> dict[tuple[str, str], int]:
     return totals
 
 
-def _pair_spark_totals(first: Mapping[str, Any], second: Mapping[str, Any]) -> dict[tuple[str, str], int]:
-    totals = _spark_totals(first)
-    for key, stars in _spark_totals(second).items():
+def _pair_spark_totals(
+    first: Mapping[str, Any],
+    second: Mapping[str, Any],
+    *,
+    factor_nodes: str = "all",
+) -> dict[tuple[str, str], int]:
+    totals = _spark_totals(first, factor_nodes=factor_nodes)
+    for key, stars in _spark_totals(second, factor_nodes=factor_nodes).items():
         totals[key] = totals.get(key, 0) + stars
     return totals
 
@@ -94,7 +106,10 @@ def rank_parent_pairs(
         [Mapping[str, Any], Mapping[str, Any]],
         Mapping[str, Any] | Sequence[Mapping[str, Any]],
     ] | None = None,
+    factor_nodes: str = "all",
 ) -> list[dict[str, Any]]:
+    if factor_nodes not in {"all", "self"}:
+        raise ValueError("factor_nodes must be all or self")
     trainee_base = card_to_chara_id(int(trainee_card_id)) if int(trainee_card_id or 0) else 0
     normalized = [dict(row) for row in candidates or [] if isinstance(row, Mapping) and _trained_id(row) > 0]
     ranked: list[dict[str, Any]] = []
@@ -136,7 +151,11 @@ def rank_parent_pairs(
         aptitude = evaluate_aptitude_pair(pair_aptitude_targets, first, second)
         factor_progress = evaluate_spark_targets(
             factor_targets,
-            _pair_spark_totals(first, second),
+            _pair_spark_totals(
+                first,
+                second,
+                factor_nodes=factor_nodes,
+            ),
         )
         projected_affinity = _projected_affinity(
             affinity_scorer,

@@ -159,6 +159,36 @@ def test_parent_pair_never_uses_two_rentals():
     assert all(sum(1 for parent in row["parents"] if parent.get("rental") is True) <= 1 for row in rows)
 
 
+def test_self_only_factor_mode_ignores_non_self_sparks():
+    inflated = veteran(1, 100201, stamina=0)
+    inflated["factor_tree"]["parent1"] = {
+        "blue": [factor("Stamina", 3, "blue")]
+    }
+    inflated["factor_tree"]["parent2"] = {
+        "blue": [factor("Stamina", 3, "blue")]
+    }
+    ready_a = veteran(2, 100301, stamina=3)
+    ready_b = veteran(3, 100401, stamina=3)
+
+    rows = rank_parent_pairs(
+        [inflated, ready_a, ready_b],
+        trainee_card_id=100101,
+        aptitude_targets=[],
+        factor_targets=[
+            {
+                "category": "blue",
+                "name": "stamina",
+                "minimum_stars": 6,
+                "priority": "required",
+            }
+        ],
+        affinity_scorer=lambda *_args: {"total": 100},
+        factor_nodes="self",
+    )
+
+    assert rows[0]["trained_chara_id"] == [2, 3]
+
+
 def test_generic_rank_is_last_tiebreaker():
     rows = rank_parent_pairs(
         [
