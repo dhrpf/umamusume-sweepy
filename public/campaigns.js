@@ -708,7 +708,7 @@ function renderReview(campaign) {
     return '';
 }
 
-function renderStageTimeline(spec, context) {
+function renderLegacyStageTimeline(spec, context) {
     const stage = context?.stage_state || {};
     const bootstrapIds = Array.isArray(stage.bootstrap_chara_ids)
         ? stage.bootstrap_chara_ids.map(Number)
@@ -725,6 +725,46 @@ function renderStageTimeline(spec, context) {
     const finalActive = stageIndex >= bootstrapIds.length;
     const finalStage = `<div class="campaign-stage is-final${finalActive ? ' is-active' : ''}"><span>${bootstrapIds.length + 1}</span><div><strong>Final Uma</strong><small>${escapeHtml(finalUma.name)} · Repeats ${escapeHtml(stage.final_repeat_count ?? 0)}</small></div></div>`;
     return `<div class="campaign-stage-timeline">${bootstrapStages}${finalStage}</div>`;
+}
+
+function renderStageTimeline(spec, context) {
+    const rotation = context?.bootstrap_rotation;
+    if (!rotation || !Array.isArray(rotation.bootstrap_chara_ids)) {
+        return renderLegacyStageTimeline(spec, context);
+    }
+    const bootstrapIds = rotation.bootstrap_chara_ids.map(Number).filter((value) => value > 0);
+    if (!bootstrapIds.length) return '<p class="empty-state">Bootstrap rotation is unavailable.</p>';
+    const runIndex = Number(rotation.run_index ?? 0);
+    const finalActive = Boolean(rotation.final_stage_active);
+    const activeIndex = ((runIndex % bootstrapIds.length) + bootstrapIds.length) % bootstrapIds.length;
+    const readyParents = Array.isArray(context?.ready_parent_candidates) ? context.ready_parent_candidates : [];
+    const selectedPair = context?.selected_ready_pair && typeof context.selected_ready_pair === 'object'
+        ? context.selected_ready_pair
+        : null;
+    const readyCounts = new Map();
+    readyParents.forEach((row) => {
+        const charaId = Number(row.bootstrap_chara_id || 0);
+        if (charaId > 0) readyCounts.set(charaId, (readyCounts.get(charaId) || 0) + 1);
+    });
+    const bootstrapStages = bootstrapIds.map((charaId, index) => {
+        const uma = (state.session?.umas || []).find((row) => baseCharaId(numberFrom(row, ['card_id', 'id'])) === charaId);
+        const readyCount = readyCounts.get(charaId) || 0;
+        const status = !finalActive && activeIndex === index ? 'is-active' : readyCount > 0 ? 'is-complete' : '';
+        return `<div class="campaign-stage ${status}"><span>${index + 1}</span><div><strong>Bootstrap Rotation ${index + 1}</strong><small>${escapeHtml(labelFor(uma, `Chara ${charaId}`))} · Ready ${escapeHtml(readyCount)}</small></div></div>`;
+    }).join('');
+    const finalUma = resolveUmaIdentity(spec?.final_uma?.card_id);
+    const finalStage = `<div class="campaign-stage is-final${finalActive ? ' is-active' : ''}"><span>${bootstrapIds.length + 1}</span><div><strong>Final Uma</strong><small>${escapeHtml(finalUma.name)} · Repeats ${escapeHtml(rotation.final_repeat_count ?? 0)}</small></div></div>`;
+    const readyHtml = readyParents.length
+        ? readyParents.map((row) => {
+            const factors = Object.entries(row.self_spark_totals || {}).map(([key, stars]) => `${key.replace(':', ' ')} ${stars}★`).join(', ') || 'Self spark ready';
+            return `<div class="setup-identity-row"><span>Veteran #${escapeHtml(row.trained_chara_id || '—')}</span><div><strong>${escapeHtml(factors)}</strong><small class="setup-identity-meta">Bootstrap Chara #${escapeHtml(row.bootstrap_chara_id || '—')}</small></div></div>`;
+        }).join('')
+        : '<p class="empty-state">No ready parents yet.</p>';
+    const pairIds = Array.isArray(selectedPair?.trained_chara_ids) ? selectedPair.trained_chara_ids : [];
+    const selectedHtml = pairIds.length
+        ? `<div class="setup-identity-row"><span>Veterans</span><div><strong>${escapeHtml(pairIds.join(' + '))}</strong><small class="setup-identity-meta">Projected affinity ${escapeHtml(selectedPair.projected_displayed_affinity ?? '—')}</small></div></div>`
+        : '<p class="empty-state">No parent pair selected yet.</p>';
+    return `<div class="campaign-stage-timeline">${bootstrapStages}${finalStage}</div><div class="detail-grid"><article><h3>Ready Parents</h3><div class="setup-identity-list">${readyHtml}</div></article><article><h3>Selected Parent Pair</h3><div class="setup-identity-list">${selectedHtml}</div></article></div>`;
 }
 
 function renderAptitudePlanning(context) {
@@ -756,11 +796,22 @@ function renderDetail() {
     const required = context.required_progress ?? campaign.required_progress ?? selected?.evaluation?.required_progress;
     const preferred = context.preferred_progress ?? campaign.preferred_progress ?? selected?.evaluation?.preferred_progress;
     const runs = campaign.usage?.runs ?? campaign.run_count ?? context.run_count ?? 0;
-    const rotation = context.rotation || {};
+    const cycleRotation = context.bootstrap_rotation && typeof context.bootstrap_rotation === 'object' ? context.bootstrap_rotation : null;
+    const rotation = cycleRotation || context.rotation || {};
     const runIndex = Number(rotation.run_index ?? context.rotation_index);
-    const loopCharaIds = Array.isArray(rotation.loop_chara_ids) ? rotation.loop_chara_ids : Array.isArray(context.loop_chara_ids) ? context.loop_chara_ids : (spec.loop_members || []).map((member) => member.chara_id);
-    const derivedNextTrainee = Number.isFinite(runIndex) && loopCharaIds.length ? loopCharaIds[((runIndex % loopCharaIds.length) + loopCharaIds.length) % loopCharaIds.length] : 0;
-    const nextTrainee = rotation.next_trainee || context.next_trainee || derivedNextTrainee || '—';
+    const loopCharaIds = Array.isArray(rotation.bootstrap_chara_ids)
+        ? rotation.bootstrap_chara_ids
+        : Array.isArray(rotation.loop_chara_ids)
+        ? rotation.loop_chara_ids
+        : Array.isArray(context.loop_chara_ids)
+        ? context.loop_chara_ids
+        : (spec.loop_members || []).map((member) => member.chara_id);
+    const derivedNextTrainee = Number.isFinite(runIndex) && loopCharaIds.length
+        ? loopCharaIds[((runIndex % loopCharaIds.length) + loopCharaIds.length) % loopCharaIds.length]
+        : 0;
+    const nextTrainee = cycleRotation?.final_stage_active
+        ? finalUma.name
+        : rotation.next_trainee || context.next_trainee || derivedNextTrainee || '—';
     const lineage = context.lineage || context.resolved_choices || campaign.lineage;
     const projected = context.projected_final_setup || campaign.projected_final_setup;
     els.detail.innerHTML = `

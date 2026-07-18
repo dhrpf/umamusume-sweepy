@@ -125,12 +125,21 @@ def test_campaign_builder_persists_final_uma_loadout_and_three_bootstraps():
     assert "final_parent:" not in build_spec
 
 
-def test_campaign_detail_renders_stage_aptitude_and_affinity_evidence():
+def test_campaign_detail_renders_cyclic_rotation_ready_parents_and_affinity_evidence():
     app_js = (ROOT / "public" / "campaigns.js").read_text(encoding="utf-8")
 
     assert "function renderStageTimeline" in app_js
-    assert "completed_bootstrap_stages" in app_js
-    assert "final_repeat_count" in app_js
+    cycle_render_function = app_js.split("function renderStageTimeline", 1)[1].split(
+        "function renderAptitudePlanning", 1
+    )[0]
+    assert "bootstrap_rotation" in cycle_render_function
+    assert "ready_parent_candidates" in cycle_render_function
+    assert "selected_ready_pair" in cycle_render_function
+    assert "final_stage_active" in cycle_render_function
+    assert "Ready Parents" in cycle_render_function
+    assert "Selected Parent Pair" in cycle_render_function
+    assert "completed_bootstrap_stages" not in cycle_render_function
+    assert "final_repeat_count" in cycle_render_function
     assert "function renderAptitudePlanning" in app_js
     assert "aptitude_targets" in app_js
     assert "aptitude_evidence" in app_js
