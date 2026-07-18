@@ -23,6 +23,7 @@ from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
+from career_bot.campaigns.friend_support import find_trainee_deck_conflicts
 from career_bot.campaigns.models import CampaignSparkTarget, ParentCampaignSpec
 from career_bot.campaigns.planner import CampaignPlanner
 from career_bot.campaigns.runner import CampaignRunner
@@ -327,6 +328,11 @@ def _campaign_runtime_snapshot(account):
         "rental_candidates": rental_candidates,
         "display_by_id": display_by_id,
         "umas": [dict(row) for row in (dashboard.get("umas") or []) if isinstance(row, dict)],
+        "decks": [
+            deepcopy(dict(row))
+            for row in (dashboard.get("decks") or [])
+            if isinstance(row, dict)
+        ],
         "base_aptitudes": base_aptitudes,
         "race_rows": race_rows,
         "g1_saddle_program_map": g1_saddle_program_map,
@@ -795,6 +801,38 @@ def _campaign_start_career(request):
             ),
             trainee_chara_id,
         )
+
+    runtime_trainee = next(
+        (
+            dict(row)
+            for row in ((active_dashboard_data or {}).get("umas") or [])
+            if _positive_runtime_id(row.get("id") or row.get("card_id")) == card_id
+        ),
+        {"id": card_id, "name": chara_map.get(str(card_id), "")},
+    )
+    resolved_deck = dashboard_deck or {
+        "id": deck_id,
+        "name": f"Deck {deck_id}",
+        "cards": [
+            {
+                "id": support_id,
+                "name": str((support_map.get(str(support_id)) or {}).get("name") or ""),
+            }
+            for support_id in support_ids
+        ],
+    }
+    deck_conflicts = find_trainee_deck_conflicts(resolved_deck, runtime_trainee)
+    if deck_conflicts:
+        support_names = ", ".join(
+            str(row.get("support_name") or row.get("support_card_id") or "unknown")
+            for row in deck_conflicts
+        )
+        trainee_name = str(runtime_trainee.get("name") or card_id)
+        raise ValueError(
+            f"{trainee_name} cannot start with Deck {deck_id}: "
+            f"same-character support found ({support_names})"
+        )
+
     race_overrides = request.get("race_overrides") or []
     preset_overrides = dict(preset.get("preset_overrides") or {})
     if isinstance(race_overrides, dict):

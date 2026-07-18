@@ -1246,6 +1246,40 @@ def _v3_runtime():
     }
 
 
+def test_v3_prepare_requires_user_input_when_trainee_is_in_stage_deck():
+    campaign = _v3_campaign_for_stage(0)
+    campaign["spec"]["loop_members"][0]["chara_id"] = 1068
+    campaign["spec"]["loop_members"][0]["deck_id"] = 4
+    campaign["context"]["stage_state"]["bootstrap_chara_ids"][0] = 1068
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    runtime["umas"].append({"id": 106801, "card_id": 106801, "name": "Kitasan Black"})
+    runtime["decks"] = [
+        {
+            "id": 4,
+            "name": "Deck 4",
+            "cards": [
+                {"id": 30010, "name": "Fine Motion"},
+                {"id": 30028, "name": "Kitasan Black"},
+            ],
+        }
+    ]
+    svc, _, runner, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["prepared_run"] is None
+    assert result["campaign"]["next_action"] == "resolve_stage_deck_conflict"
+    review = store.campaign["context"]["pending_review"]
+    assert review["kind"] == "stage_deck_conflict"
+    assert review["stage_index"] == 0
+    assert review["trainee_chara_id"] == 1068
+    assert review["deck_id"] == 4
+    assert review["conflicts"][0]["support_card_id"] == 30028
+    assert runner.calls[-1] == ("require_user_input", "cmp1", "resolve_stage_deck_conflict")
+
+
 def test_v3_prepare_uses_stage_trainee_and_ranks_aptitude_feasible_pair():
     store = FakeStore(_v3_campaign_for_stage(0))
     runtime = _v3_runtime()

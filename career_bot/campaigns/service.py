@@ -13,6 +13,7 @@ from career_bot.affinity import card_to_chara_id
 
 from .aptitude_planner import generate_aptitude_targets
 from .final_setup import READY, READY_WITH_RENTAL, evaluate_final_setup
+from .friend_support import find_trainee_deck_conflicts
 from .models import CampaignState, ParentCampaignSpec, SparkPriority
 from .legacy.race_planner import build_displayed_affinity_agenda
 from .parent_pairs import rank_parent_pairs
@@ -511,6 +512,63 @@ class CampaignService:
             stage_setup = dict(members[state.stage_index])
             trainee_chara_id = int(stage_setup.get("chara_id") or 0)
             trainee_card_id = self._owned_trainee_card_id(runtime, trainee_chara_id)
+
+        deck_id = int(stage_setup.get("deck_id") or 0)
+        runtime_deck = next(
+            (
+                dict(row)
+                for row in (runtime.get("decks") or [])
+                if isinstance(row, Mapping)
+                and self._integer_identity(row.get("id") or row.get("deck_id")) == deck_id
+            ),
+            {},
+        )
+        runtime_trainee = next(
+            (
+                dict(row)
+                for row in (runtime.get("umas") or [])
+                if isinstance(row, Mapping)
+                and (
+                    self._integer_identity(row.get("id") or row.get("card_id")) == trainee_card_id
+                    or card_to_chara_id(
+                        self._integer_identity(row.get("id") or row.get("card_id"))
+                    ) == trainee_chara_id
+                )
+            ),
+            {"id": trainee_card_id, "name": ""},
+        )
+        deck_conflicts = find_trainee_deck_conflicts(runtime_deck, runtime_trainee)
+        if deck_conflicts:
+            review = {
+                "kind": "stage_deck_conflict",
+                "stage_index": state.stage_index,
+                "stage_kind": "final" if final_stage else "bootstrap",
+                "trainee_chara_id": trainee_chara_id,
+                "card_id": trainee_card_id,
+                "deck_id": deck_id,
+                "conflicts": deck_conflicts,
+            }
+            persisted = self.store.update_context(
+                campaign_id,
+                {
+                    "stage_state": state.to_dict(),
+                    "prepared_run": None,
+                    "prepared_run_id": None,
+                    "pending_review": review,
+                    "review_required": True,
+                    "run_start": None,
+                },
+            )
+            persisted = self.runner.require_user_input(
+                campaign_id,
+                "resolve_stage_deck_conflict",
+                review,
+            )
+            return {
+                "campaign": persisted,
+                "prepared_run": None,
+                "resolved_slots": [],
+            }
 
         race_plan = spec.get("race_plan") or {}
         planned_race_ids = [

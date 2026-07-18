@@ -21,6 +21,34 @@ def normalize_support_name(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", text)
 
 
+def find_trainee_deck_conflicts(
+    deck: dict[str, Any] | None,
+    trainee: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    normalized_deck = deck if isinstance(deck, dict) else {}
+    normalized_trainee = trainee if isinstance(trainee, dict) else {}
+    trainee_name = normalize_support_name(normalized_trainee.get("name"))
+    if not trainee_name:
+        return []
+
+    conflicts: list[dict[str, Any]] = []
+    cards = normalized_deck.get("cards")
+    if not isinstance(cards, list):
+        return conflicts
+
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        support_name = str(card.get("name") or "")
+        if normalize_support_name(support_name) != trainee_name:
+            continue
+        conflicts.append({
+            "support_card_id": _int(card.get("id") or card.get("support_card_id")),
+            "support_name": support_name,
+        })
+    return conflicts
+
+
 def candidate_id_for_friend(friend: dict[str, Any]) -> str:
     viewer_id = _int(friend.get("viewer_id"))
     support_card_id = _int(friend.get("support_card_id"))

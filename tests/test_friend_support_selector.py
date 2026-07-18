@@ -1,6 +1,7 @@
 from career_bot.campaigns.friend_support import (
     candidate_id_for_friend,
     find_friend_support_candidates,
+    find_trainee_deck_conflicts,
     resolve_friend_support_candidate,
 )
 
@@ -121,6 +122,49 @@ def test_deck_and_trainee_conflicts_are_returned_not_silently_selected():
     assert "already_in_deck" in deck_conflict["matches"][0]["conflicts"]
     assert trainee_conflict["selectable_count"] == 0
     assert "same_character_as_trainee" in trainee_conflict["matches"][0]["conflicts"]
+
+
+def test_find_trainee_deck_conflicts_matches_same_character():
+    conflicts = find_trainee_deck_conflicts(
+        {
+            "id": 4,
+            "cards": [
+                {"id": 30010, "name": "Fine Motion"},
+                {"id": 30028, "name": "Kitasan Black"},
+            ],
+        },
+        {"id": 106801, "name": "Kitasan Black"},
+    )
+
+    assert conflicts == [
+        {
+            "support_card_id": 30028,
+            "support_name": "Kitasan Black",
+        }
+    ]
+
+
+def test_find_trainee_deck_conflicts_normalizes_alt_suffix():
+    conflicts = find_trainee_deck_conflicts(
+        {"id": 4, "cards": [{"id": 99999, "name": "Rice Shower"}]},
+        {"id": 103002, "name": "Rice Shower (Alt)"},
+    )
+
+    assert conflicts == [
+        {
+            "support_card_id": 99999,
+            "support_name": "Rice Shower",
+        }
+    ]
+
+
+def test_find_trainee_deck_conflicts_returns_empty_for_safe_deck():
+    conflicts = find_trainee_deck_conflicts(
+        {"id": 5, "cards": [{"id": 30020, "name": "Biko Pegasus"}]},
+        {"id": 106801, "name": "Kitasan Black"},
+    )
+
+    assert conflicts == []
 
 
 def test_resolve_candidate_returns_private_selection_row_only_for_current_match():

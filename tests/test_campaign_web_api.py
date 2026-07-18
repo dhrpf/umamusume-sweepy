@@ -219,6 +219,36 @@ def test_campaign_runtime_snapshot_uses_nested_runner_contract(monkeypatch):
         "dailies": {"running": True},
     }
 
+def test_campaign_runtime_snapshot_includes_decks(monkeypatch):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01", "career": None})
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {
+            "umas": [{"id": "106801", "name": "Kitasan Black"}],
+            "decks": [
+                {
+                    "id": 4,
+                    "name": "Deck 4",
+                    "cards": [{"id": "30028", "name": "Kitasan Black"}],
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(main.career_runner, "snapshot", lambda: {"running": False, "finished": False})
+
+    snapshot = main._campaign_runtime_snapshot("acct01")
+
+    assert snapshot["decks"] == [
+        {
+            "id": 4,
+            "name": "Deck 4",
+            "cards": [{"id": "30028", "name": "Kitasan Black"}],
+        }
+    ]
+
+
 def test_campaign_runtime_snapshot_exposes_stage_planning_data(monkeypatch):
     monkeypatch.setattr(main, "active_account", {"name": "acct01", "career": None})
     monkeypatch.setattr(main, "active_dashboard_data", {"umas": [{"id": 100101, "name": "Uma"}]})
@@ -325,6 +355,53 @@ def test_campaign_start_honors_exact_prepared_card_id(monkeypatch):
     })
 
     assert captured[0].card_id == 100102
+
+
+def test_campaign_start_rejects_trainee_support_conflict_before_api_call(monkeypatch):
+    called = []
+    _stub_campaign_runtime_launch(monkeypatch)
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {
+            "umas": [{"id": "106801", "name": "Kitasan Black"}],
+            "decks": [
+                {
+                    "id": 4,
+                    "name": "Deck 4",
+                    "cards": [
+                        {"id": "30010", "name": "Fine Motion"},
+                        {"id": "30028", "name": "Kitasan Black"},
+                        {"id": "20012", "name": "Agnes Tachyon"},
+                        {"id": "20008", "name": "Manhattan Cafe"},
+                        {"id": "30086", "name": "Narita Top Road"},
+                    ],
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        main,
+        "start_career_from_request",
+        lambda req: called.append(req) or {"success": True, "result": {}},
+    )
+
+    with pytest.raises(ValueError, match="Kitasan Black.*Deck 4"):
+        main._campaign_start_career({
+            "account": "acct01",
+            "campaign_id": "cmp1",
+            "card_id": 106801,
+            "trainee_chara_id": 1068,
+            "deck_id": 4,
+            "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+            "friend_support": {"viewer_id": 33, "support_card_id": 44},
+            "race_overrides": [],
+            "preset": {"name": "parent"},
+        })
+
+    assert called == []
 
 
 def test_campaign_start_propagates_friend_and_races(monkeypatch):
