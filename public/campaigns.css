@@ -121,6 +121,30 @@ body { min-width: 0; }
 .race-row > div:first-child span { color: var(--text-muted); font-size: .72rem; }
 .race-meta { display: flex; gap: .35rem; flex-wrap: wrap; color: var(--text-muted); font-size: .68rem; }
 .race-meta span, .race-meta small { padding: .15rem .35rem; border: 1px solid var(--border-soft); border-radius: 999px; }
+.campaign-stage-timeline { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; }
+.campaign-stage { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: .6rem; align-items: center; min-width: 0; padding: .75rem; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: rgba(0, 0, 0, .12); }
+.campaign-stage > span { display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--border-soft); border-radius: 50%; font-weight: 900; }
+.campaign-stage strong, .campaign-stage small { display: block; }
+.campaign-stage small { margin-top: .2rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.campaign-stage.is-complete { border-color: rgba(80, 190, 120, .55); }
+.campaign-stage.is-complete > span { color: #bdf8d0; background: rgba(80, 190, 120, .16); }
+.campaign-stage.is-active { border-color: var(--accent-primary); box-shadow: 0 0 1rem var(--accent-dim); }
+.campaign-stage.is-active > span { color: var(--surface-2); background: var(--accent-primary); }
+.campaign-stage.is-final { background: rgba(255, 255, 255, .035); }
+.affinity-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-bottom: .85rem; }
+.affinity-metrics > div { padding: .75rem; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: rgba(0, 0, 0, .12); }
+.affinity-metrics span, .affinity-metrics strong { display: block; }
+.affinity-metrics span { color: var(--text-muted); font-size: .72rem; text-transform: uppercase; }
+.affinity-metrics strong { margin-top: .25rem; font-size: 1.1rem; }
+.aptitude-target-list { display: grid; gap: .55rem; }
+.aptitude-target-row { display: grid; grid-template-columns: minmax(9rem, .35fr) minmax(0, 1fr) auto; gap: .75rem; align-items: center; padding: .75rem; border: 1px solid var(--border-soft); border-radius: var(--radius-md); }
+.aptitude-target-row > div:first-child strong, .aptitude-target-row > div:first-child small { display: block; }
+.aptitude-target-row > div:first-child small { margin-top: .2rem; color: var(--text-muted); }
+.aptitude-target-row.is-shortfall { border-color: rgba(var(--danger-rgb), .55); background: rgba(var(--danger-rgb), .06); }
+.aptitude-source-list { display: flex; gap: .35rem; flex-wrap: wrap; }
+.aptitude-source { padding: .25rem .45rem; border: 1px solid rgba(255, 105, 180, .5); border-radius: 999px; background: rgba(255, 105, 180, .08); font-size: .72rem; }
+.aptitude-warnings { margin: .85rem 0 0; padding-left: 1.2rem; color: var(--text-muted); }
+.deck-row.is-final-stage { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--accent-primary); }
 .debug-panel { margin-top: 1.5rem; padding: 1rem; border: 1px dashed var(--border-soft); border-radius: var(--radius-md); }
 .debug-panel .detail-json { margin-top: .75rem; }
 .inline-actions { justify-content: flex-start; }
@@ -131,7 +155,7 @@ body { min-width: 0; }
     .campaign-layout { grid-template-columns: 1fr; }
     #campaign-list-view { position: static; grid-row: auto; }
     #campaign-create-view, #campaign-detail-view { grid-column: 1; }
-    .form-grid, .recommendation-grid, .detail-grid, .agenda-grid, .tradeoff-grid, .race-agenda-grid { grid-template-columns: 1fr; }
+    .form-grid, .recommendation-grid, .detail-grid, .agenda-grid, .tradeoff-grid, .race-agenda-grid, .campaign-stage-timeline { grid-template-columns: 1fr; }
     .candidate-delta { text-align: left; }
     .candidate-delta > strong { text-align: center; }
     .candidate-delta dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -144,7 +168,7 @@ body { min-width: 0; }
     .campaign-main { padding: 1rem; }
     .campaign-nav { width: 100%; }
     .campaign-nav .btn { flex: 1 1 40%; }
-    .target-row, .deck-row, .progress-row, .setup-identity-row { grid-template-columns: 1fr; }
+    .target-row, .deck-row, .progress-row, .setup-identity-row, .aptitude-target-row, .affinity-metrics { grid-template-columns: 1fr; }
     .candidate-metrics, .candidate-delta dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .target-spark-row, .race-group-header { align-items: flex-start; flex-direction: column; }
 }

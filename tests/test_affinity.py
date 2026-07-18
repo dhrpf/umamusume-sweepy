@@ -1,3 +1,5 @@
+import sqlite3
+
 from career_bot import affinity
 
 
@@ -57,6 +59,66 @@ def test_calculate_veteran_affinity_matches_uma_moe_lineage_breakdown(monkeypatc
             "total": 31,
         },
     }
+
+
+def test_load_g1_saddle_program_map_resolves_race_instances_to_programs(tmp_path):
+    path = tmp_path / "master.mdb"
+    db = sqlite3.connect(path)
+    db.executescript(
+        """
+        CREATE TABLE single_mode_wins_saddle (
+            id INTEGER PRIMARY KEY,
+            win_saddle_type INTEGER NOT NULL,
+            race_instance_id_1 INTEGER NOT NULL,
+            race_instance_id_2 INTEGER NOT NULL,
+            race_instance_id_3 INTEGER NOT NULL
+        );
+        CREATE TABLE single_mode_program (
+            id INTEGER PRIMARY KEY,
+            race_instance_id INTEGER NOT NULL
+        );
+        INSERT INTO single_mode_program (id, race_instance_id) VALUES
+            (101, 1001), (102, 1002), (103, 1003), (104, 1002);
+        INSERT INTO single_mode_wins_saddle
+            (id, win_saddle_type, race_instance_id_1, race_instance_id_2, race_instance_id_3)
+        VALUES
+            (10, 3, 1001, 1002, 0),
+            (20, 3, 1003, 0, 0),
+            (30, 2, 1001, 0, 0);
+        """
+    )
+    db.close()
+    affinity.load_g1_saddle_program_map.cache_clear()
+
+    result = affinity.load_g1_saddle_program_map(str(path))
+
+    assert result == {
+        101: {10},
+        102: {10},
+        103: {20},
+        104: {10},
+    }
+
+
+def test_project_displayed_affinity_counts_planned_g1_per_direct_parent(monkeypatch):
+    monkeypatch.setattr(
+        affinity,
+        "_pair_relation_score",
+        lambda _path, _trainee, parent: {1002: 20, 1003: 30}.get(parent, 0),
+    )
+
+    result = affinity.project_displayed_veteran_affinity(
+        "/tmp/master.mdb",
+        trainee_card_id=100101,
+        parent1={"card_id": 100201, "win_saddle_id_array": [10, 20]},
+        parent2={"card_id": 100301, "win_saddle_id_array": [20, 30]},
+        planned_g1_saddle_ids={10, 20},
+    )
+
+    assert result["base"] == 50
+    assert result["planned_race"] == 9
+    assert result["total"] == 59
+    assert result["saddle_gains"] == {10: 3, 20: 6}
 
 
 def test_calculate_veteran_affinity_returns_zero_for_missing_direct_parents(monkeypatch):

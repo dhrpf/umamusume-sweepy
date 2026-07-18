@@ -337,8 +337,10 @@ def test_campaign_selection_policies_default_to_current_for_backward_compatibili
     assert spec.deck.mode is DeckSelectionMode.CURRENT
     assert spec.deck.name == ""
     assert spec.deck.deck_id == 0
-    assert spec.spec_version == 2
+    assert spec.spec_version == 3
     assert spec.final_uma.card_id == 0
+    assert spec.final_uma.deck_id == 0
+    assert spec.final_uma.friend_support is None
     assert spec.spark_targets == []
     assert spec.final_parent.chara_id == 0
     assert spec.final_parent.trained_chara_id == 0
@@ -421,7 +423,79 @@ def test_campaign_spec_accepts_new_web_planner_shape():
     assert spec.options.auto_use_best_veteran is True
 
 
-def test_campaign_loop_members_must_be_four_unique_configured_characters():
+def test_v3_campaign_requires_three_unique_bootstrap_members_and_final_setup():
+    spec = ParentCampaignSpec(
+        account="alpha",
+        spec_version=3,
+        goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 10,
+            "maximum_runtime_hours": 12,
+        },
+        final_uma={
+            "card_id": 12345,
+            "deck_id": 4,
+            "friend_support": {
+                "viewer_id": 501,
+                "support_card_id": 9001,
+                "support_name": "Final Support",
+            },
+        },
+        loop_members=[
+            {"chara_id": 11, "deck_id": 1},
+            {"chara_id": 12, "deck_id": 2},
+            {"chara_id": 13, "deck_id": 3},
+        ],
+    )
+
+    assert [row.chara_id for row in spec.loop_members] == [11, 12, 13]
+    assert spec.final_uma.deck_id == 4
+    assert spec.final_uma.friend_support.viewer_id == 501
+
+
+def test_v3_campaign_rejects_four_bootstrap_members():
+    with pytest.raises(ValidationError, match="exactly three"):
+        ParentCampaignSpec(
+            account="alpha",
+            spec_version=3,
+            goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+            strategy={
+                "preset_name": "MANT Parent",
+                "maximum_runs": 10,
+                "maximum_runtime_hours": 12,
+            },
+            loop_members=[
+                {"chara_id": 11},
+                {"chara_id": 12},
+                {"chara_id": 13},
+                {"chara_id": 14},
+            ],
+        )
+
+
+def test_explicit_v2_campaign_keeps_four_unique_bootstrap_members():
+    spec = ParentCampaignSpec(
+        account="alpha",
+        spec_version=2,
+        goal={"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 10,
+            "maximum_runtime_hours": 12,
+        },
+        loop_members=[
+            {"chara_id": 11},
+            {"chara_id": 12},
+            {"chara_id": 13},
+            {"chara_id": 14},
+        ],
+    )
+
+    assert len(spec.loop_members) == 4
+
+
+def test_campaign_loop_members_must_be_version_appropriate_and_unique():
     base = {
         "account": "alpha",
         "goal": {"surface_targets": ["turf"], "preferred_stats": ["stamina"]},
@@ -432,23 +506,23 @@ def test_campaign_loop_members_must_be_four_unique_configured_characters():
         },
     }
 
-    with pytest.raises(ValidationError, match="exactly four"):
+    with pytest.raises(ValidationError, match="exactly three"):
         ParentCampaignSpec(
             **base,
+            spec_version=3,
             loop_members=[
                 {"chara_id": 11},
                 {"chara_id": 12},
-                {"chara_id": 13},
             ],
         )
 
     with pytest.raises(ValidationError, match="unique"):
         ParentCampaignSpec(
             **base,
+            spec_version=3,
             loop_members=[
                 {"chara_id": 11},
                 {"chara_id": 12},
-                {"chara_id": 13},
                 {"chara_id": 11},
             ],
         )

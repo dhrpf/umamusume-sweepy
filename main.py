@@ -304,6 +304,21 @@ def _campaign_runtime_snapshot(account):
     ]
     current_account = active_account or dashboard.get("account") or {}
     current_runner = career_runner.snapshot()
+    try:
+        base_aptitudes = aptitude._load_chara_aptitude(base_dir / "data")
+    except Exception:
+        base_aptitudes = {}
+    try:
+        race_rows = _campaign_race_rows()
+    except Exception:
+        race_rows = []
+    g1_saddle_program_map = {}
+    try:
+        mdb_path = master_data.configured_master_mdb_path(base_dir)
+        if mdb_path:
+            g1_saddle_program_map = affinity_calc.load_g1_saddle_program_map(str(mdb_path))
+    except Exception:
+        g1_saddle_program_map = {}
     return {
         "account": account,
         "current_account": current_account,
@@ -311,6 +326,10 @@ def _campaign_runtime_snapshot(account):
         "owned_candidates": [dict(row) for row in active_parent_full.values()],
         "rental_candidates": rental_candidates,
         "display_by_id": display_by_id,
+        "umas": [dict(row) for row in (dashboard.get("umas") or []) if isinstance(row, dict)],
+        "base_aptitudes": base_aptitudes,
+        "race_rows": race_rows,
+        "g1_saddle_program_map": g1_saddle_program_map,
         "owned_chara_ids": {value for value in owned_chara_ids if value > 0},
         "runtime": {
             "api_reachable": active_client is not None,
@@ -366,6 +385,7 @@ def _campaign_spark_totals(display_parent):
 def _campaign_completed_result(campaign, snapshot):
     context = campaign.get("context") or {}
     prepared = context.get("prepared_run") or {}
+    expected_card_id = _positive_runtime_id(prepared.get("card_id"))
     expected_trainee = _positive_runtime_id(prepared.get("trainee_chara_id"))
     baseline_ids = {
         _positive_runtime_id(value)
@@ -384,7 +404,16 @@ def _campaign_completed_result(campaign, snapshot):
     for trained_id, row in owned_by_id.items():
         if baseline_ids and trained_id in baseline_ids:
             continue
-        if expected_trainee and _base_chara_id(row.get("card_id") or row.get("race_cloth_id")) != expected_trainee:
+        candidate_card_id = _positive_runtime_id(
+            row.get("card_id") or row.get("race_cloth_id")
+        )
+        if expected_card_id and candidate_card_id != expected_card_id:
+            continue
+        if (
+            not expected_card_id
+            and expected_trainee
+            and _base_chara_id(candidate_card_id) != expected_trainee
+        ):
             continue
         candidates.append(row)
     if not candidates:
@@ -408,6 +437,14 @@ def _campaign_completed_result(campaign, snapshot):
         "spark_totals": _campaign_spark_totals(display),
         "factor_tree": deepcopy(display.get("tree") or {}),
     }
+
+    spec_version = int(((campaign.get("spec") or {}).get("spec_version") or 0))
+    if spec_version >= 3 or isinstance(context.get("stage_state"), dict):
+        candidate["displayed_affinity"] = affinity_calc.calculate_veteran_affinity(
+            _campaign_master_mdb_path(),
+            raw_candidate,
+        )
+        return candidate, [], parent_ids
 
     final_parent_id = _positive_runtime_id(
         ((campaign.get("spec") or {}).get("final_parent") or {}).get("trained_chara_id")
@@ -567,10 +604,34 @@ def _campaign_affinity(final_uma, first, second):
         raise ValueError("Campaign final Uma card_id is required for affinity")
     return affinity_calc.calculate_affinity(_campaign_master_mdb_path(), card_id, first, second)
 
+
+def _campaign_projected_affinity(trainee_card_id, first, second, planned_g1_saddle_ids):
+    return affinity_calc.project_displayed_veteran_affinity(
+        _campaign_master_mdb_path(),
+        trainee_card_id=int(trainee_card_id or 0),
+        parent1=first,
+        parent2=second,
+        planned_g1_saddle_ids=set(planned_g1_saddle_ids or set()),
+    )
+
+
 class _ConfiguredCampaignPlanner(CampaignPlanner):
     def __init__(self, *, mdb_path, **kwargs):
         super().__init__(**kwargs)
         self.mdb_path = mdb_path
+
+    def recommend_bootstraps(
+        self,
+        *,
+        pinned_chara_ids=None,
+        limit=3,
+        mdb_path="",
+    ):
+        return super().recommend_bootstraps(
+            pinned_chara_ids=pinned_chara_ids,
+            limit=limit,
+            mdb_path=mdb_path or self.mdb_path,
+        )
 
     def recommend_loops(
         self,
@@ -720,14 +781,20 @@ def _campaign_start_career(request):
     )
     if len(support_ids) != 5 or not all(support_ids) or not friend_viewer_id or not friend_card_id:
         raise ValueError("Campaign preset requires five supports and a friend support")
-    card_id = next(
-        (
-            int(row.get("id") or row.get("card_id") or 0)
-            for row in ((active_dashboard_data or {}).get("umas") or [])
-            if _base_chara_id(row.get("id") or row.get("card_id")) == trainee_chara_id
-        ),
-        trainee_chara_id,
+    prepared_card_id = _positive_runtime_id(
+        request.get("card_id") or request.get("trainee_card_id")
     )
+    if prepared_card_id > 0:
+        card_id = prepared_card_id
+    else:
+        card_id = next(
+            (
+                int(row.get("id") or row.get("card_id") or 0)
+                for row in ((active_dashboard_data or {}).get("umas") or [])
+                if _base_chara_id(row.get("id") or row.get("card_id")) == trainee_chara_id
+            ),
+            trainee_chara_id,
+        )
     race_overrides = request.get("race_overrides") or []
     preset_overrides = dict(preset.get("preset_overrides") or {})
     if isinstance(race_overrides, dict):
@@ -813,6 +880,7 @@ campaign_service = CampaignService(
     preset_store=_CampaignPresetStore(),
     runtime_snapshot=_campaign_runtime_snapshot,
     affinity_for_setup=_campaign_affinity,
+    projected_affinity_for_pair=_campaign_projected_affinity,
     start_career=_campaign_start_career,
     planner_factory=_campaign_planner_factory,
 )
@@ -1863,6 +1931,9 @@ class CampaignLoopRecommendationRequest(CampaignFinalParentsRecommendationReques
     final_parent_chara_id: int = Field(gt=0)
     pinned_chara_ids: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
 
+class CampaignBootstrapRecommendationRequest(CampaignFinalParentsRecommendationRequest):
+    pinned_chara_ids: list[Annotated[int, Field(gt=0)]] = Field(default_factory=list)
+
 class CampaignCreateRequest(BaseModel):
     spec: ParentCampaignSpec
 
@@ -2046,6 +2117,11 @@ async def recommend_campaign_final_parents(req: CampaignFinalParentsRecommendati
 async def recommend_campaign_loop(req: CampaignLoopRecommendationRequest):
     payload = req.model_dump(mode="json")
     return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_loops, payload)}
+
+@app.post("/api/campaigns/recommend-bootstraps")
+async def recommend_campaign_bootstraps(req: CampaignBootstrapRecommendationRequest):
+    payload = req.model_dump(mode="json")
+    return {"success": True, "recommendation": _campaign_api_call(campaign_service.recommend_bootstraps, payload)}
 
 @app.post("/api/campaigns")
 async def create_campaign(req: CampaignCreateRequest):

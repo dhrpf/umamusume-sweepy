@@ -5,14 +5,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_campaign_loop_ui_uses_member_names_instead_of_raw_chara_ids():
+def test_campaign_bootstrap_ui_uses_member_names_instead_of_raw_chara_ids():
     app_js = (ROOT / "public" / "campaigns.js").read_text(encoding="utf-8")
 
     assert "function loopMembers(loop)" in app_js
     assert "members.map((member) => escapeHtml(member.name))" in app_js
     assert "data-pin-id=\"${member.charaId}\"" in app_js
     assert "data-deck-chara=\"${member.charaId}\"" in app_js
-    assert "final_parent_chara_id: Number(state.draft.selectedFinalParent.chara_id)" in app_js
+    assert "spec_version: 3" in app_js
+    assert "selectedMembers.length !== 3" in app_js
     assert "ids.map((id) => `Chara ${id}`)" not in app_js
     assert "`Assign a deck to Chara ${charaId}.`" not in app_js
 
@@ -24,9 +25,13 @@ def test_campaign_manual_loadout_supports_per_member_friend_selection():
     assert 'id="refresh-friend-supports-btn"' in html
     assert "friendSupports: []" in app_js
     assert "friendAssignments: {}" in app_js
+    assert "finalDeckId: 0" in app_js
+    assert "finalFriend: null" in app_js
     assert "function loadFriendSupports" in app_js
     assert "'/api/career/friends'" in app_js
     assert "data-friend-chara" in app_js
+    assert "data-final-deck" in app_js
+    assert "data-final-friend" in app_js
     assert "friend_support:" in app_js
     assert "viewer_id" in app_js
     assert "support_card_id" in app_js
@@ -59,11 +64,12 @@ def test_campaign_builder_exposes_target_stop_instead_of_hardcoding_it():
     assert "stop_when_target_reached: true" not in app_js
 
 
-def test_campaign_loop_request_includes_selected_final_parent_character():
+def test_campaign_bootstrap_request_does_not_require_selected_final_parent():
     app_js = (ROOT / "public" / "campaigns.js").read_text(encoding="utf-8")
 
-    assert "final_parent_chara_id" in app_js
-    assert "state.draft.selectedFinalParent.chara_id" in app_js
+    assert "'/api/campaigns/recommend-bootstraps'" in app_js
+    assert "recommendation.bootstraps" in app_js
+    assert "Choose a final parent before recommending loops." not in app_js
 
 
 def test_campaign_tradeoff_renders_current_challenger_sparks_and_history():
@@ -91,7 +97,7 @@ def test_campaign_detail_uses_usage_and_selected_candidate_progress_fallbacks():
     assert "Raw campaign data" in app_js
 
 
-def test_campaign_final_setup_resolves_uma_and_parent_names_before_ids():
+def test_campaign_final_setup_resolves_uma_and_completed_final_parent_names_before_ids():
     app_js = (ROOT / "public" / "campaigns.js").read_text(encoding="utf-8")
 
     assert "function resolveUmaIdentity(cardId)" in app_js
@@ -100,9 +106,37 @@ def test_campaign_final_setup_resolves_uma_and_parent_names_before_ids():
     assert "campaignCandidates(campaign)" in app_js
     assert "Final Uma" in app_js
     assert "Final Parent" in app_js
+    assert "context.final_parent_result || spec.final_parent || {}" in app_js
     assert "Card #${escapeHtml(finalUma.cardId" in app_js
     assert "Veteran #${escapeHtml(finalParent.trainedCharaId" in app_js
     assert "<p>Uma: ${escapeHtml(spec.final_uma?.card_id" not in app_js
+
+
+def test_campaign_builder_persists_final_uma_loadout_and_three_bootstraps():
+    app_js = (ROOT / "public" / "campaigns.js").read_text(encoding="utf-8")
+
+    assert "selectedMembers.length !== 3" in app_js
+    assert "finalDeckId" in app_js
+    assert "finalFriend" in app_js
+    assert "deck_id: Number(state.draft.finalDeckId)" in app_js
+    assert "friend_support: friendSpec(state.draft.finalFriend)" in app_js
+    assert "loop_members: loopMembersSpec" in app_js
+    build_spec = app_js.split("function buildSpec()", 1)[1].split("function renderPreview", 1)[0]
+    assert "final_parent:" not in build_spec
+
+
+def test_campaign_detail_renders_stage_aptitude_and_affinity_evidence():
+    app_js = (ROOT / "public" / "campaigns.js").read_text(encoding="utf-8")
+
+    assert "function renderStageTimeline" in app_js
+    assert "completed_bootstrap_stages" in app_js
+    assert "final_repeat_count" in app_js
+    assert "function renderAptitudePlanning" in app_js
+    assert "aptitude_targets" in app_js
+    assert "aptitude_evidence" in app_js
+    assert "aptitude_shortfalls" in app_js
+    assert "projected_displayed_affinity" in app_js
+    assert "completed_displayed_affinity" in app_js
 
 
 def test_campaign_final_setup_identity_has_readable_layout_styles():
@@ -118,6 +152,9 @@ def test_campaign_race_agenda_uses_priority_groups_and_program_metadata():
 
     assert "function renderRaceAgenda" in app_js
     assert "spec.race_plan" in app_js
+    assert "context.affinity_agenda" in app_js
+    assert "mandatory_race_list" in app_js
+    assert "extra_race_list" in app_js
     assert "'/assets/data/uma_race_data.json'" in app_js
     assert "Number(race?.program_id)" in app_js
     assert "raceById: new Map()" in app_js
@@ -149,5 +186,10 @@ def test_campaign_tradeoff_and_agenda_have_responsive_component_styles():
         ".candidate-history-table",
         ".race-group-card",
         ".race-row",
+        ".campaign-stage-timeline",
+        ".campaign-stage.is-active",
+        ".aptitude-target-row",
+        ".aptitude-source",
+        ".affinity-metrics",
     ):
         assert selector in css

@@ -117,7 +117,7 @@ def _best_rotation(
 ) -> dict[str, Any] | None:
     best: dict[str, Any] | None = None
     trainee_card_id = _int(trainee_record.get("card_id"))
-    for first_group_index, second_group_index in itertools.combinations(range(3), 2):
+    for first_group_index, second_group_index in itertools.combinations(range(len(other_groups)), 2):
         first_group = other_groups[first_group_index]
         second_group = other_groups[second_group_index]
         for parent1, parent2 in itertools.product(first_group, second_group):
@@ -167,6 +167,7 @@ def scan_legacy_loop_pools(
     affinity_calculator: Callable[..., dict[str, Any]] = calculate_affinity,
     g1_saddle_ids: set[int] | None = None,
     required_base_chara_ids: set[int] | None = None,
+    pool_size: int = 4,
 ) -> dict[str, Any]:
     """Rank four-character bootstrap pools using cached, actual lineage records.
 
@@ -205,7 +206,8 @@ def scan_legacy_loop_pools(
         for base_id in (required_base_chara_ids or set())
         if int(base_id) in grouped
     }
-    character_cap = max(4, min(int(max_characters), 20))
+    size = max(3, min(int(pool_size), 4))
+    character_cap = max(size, min(int(max_characters), 20))
     ranked_characters = sorted(
         [*required, *[base_id for base_id in ranked_all if base_id not in required]][
             : max(character_cap, len(required))
@@ -213,7 +215,7 @@ def scan_legacy_loop_pools(
     )
 
     pools: list[dict[str, Any]] = []
-    for base_ids in itertools.combinations(ranked_characters, 4):
+    for base_ids in itertools.combinations(ranked_characters, size):
         groups = [grouped[base_id] for base_id in base_ids]
         rotations = []
         valid = True
@@ -272,7 +274,7 @@ def scan_legacy_loop_pools(
             "running_style": {
                 "dominant": dominant_style,
                 "matching_members": dominant_style_count,
-                "all_match": dominant_style_count == 4,
+                "all_match": dominant_style_count == len(representatives),
             },
             "distance_overlap": {
                 "strict_a_or_better": strict_distance_overlap,

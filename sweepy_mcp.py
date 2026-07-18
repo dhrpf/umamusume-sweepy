@@ -42,6 +42,7 @@ from career_bot.campaigns.run_setup import (
     trainee_candidates,
 )
 from career_bot.campaigns.runner import CampaignRunner
+from career_bot.campaigns.stages import CampaignStageState, build_stage_goal_assignments
 from career_bot.campaigns.store import CampaignStore
 from sweepy_jobs import LeaseConflict, OperationConflict, SweepyJobStore
 from sweepy_supervisor import SweepySupervisor
@@ -1930,10 +1931,31 @@ def create_parent_campaign(
     """Create a durable parent campaign in DRAFT state. Requires confirm=true."""
     try:
         validated = ParentCampaignSpec.model_validate(spec)
+        if validated.spec_version < 3 or len(validated.loop_members) != 3:
+            raise ValueError(
+                "New campaigns require spec_version 3 with exactly three bootstrap members"
+            )
         account_name, _selected_gateway = account_registry.resolve(validated.account)
     except Exception as exc:
         return {"success": False, "detail": str(exc)}
     dumped = validated.model_dump(mode="json")
+    stage_state = CampaignStageState.bootstrap(
+        [row.chara_id for row in validated.loop_members]
+    )
+    initial_context = {
+        "stage_state": stage_state.to_dict(),
+        "stage_goal_assignments": build_stage_goal_assignments(
+            [row.model_dump(mode="json") for row in validated.spark_targets],
+            bootstrap_count=len(validated.loop_members),
+        ),
+        "bootstrap_goal_state": {},
+        "aptitude_targets": [],
+        "aptitude_evidence": {},
+        "aptitude_shortfalls": [],
+        "aptitude_warnings": [],
+        "projected_displayed_affinity": None,
+        "completed_displayed_affinity": None,
+    }
     details = {"account": account_name, "spec": dumped}
     if not confirm:
         return _requires_confirmation("create_parent_campaign", details, operation_id)
@@ -1944,7 +1966,10 @@ def create_parent_campaign(
         arguments=details,
         callback=lambda: {
             "success": True,
-            "campaign": campaign_store.create(validated),
+            "campaign": campaign_store.create(
+                validated,
+                initial_context=initial_context,
+            ),
         },
     )
 
@@ -2011,7 +2036,7 @@ def get_parent_campaign_summary(campaign_id: str) -> dict[str, Any]:
                 "matched_targets": evaluation.get("matched_targets") or [],
                 "missing_targets": evaluation.get("missing_targets") or [],
             }
-        return {
+        result = {
             "success": True,
             "account": account_name,
             "campaign_id": campaign_id,
@@ -2029,6 +2054,26 @@ def get_parent_campaign_summary(campaign_id: str) -> dict[str, Any]:
             "run_setup": redact_sensitive(copy.deepcopy(run_setup)) if run_setup else None,
             "error": campaign.get("error") or "",
         }
+        stage_state = context.get("stage_state") if isinstance(context.get("stage_state"), dict) else None
+        if stage_state:
+            bootstrap_ids = [int(value) for value in stage_state.get("bootstrap_chara_ids") or []]
+            stage_index = int(stage_state.get("stage_index") or 0)
+            final_stage = stage_index >= len(bootstrap_ids)
+            result["stage_progress"] = {
+                "stage_index": stage_index,
+                "stage_kind": "final" if final_stage else "bootstrap",
+                "active_chara_id": (
+                    int(((campaign.get("spec") or {}).get("final_uma") or {}).get("card_id") or 0) // 100
+                    if final_stage
+                    else bootstrap_ids[stage_index] if stage_index < len(bootstrap_ids) else 0
+                ),
+                "completed_bootstrap_stages": list(stage_state.get("completed_bootstrap_stages") or []),
+                "final_repeat_count": int(stage_state.get("final_repeat_count") or 0),
+                "aptitude_shortfalls": copy.deepcopy(context.get("aptitude_shortfalls") or []),
+                "projected_displayed_affinity": context.get("projected_displayed_affinity"),
+                "completed_displayed_affinity": context.get("completed_displayed_affinity"),
+            }
+        return result
     except Exception as exc:
         return {"success": False, "detail": str(exc), "campaign_id": campaign_id}
 

@@ -1,4 +1,7 @@
-from career_bot.campaigns.legacy.race_planner import build_shared_g1_agenda
+from career_bot.campaigns.legacy.race_planner import (
+    build_displayed_affinity_agenda,
+    build_shared_g1_agenda,
+)
 
 
 def race(program_id, turn, date, name):
@@ -44,6 +47,28 @@ def test_agenda_avoids_four_race_chain_when_alternate_exists():
     turns = [row["turn"] for row in result["agenda"]]
     assert turns == [20, 21, 22, 70]
     assert result["maximum_consecutive_races"] == 3
+
+
+def test_displayed_affinity_agenda_prioritizes_plus_six_then_plus_three_and_keeps_mandatory():
+    rows = [
+        race(101, 20, "Classic Year Early Jan", "G1 A"),
+        race(102, 22, "Classic Year Early Feb", "G1 B"),
+        race(103, 24, "Classic Year Early Mar", "G1 C"),
+    ]
+
+    result = build_displayed_affinity_agenda(
+        rows,
+        mandatory_program_ids=[103],
+        factor_program_ids=[],
+        saddle_ids_by_program={101: {10}, 102: {20}, 103: {30}},
+        parent1_g1_saddles={10, 20},
+        parent2_g1_saddles={10},
+    )
+
+    assert result["projected_gain_by_program"] == {101: 6, 102: 3, 103: 0}
+    assert result["mandatory_race_list"] == [103]
+    assert result["affinity_program_ids"][:2] == [101, 102]
+    assert result["extra_race_list"][:2] == [101, 102]
 
 
 def test_agenda_filters_non_g1_wrong_surface_and_wrong_distance():

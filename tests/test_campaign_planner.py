@@ -90,6 +90,21 @@ def test_final_parent_recommendations_exclude_final_uma_character():
     assert all(row["pairing"].get("second_parent_chara_id") != 1001 for row in result)
 
 
+def test_bootstrap_recommendations_return_three_owned_members_without_final_parent_pin(tmp_path):
+    campaign_planner = planner()
+
+    result = campaign_planner.recommend_bootstraps(
+        pinned_chara_ids={1001},
+        limit=3,
+        mdb_path=tmp_path / "unused.mdb",
+    )
+
+    assert result["bootstraps"]
+    assert all(len(row["chara_ids"]) == 3 for row in result["bootstraps"])
+    assert all(row["owned"] is True for row in result["bootstraps"])
+    assert all(1001 in row["chara_ids"] for row in result["bootstraps"])
+
+
 def test_loop_recommendations_require_selected_final_parent_character(tmp_path):
     campaign_planner = planner()
 

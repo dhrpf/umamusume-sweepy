@@ -2,19 +2,38 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
+from dataclasses import dataclass
 import hashlib
 import json
 from math import isfinite
 from numbers import Real
 from typing import Any
 
+from career_bot.affinity import card_to_chara_id
+
+from .aptitude_planner import generate_aptitude_targets
 from .final_setup import READY, READY_WITH_RENTAL, evaluate_final_setup
 from .models import CampaignState, ParentCampaignSpec, SparkPriority
+from .legacy.race_planner import build_displayed_affinity_agenda
+from .parent_pairs import rank_parent_pairs
 from .planner import CampaignPlanner
 from .preset_policy import build_campaign_base_preset, build_step_overrides
 from .resolver import LegacyResolver, LegacySlot
 from .rotation import RotationState, advance_rotation
+from .stages import (
+    CampaignStageState,
+    build_stage_goal_assignments,
+    migrate_legacy_rotation,
+    record_stage_result,
+)
 from .targets import evaluate_spark_targets
+
+
+@dataclass(frozen=True)
+class _StageRunView:
+    next_trainee_chara_id: int
+    stage_index: int
+    available_legacy_ids: tuple[str, ...] = ()
 
 
 class CampaignService:
@@ -28,6 +47,7 @@ class CampaignService:
         preset_store: Any,
         runtime_snapshot: Callable[..., dict[str, Any]],
         affinity_for_setup: Callable[..., Any],
+        projected_affinity_for_pair: Callable[..., Any] | None = None,
         start_career: Callable[[dict[str, Any]], Any],
         planner_factory: Callable[[Mapping[str, Any]], Any] | None = None,
         planned_slots: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
@@ -40,6 +60,7 @@ class CampaignService:
         self.preset_store = preset_store
         self.runtime_snapshot = runtime_snapshot
         self.affinity_for_setup = affinity_for_setup
+        self.projected_affinity_for_pair = projected_affinity_for_pair
         self.start_career = start_career
         self.planner_factory = planner_factory or self._default_planner
         self.planned_slots = planned_slots or self._default_slots
@@ -82,6 +103,16 @@ class CampaignService:
         planner = self.planner_factory(payload)
         return planner.recommend_final_parents(limit=int(payload.get("limit", 3)))
 
+    def recommend_bootstraps(self, request: Mapping[str, Any]) -> Any:
+        payload = dict(request)
+        planner = self.planner_factory(payload)
+        kwargs = {"limit": int(payload.get("limit", 3))}
+        if "pinned_chara_ids" in payload:
+            kwargs["pinned_chara_ids"] = set(payload["pinned_chara_ids"])
+        if "mdb_path" in payload:
+            kwargs["mdb_path"] = payload["mdb_path"]
+        return planner.recommend_bootstraps(**kwargs)
+
     def recommend_loops(self, request: Mapping[str, Any]) -> Any:
         payload = dict(request)
         planner = self.planner_factory(payload)
@@ -98,14 +129,22 @@ class CampaignService:
         if isinstance(spec, Mapping):
             self._reject_boolean_integer_fields(spec)
         validated = ParentCampaignSpec.model_validate(spec)
+        if validated.spec_version < 3 or len(validated.loop_members) != 3:
+            raise ValueError(
+                "New campaigns require spec_version 3 with exactly three bootstrap members"
+            )
         if validated.final_uma.card_id <= 0:
             raise ValueError("final_uma.card_id must be positive for Web campaigns")
         if not any(row.priority is SparkPriority.REQUIRED for row in validated.spark_targets):
             raise ValueError("at least one required spark target is required")
-        if len(validated.loop_members) != 4:
-            raise ValueError("loop_members must contain exactly four members")
         if any(not 1 <= row.deck_id <= 10 for row in validated.loop_members):
             raise ValueError("each manual loop member deck_id must be between 1 and 10")
+        if any(row.friend_support is None for row in validated.loop_members):
+            raise ValueError("each bootstrap member requires durable friend_support")
+        if not 1 <= validated.final_uma.deck_id <= 10:
+            raise ValueError("final_uma.deck_id must be between 1 and 10")
+        if validated.final_uma.friend_support is None:
+            raise ValueError("final_uma.friend_support is required")
         base_preset_name = validated.strategy.preset_name
         base_preset = deepcopy(self.preset_store.load(base_preset_name))
         digest = hashlib.sha256(
@@ -132,9 +171,25 @@ class CampaignService:
         generated["expect_attribute"] = stats
         self.preset_store.save(generated)
         validated.strategy.preset_name = generated_name
+        stage_state = CampaignStageState.bootstrap(
+            [row.chara_id for row in validated.loop_members]
+        )
+        stage_goal_assignments = build_stage_goal_assignments(
+            [row.model_dump(mode="json") for row in validated.spark_targets],
+            bootstrap_count=len(validated.loop_members),
+        )
         initial_context = {
             "base_preset_name": base_preset_name,
             "generated_preset_name": generated_name,
+            "stage_state": stage_state.to_dict(),
+            "stage_goal_assignments": stage_goal_assignments,
+            "bootstrap_goal_state": {},
+            "aptitude_targets": [],
+            "aptitude_evidence": {},
+            "aptitude_shortfalls": [],
+            "aptitude_warnings": [],
+            "projected_displayed_affinity": None,
+            "completed_displayed_affinity": None,
             "race_agenda": {
                 "CORE": list(validated.race_plan.core),
                 "OPTIONAL": list(validated.race_plan.optional),
@@ -148,8 +203,46 @@ class CampaignService:
         }
         return self.store.create(validated, initial_context=initial_context)
 
+    def _ensure_legacy_stage_migration(
+        self,
+        campaign: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        context = dict(campaign.get("context") or {})
+        if isinstance(context.get("stage_state"), Mapping):
+            return dict(campaign)
+        spec = campaign.get("spec") or {}
+        if int(spec.get("spec_version") or 0) >= 3:
+            return dict(campaign)
+        members = spec.get("loop_members") or []
+        if len(members) != 4:
+            return dict(campaign)
+        chara_ids = [int(row.get("chara_id") or 0) for row in members]
+        stage_state = migrate_legacy_rotation(
+            chara_ids,
+            context.get("rotation") if isinstance(context.get("rotation"), Mapping) else {},
+        )
+        assignments = build_stage_goal_assignments(
+            list(spec.get("spark_targets") or []),
+            bootstrap_count=len(chara_ids),
+        )
+        return self.store.update_context(
+            str(campaign["campaign_id"]),
+            {
+                "stage_state": stage_state.to_dict(),
+                "stage_goal_assignments": assignments,
+                "bootstrap_goal_state": deepcopy(context.get("bootstrap_goal_state") or {}),
+                "aptitude_targets": deepcopy(context.get("aptitude_targets") or []),
+                "aptitude_evidence": deepcopy(context.get("aptitude_evidence") or {}),
+                "aptitude_shortfalls": deepcopy(context.get("aptitude_shortfalls") or []),
+                "aptitude_warnings": deepcopy(context.get("aptitude_warnings") or []),
+                "projected_displayed_affinity": context.get("projected_displayed_affinity"),
+                "completed_displayed_affinity": context.get("completed_displayed_affinity"),
+                "legacy_stage_migrated": True,
+            },
+        )
+
     def activate(self, campaign_id: str) -> dict[str, Any]:
-        campaign = self.store.get(campaign_id)
+        campaign = self._ensure_legacy_stage_migration(self.store.get(campaign_id))
         snapshot = self._snapshot(campaign["account"])
         current_career = self._trusted_current_career(campaign, snapshot)
         if current_career is not None:
@@ -166,7 +259,7 @@ class CampaignService:
         return self.runner.pause(campaign_id)
 
     def resume(self, campaign_id: str) -> dict[str, Any]:
-        campaign = self.store.get(campaign_id)
+        campaign = self._ensure_legacy_stage_migration(self.store.get(campaign_id))
         snapshot = self._snapshot(campaign["account"])
         current_career = self._trusted_current_career(campaign, snapshot)
         if current_career is not None and current_career.get("active") is True:
@@ -195,6 +288,9 @@ class CampaignService:
         current_career: Mapping[str, Any] | None,
     ) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
+        campaign_context = campaign.get("context") or {}
+        if isinstance(campaign_context.get("rotation"), Mapping):
+            campaign = self._ensure_legacy_stage_migration(campaign)
         current = dict(current_career or {})
         prepared_run = dict((campaign.get("context") or {}).get("prepared_run") or {})
         if current.get("active") is True:
@@ -266,9 +362,358 @@ class CampaignService:
             for key in ("state", "version", "next_action", "error")
         )
 
+    @staticmethod
+    def _stage_state(campaign: Mapping[str, Any]) -> CampaignStageState:
+        context = campaign.get("context") or {}
+        saved = context.get("stage_state") if isinstance(context, Mapping) else None
+        if isinstance(saved, Mapping):
+            return CampaignStageState(
+                bootstrap_chara_ids=tuple(saved.get("bootstrap_chara_ids") or ()),
+                stage_index=int(saved.get("stage_index") or 0),
+                completed_bootstrap_stages=tuple(saved.get("completed_bootstrap_stages") or ()),
+                final_repeat_count=int(saved.get("final_repeat_count") or 0),
+                produced=tuple(tuple(row) for row in (saved.get("produced") or ())),
+            )
+        members = campaign.get("spec", {}).get("loop_members") or []
+        return CampaignStageState.bootstrap([int(row.get("chara_id") or 0) for row in members])
+
+    @classmethod
+    def _owned_trainee_card_id(
+        cls,
+        runtime: Mapping[str, Any],
+        trainee_chara_id: int,
+    ) -> int:
+        matches = []
+        for row in runtime.get("umas") or []:
+            if not isinstance(row, Mapping):
+                continue
+            card_id = cls._integer_identity(row.get("card_id") or row.get("id"))
+            if card_id > 0 and card_to_chara_id(card_id) == int(trainee_chara_id):
+                matches.append(card_id)
+        return min(matches) if matches else 0
+
+    @staticmethod
+    def _display_factor_tree(display: Mapping[str, Any]) -> dict[str, Any]:
+        raw_tree = display.get("tree") if isinstance(display.get("tree"), Mapping) else {}
+        aliases = {
+            "self": "self",
+            "parent1": "parent1",
+            "parent2": "parent2",
+            "p1": "parent1",
+            "p2": "parent2",
+        }
+        result = {
+            "self": {"blue": [], "pink": []},
+            "parent1": {"blue": [], "pink": []},
+            "parent2": {"blue": [], "pink": []},
+        }
+        for raw_key, target_key in aliases.items():
+            node = raw_tree.get(raw_key)
+            if not isinstance(node, Mapping):
+                continue
+            for factor in node.get("factors") or []:
+                if not isinstance(factor, Mapping):
+                    continue
+                category = str(factor.get("category") or "").strip().casefold()
+                bucket = {
+                    "stat": "blue",
+                    "blue": "blue",
+                    "aptitude": "pink",
+                    "pink": "pink",
+                }.get(category)
+                if bucket:
+                    result[target_key][bucket].append(dict(factor))
+            for bucket in ("blue", "pink"):
+                for factor in node.get(bucket) or []:
+                    if isinstance(factor, Mapping):
+                        result[target_key][bucket].append(dict(factor))
+        return result
+
+    def _stage_candidates(
+        self,
+        campaign: Mapping[str, Any],
+        state: CampaignStageState,
+        trainee_chara_id: int,
+        runtime: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        view = _StageRunView(
+            next_trainee_chara_id=trainee_chara_id,
+            stage_index=state.stage_index,
+            available_legacy_ids=tuple(legacy_id for _chara_id, legacy_id in state.produced),
+        )
+        display_by_id = runtime.get("display_by_id") if isinstance(runtime.get("display_by_id"), Mapping) else {}
+        allow_rental = bool(campaign.get("spec", {}).get("options", {}).get("allow_rental", False))
+        result = []
+        for raw in self.candidate_pool(campaign, view, runtime):
+            if not isinstance(raw, Mapping):
+                continue
+            row = dict(raw)
+            trained_id = self._integer_identity(row.get("trained_chara_id") or row.get("instance_id"))
+            if trained_id <= 0:
+                continue
+            if row.get("rental") is True and not allow_rental:
+                continue
+            if self._candidate_base_chara_id(row) == trainee_chara_id:
+                continue
+            display = display_by_id.get(trained_id) or display_by_id.get(str(trained_id)) or {}
+            if isinstance(display, Mapping):
+                row.setdefault("name", str(display.get("name") or ""))
+                if not row.get("factor_tree"):
+                    row["factor_tree"] = self._display_factor_tree(display)
+            result.append(row)
+        return result
+
+    def _prepare_stage_run(
+        self,
+        campaign: Mapping[str, Any],
+        runtime: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        campaign_id = str(campaign["campaign_id"])
+        spec = campaign["spec"]
+        context = dict(campaign.get("context") or {})
+        state = self._stage_state(campaign)
+        final_stage = state.is_final_stage
+
+        if final_stage:
+            final_uma = dict(spec.get("final_uma") or {})
+            trainee_card_id = self._integer_identity(final_uma.get("card_id"))
+            trainee_chara_id = card_to_chara_id(trainee_card_id) if trainee_card_id else 0
+            stage_setup = final_uma
+            if isinstance(runtime.get("umas"), list):
+                owned_cards = {
+                    self._integer_identity(row.get("card_id") or row.get("id"))
+                    for row in runtime.get("umas") or []
+                    if isinstance(row, Mapping)
+                }
+                if trainee_card_id not in owned_cards:
+                    paused = self.store.transition(
+                        campaign_id,
+                        CampaignState.PAUSED,
+                        next_action="resolve_final_uma_unavailable",
+                        error=f"Final Uma card {trainee_card_id} is unavailable",
+                    )
+                    return {"campaign": paused, "prepared_run": None, "resolved_slots": []}
+            if not 1 <= int(stage_setup.get("deck_id") or 0) <= 10 or not isinstance(
+                stage_setup.get("friend_support"),
+                Mapping,
+            ):
+                paused = self.store.transition(
+                    campaign_id,
+                    CampaignState.PAUSED,
+                    next_action="resolve_final_uma_setup",
+                    error="Final Uma stage requires a durable deck and friend support",
+                )
+                return {"campaign": paused, "prepared_run": None, "resolved_slots": []}
+        else:
+            members = spec.get("loop_members") or []
+            if state.stage_index >= len(members):
+                raise ValueError("Campaign stage index exceeds configured bootstrap members")
+            stage_setup = dict(members[state.stage_index])
+            trainee_chara_id = int(stage_setup.get("chara_id") or 0)
+            trainee_card_id = self._owned_trainee_card_id(runtime, trainee_chara_id)
+
+        race_plan = spec.get("race_plan") or {}
+        planned_race_ids = [
+            *list(race_plan.get("core") or []),
+            *list(race_plan.get("optional") or []),
+            *list(race_plan.get("deferable") or []),
+        ]
+        static_aptitude_result = generate_aptitude_targets(
+            trainee_card_id=trainee_card_id,
+            race_ids=planned_race_ids,
+            race_rows=runtime.get("race_rows") or [],
+            base_aptitudes=runtime.get("base_aptitudes") or {},
+        ) if trainee_card_id > 0 else {
+            "targets": [],
+            "warnings": [f"Missing exact trainee card data for character {trainee_chara_id}"],
+        }
+        factor_targets = (
+            list(spec.get("spark_targets") or [])
+            if final_stage
+            else list((context.get("stage_goal_assignments") or {}).get(str(state.stage_index), []))
+        )
+        candidates = self._stage_candidates(campaign, state, trainee_chara_id, runtime)
+        saddle_map = runtime.get("g1_saddle_program_map") or {}
+        agenda_cache: dict[tuple[int, int], dict[str, Any]] = {}
+
+        def pair_key(first, second):
+            return tuple(sorted((
+                self._integer_identity(first.get("trained_chara_id") or first.get("instance_id")),
+                self._integer_identity(second.get("trained_chara_id") or second.get("instance_id")),
+            )))
+
+        def pair_affinity_agenda(first, second):
+            key = pair_key(first, second)
+            if key in agenda_cache:
+                return agenda_cache[key]
+            agenda = build_displayed_affinity_agenda(
+                runtime.get("race_rows") or [],
+                mandatory_program_ids=race_plan.get("core") or [],
+                factor_program_ids=[
+                    *list(race_plan.get("optional") or []),
+                    *list(race_plan.get("deferable") or []),
+                ],
+                saddle_ids_by_program=saddle_map,
+                parent1_g1_saddles=set(first.get("win_saddle_id_array") or []),
+                parent2_g1_saddles=set(second.get("win_saddle_id_array") or []),
+            )
+            agenda_cache[key] = agenda
+            return agenda
+
+        def pair_aptitude_targets(first, second):
+            if trainee_card_id <= 0:
+                return static_aptitude_result
+            agenda = pair_affinity_agenda(first, second)
+            required_races = [
+                *planned_race_ids,
+                *list(agenda.get("affinity_program_ids") or []),
+            ]
+            return generate_aptitude_targets(
+                trainee_card_id=trainee_card_id,
+                race_ids=required_races,
+                race_rows=runtime.get("race_rows") or [],
+                base_aptitudes=runtime.get("base_aptitudes") or {},
+            )
+
+        def agenda_saddles(agenda):
+            programs = {
+                *list(agenda.get("mandatory_race_list") or []),
+                *list(agenda.get("factor_program_ids") or []),
+                *list(agenda.get("affinity_program_ids") or []),
+            }
+            return {
+                int(saddle_id)
+                for program_id in programs
+                for saddle_id in (
+                    saddle_map.get(int(program_id))
+                    or saddle_map.get(str(program_id))
+                    or set()
+                )
+            }
+
+        def affinity_scorer(card_id, first, second):
+            projector = getattr(self, "projected_affinity_for_pair", None)
+            if callable(projector):
+                agenda = pair_affinity_agenda(first, second)
+                return projector(card_id, first, second, agenda_saddles(agenda))
+            return self.affinity_for_setup({"card_id": card_id}, first, second)
+
+        ranked_pairs = rank_parent_pairs(
+            candidates,
+            trainee_card_id=trainee_card_id,
+            aptitude_targets=static_aptitude_result["targets"],
+            aptitude_targets_for_pair=pair_aptitude_targets,
+            factor_targets=factor_targets,
+            affinity_scorer=affinity_scorer,
+        )
+        baseline_parent_ids = sorted({
+            self._integer_identity(row.get("trained_chara_id") or row.get("instance_id"))
+            for row in (runtime.get("owned_candidates") or [])
+            if isinstance(row, Mapping)
+            and self._integer_identity(row.get("trained_chara_id") or row.get("instance_id")) > 0
+        })
+        if not ranked_pairs:
+            review = {
+                "kind": "unresolved_parent_pair",
+                "stage_index": state.stage_index,
+                "trainee_chara_id": trainee_chara_id,
+                "aptitude_targets": static_aptitude_result["targets"],
+            }
+            persisted = self.store.update_context(
+                campaign_id,
+                {
+                    "stage_state": state.to_dict(),
+                    "prepared_run": None,
+                    "prepared_run_id": None,
+                    "pending_review": review,
+                    "review_required": True,
+                    "run_start": None,
+                    "baseline_parent_ids": baseline_parent_ids,
+                    "aptitude_targets": static_aptitude_result["targets"],
+                    "aptitude_warnings": static_aptitude_result["warnings"],
+                },
+            )
+            persisted = self.runner.require_user_input(campaign_id, "prepare_next_run", review)
+            return {"campaign": persisted, "prepared_run": None, "resolved_slots": []}
+
+        best = ranked_pairs[0]
+        resolved = [
+            {
+                **dict(parent),
+                "status": "RESOLVED",
+                "replacement": False,
+                "reason": "best stage-aware parent pair",
+            }
+            for parent in best["parents"]
+        ]
+        warnings = list(best.get("aptitude_warnings") or [])
+        if not saddle_map:
+            warnings.append(
+                "G1 saddle/program mapping unavailable; projected affinity race gains omitted"
+            )
+        affinity_agenda = pair_affinity_agenda(resolved[0], resolved[1])
+        races = {
+            "mandatory_race_list": list(affinity_agenda["mandatory_race_list"]),
+            "extra_race_list": list(affinity_agenda["extra_race_list"]),
+            "parent_run": not final_stage,
+        }
+        request = {
+            "account": campaign["account"],
+            "preset": self.preset_store.load(spec["strategy"]["preset_name"]),
+            "trainee_chara_id": trainee_chara_id,
+            "card_id": trainee_card_id,
+            "deck_id": int(stage_setup.get("deck_id") or 0),
+            "legacy_slots": resolved,
+            "race_overrides": races,
+            "campaign_id": campaign_id,
+        }
+        friend_support = stage_setup.get("friend_support")
+        if isinstance(friend_support, Mapping):
+            request["friend_support"] = deepcopy(dict(friend_support))
+
+        prepared_run_id = self._stable_id("prepared", request)
+        review = {
+            "kind": "prepared_run",
+            "prepared_run_id": prepared_run_id,
+            "prepared_run": request,
+            "resolved_slots": resolved,
+            "replacements": [],
+            "stage_index": state.stage_index,
+            "stage_kind": "final" if final_stage else "bootstrap",
+            "aptitude_shortfalls": best["aptitude"]["shortfalls"],
+        }
+        auto = bool(spec.get("options", {}).get("auto_use_best_veteran", False))
+        updates = {
+            "stage_state": state.to_dict(),
+            "prepared_run": request,
+            "prepared_run_id": prepared_run_id,
+            "pending_review": None if auto else review,
+            "review_required": not auto,
+            "run_start": None,
+            "baseline_parent_ids": baseline_parent_ids,
+            "aptitude_targets": deepcopy(best.get("aptitude_targets") or []),
+            "aptitude_evidence": best["aptitude"]["evidence"],
+            "aptitude_shortfalls": best["aptitude"]["shortfalls"],
+            "aptitude_warnings": warnings,
+            "projected_displayed_affinity": best["projected_displayed_affinity"],
+            "affinity_agenda": affinity_agenda,
+        }
+        persisted = self.store.update_context(campaign_id, updates)
+        if auto:
+            persisted = self.store.set_next_action(campaign_id, "start_career")
+        else:
+            persisted = self.runner.require_user_input(campaign_id, "approve_run", review)
+        return {"campaign": persisted, "prepared_run": request, "resolved_slots": resolved}
+
     def prepare_next_run(self, campaign_id: str) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
         runtime = self._snapshot(campaign["account"])
+        context = campaign.get("context") or {}
+        if (
+            int((campaign.get("spec") or {}).get("spec_version") or 0) >= 3
+            or isinstance(context.get("stage_state"), Mapping)
+        ):
+            return self._prepare_stage_run(campaign, runtime)
         rotation = self._rotation(campaign)
         resolver = LegacyResolver(allow_rental=bool(campaign["spec"]["options"]["allow_rental"]))
         candidates = [dict(row) for row in self.candidate_pool(campaign, rotation, runtime)]
@@ -421,6 +866,138 @@ class CampaignService:
         self.runner.begin_run(campaign_id)
         return result
 
+    def _record_stage_completed_veteran(
+        self,
+        campaign: Mapping[str, Any],
+        candidate: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        campaign_id = str(campaign["campaign_id"])
+        spec = campaign["spec"]
+        context = dict(campaign.get("context") or {})
+        state = self._stage_state(campaign)
+        final_stage = state.is_final_stage
+        factor_targets = (
+            list(spec.get("spark_targets") or [])
+            if final_stage
+            else list((context.get("stage_goal_assignments") or {}).get(str(state.stage_index), []))
+        )
+        target_result = evaluate_spark_targets(
+            factor_targets,
+            candidate.get("spark_totals", {}),
+        )
+        displayed = candidate.get("displayed_affinity")
+        if isinstance(displayed, Mapping):
+            completed_affinity = self._integer_identity(
+                displayed.get("total", displayed.get("affinity"))
+            )
+        else:
+            completed_affinity = self._integer_identity(
+                candidate.get("completed_displayed_affinity")
+            )
+        candidate_id = str(candidate.get("candidate_id") or self._stable_id(
+            "candidate",
+            dict(candidate),
+        ))
+        trained_id = self._integer_identity(candidate.get("trained_chara_id"))
+        next_stage_state = record_stage_result(
+            state,
+            produced_legacy_id=str(trained_id or candidate_id),
+            goal_complete=bool(target_result["required_complete"]),
+        )
+        decision = (
+            "accept"
+            if final_stage and target_result["required_complete"]
+            else "advance"
+            if (not final_stage and target_result["required_complete"])
+            else "repeat"
+        )
+        evaluation = {
+            "stage_index": state.stage_index,
+            "stage_kind": "final" if final_stage else "bootstrap",
+            "required_progress": target_result["required_progress"],
+            "preferred_progress": target_result["preferred_progress"],
+            "targets": target_result,
+            "completed_displayed_affinity": completed_affinity,
+            "projected_displayed_affinity": context.get("projected_displayed_affinity"),
+            "aptitude_targets": deepcopy(context.get("aptitude_targets") or []),
+            "aptitude_evidence": deepcopy(context.get("aptitude_evidence") or {}),
+            "aptitude_shortfalls": deepcopy(context.get("aptitude_shortfalls") or []),
+            "factor_tree": deepcopy(candidate.get("factor_tree") or {}),
+            "spark_totals": self._serialized_spark_totals(candidate),
+            "accepted": bool(target_result["required_complete"]),
+            "decision": decision,
+        }
+        rank_score = self._integer_identity(candidate.get("rank_score"))
+        score = (
+            float(evaluation["required_progress"]) * 1_000_000_000
+            + float(evaluation["preferred_progress"]) * 1_000_000
+            + completed_affinity * 1_000
+            + rank_score
+        )
+        context_updates: dict[str, Any] = {
+            "pending_review": None,
+            "review_required": False,
+            "stage_state": next_stage_state.to_dict(),
+            "completed_displayed_affinity": completed_affinity,
+        }
+        if final_stage:
+            target_state = (
+                CampaignState.COMPLETED
+                if target_result["required_complete"]
+                else CampaignState.SELECTING_LINEAGE
+            )
+            next_action = "" if target_result["required_complete"] else "prepare_next_run"
+            select = bool(target_result["required_complete"])
+            if select:
+                context_updates["final_parent_result"] = {
+                    "candidate_id": candidate_id,
+                    "trained_chara_id": trained_id,
+                    "displayed_affinity": completed_affinity,
+                }
+        else:
+            goal_state = deepcopy(context.get("bootstrap_goal_state") or {})
+            goal_state[str(state.stage_index)] = {
+                "complete": bool(target_result["required_complete"]),
+                "required_progress": target_result["required_progress"],
+                "preferred_progress": target_result["preferred_progress"],
+                "candidate_id": candidate_id,
+                "trained_chara_id": trained_id,
+            }
+            context_updates["bootstrap_goal_state"] = goal_state
+            target_state = CampaignState.SELECTING_LINEAGE
+            next_action = "prepare_next_run"
+            select = False
+
+        persisted = self.store.persist_candidate_result(
+            campaign_id,
+            candidate_id=candidate_id,
+            trained_chara_id=trained_id,
+            name=str(candidate.get("name") or ""),
+            score=score,
+            evaluation=evaluation,
+            select=select,
+            state=target_state,
+            next_action=next_action,
+            context_updates=context_updates,
+            expected_version=campaign.get("version"),
+        )
+        if persisted.get("replayed"):
+            stored_evaluation = persisted["candidate"].get("evaluation") or {}
+            return {
+                "campaign": persisted["campaign"],
+                "candidate": persisted["candidate"],
+                "decision": stored_evaluation.get("decision", "repeat"),
+                "targets": stored_evaluation.get("targets", {}),
+                "final_setup": {},
+            }
+        return {
+            "campaign": persisted["campaign"],
+            "candidate": persisted["candidate"],
+            "decision": decision,
+            "targets": target_result,
+            "final_setup": {},
+        }
+
     def record_completed_veteran(
         self,
         campaign_id: str,
@@ -429,6 +1006,12 @@ class CampaignService:
     ) -> dict[str, Any]:
         campaign = self.store.get(campaign_id)
         spec = campaign["spec"]
+        context = campaign.get("context") or {}
+        if (
+            int(spec.get("spec_version") or 0) >= 3
+            or isinstance(context.get("stage_state"), Mapping)
+        ):
+            return self._record_stage_completed_veteran(campaign, candidate)
         target_result = evaluate_spark_targets(spec["spark_targets"], candidate.get("spark_totals", {}))
         evaluated_pairings = [
             self._pairing_with_affinity(spec, candidate, pairing)

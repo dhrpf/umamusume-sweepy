@@ -72,6 +72,40 @@ def campaign_spec():
     )
 
 
+def creatable_campaign_spec():
+    return ParentCampaignSpec(
+        account="alpha",
+        spec_version=3,
+        goal={
+            "surface_targets": ["turf"],
+            "distance_targets": ["medium"],
+            "minimum_rank": "S",
+        },
+        strategy={
+            "preset_name": "MANT Parent",
+            "maximum_runs": 20,
+            "maximum_runtime_hours": 24,
+        },
+        final_uma={
+            "card_id": 100401,
+            "deck_id": 4,
+            "friend_support": {
+                "viewer_id": 904,
+                "support_card_id": 30016,
+                "support_name": "Final Support",
+            },
+        },
+        spark_targets=[
+            {"category": "blue", "name": "stamina", "minimum_stars": 9}
+        ],
+        loop_members=[
+            {"chara_id": 1001, "deck_id": 1},
+            {"chara_id": 1002, "deck_id": 2},
+            {"chara_id": 1003, "deck_id": 3},
+        ],
+    )
+
+
 def headless_campaign_spec(*, trainee):
     return ParentCampaignSpec(
         account="alpha",
@@ -201,22 +235,44 @@ def test_preview_supports_aptitude_free_direct_lineage_power_nine(monkeypatch, t
     }
 
 
+def test_create_parent_campaign_rejects_non_v3_stage_spec(monkeypatch, tmp_path):
+    configure(monkeypatch, tmp_path)
+
+    result = sweepy_mcp.create_parent_campaign(
+        spec=campaign_spec(),
+        confirm=True,
+        operation_id="invalid-stage-campaign",
+    )
+
+    assert result["success"] is False
+    assert "spec_version 3" in result["detail"]
+    assert "three bootstrap members" in result["detail"]
+
+
 def test_create_campaign_is_idempotent(monkeypatch, tmp_path):
     configure(monkeypatch, tmp_path)
 
     first = sweepy_mcp.create_parent_campaign(
-        spec=campaign_spec(),
+        spec=creatable_campaign_spec(),
         confirm=True,
         operation_id="discord-campaign-create",
     )
     replay = sweepy_mcp.create_parent_campaign(
-        spec=campaign_spec(),
+        spec=creatable_campaign_spec(),
         confirm=True,
         operation_id="discord-campaign-create",
     )
 
     assert first["success"] is True
     assert first["campaign"]["state"] == CampaignState.DRAFT.value
+    assert first["campaign"]["context"]["stage_state"] == {
+        "bootstrap_chara_ids": [1001, 1002, 1003],
+        "stage_index": 0,
+        "completed_bootstrap_stages": [],
+        "final_repeat_count": 0,
+        "produced": [],
+    }
+    assert set(first["campaign"]["context"]["stage_goal_assignments"]) == {"0", "1", "2"}
     assert replay["replayed"] is True
     assert replay["campaign"]["campaign_id"] == first["campaign"]["campaign_id"]
 
@@ -973,6 +1029,41 @@ def test_campaign_summary_is_compact_and_discord_friendly(monkeypatch, tmp_path)
         },
         "run_setup": None,
         "error": "",
+    }
+
+
+def test_campaign_summary_includes_stage_progress_for_v3_campaign(monkeypatch, tmp_path):
+    _, store, _ = configure(monkeypatch, tmp_path)
+    store.create(
+        creatable_campaign_spec(),
+        campaign_id="campaign-1",
+        initial_context={
+            "stage_state": {
+                "bootstrap_chara_ids": [1001, 1002, 1003],
+                "stage_index": 2,
+                "completed_bootstrap_stages": [0, 1],
+                "final_repeat_count": 0,
+                "produced": [[1001, "v1"], [1002, "v2"]],
+            },
+            "aptitude_shortfalls": [
+                {"aptitude": "dirt", "missing_red_stars": 2}
+            ],
+            "projected_displayed_affinity": 77,
+            "completed_displayed_affinity": 69,
+        },
+    )
+
+    result = sweepy_mcp.get_parent_campaign_summary("campaign-1")
+
+    assert result["stage_progress"] == {
+        "stage_index": 2,
+        "stage_kind": "bootstrap",
+        "active_chara_id": 1003,
+        "completed_bootstrap_stages": [0, 1],
+        "final_repeat_count": 0,
+        "aptitude_shortfalls": [{"aptitude": "dirt", "missing_red_stars": 2}],
+        "projected_displayed_affinity": 77,
+        "completed_displayed_affinity": 69,
     }
 
 

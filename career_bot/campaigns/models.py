@@ -345,10 +345,20 @@ class CampaignSparkTarget(BaseModel):
         return normalized
 
 
+class CampaignFriendSupport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    viewer_id: int = Field(gt=0)
+    support_card_id: int = Field(gt=0)
+    support_name: str = ""
+
+
 class FinalUmaSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     card_id: int = Field(default=0, ge=0)
+    deck_id: int = Field(default=0, ge=0, le=10)
+    friend_support: CampaignFriendSupport | None = None
 
 
 class FinalParentTarget(BaseModel):
@@ -356,14 +366,6 @@ class FinalParentTarget(BaseModel):
 
     chara_id: int = Field(default=0, ge=0)
     trained_chara_id: int = Field(default=0, ge=0)
-
-
-class CampaignFriendSupport(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    viewer_id: int = Field(gt=0)
-    support_card_id: int = Field(gt=0)
-    support_name: str = ""
 
 
 class CampaignLoopMember(BaseModel):
@@ -405,7 +407,7 @@ class ParentCampaignSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     account: str
-    spec_version: int = Field(default=2, ge=1)
+    spec_version: int = Field(default=3, ge=1)
     goal: ParentGoal
     strategy: ParentStrategy
     trainee: TraineeSelectionPolicy = Field(default_factory=TraineeSelectionPolicy)
@@ -431,11 +433,15 @@ class ParentCampaignSpec(BaseModel):
     def validate_loop_members(self) -> "ParentCampaignSpec":
         if not self.loop_members:
             return self
-        if len(self.loop_members) != 4:
-            raise ValueError("configured loop_members must contain exactly four members")
-        chara_ids = [row.chara_id for row in self.loop_members]
-        if len(set(chara_ids)) != 4:
+        expected = 3 if self.spec_version >= 3 else 4
+        label = "three" if expected == 3 else "four"
+        if len(self.loop_members) != expected:
             raise ValueError(
-                "configured loop_members must contain four unique chara_id values"
+                f"configured loop_members must contain exactly {label} members"
+            )
+        chara_ids = [row.chara_id for row in self.loop_members]
+        if len(set(chara_ids)) != expected:
+            raise ValueError(
+                f"configured loop_members must contain {label} unique chara_id values"
             )
         return self

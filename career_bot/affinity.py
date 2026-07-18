@@ -121,6 +121,118 @@ def _shared_g1_score(first_saddles, second_saddles, g1_saddle_ids):
     return len(shared) * 3
 
 
+def project_displayed_veteran_affinity(
+    mdb_path,
+    *,
+    trainee_card_id,
+    parent1,
+    parent2,
+    planned_g1_saddle_ids,
+):
+    """Project uma.moe-style displayed affinity for a planned trainee run.
+
+    The completed-veteran metric stays owned by ``calculate_veteran_affinity``.
+    This helper only projects the same two direct-parent contributions before
+    the trainee exists: base relation plus +3 for each planned G1 shared with
+    each direct parent.
+    """
+    trainee_chara_id = card_to_chara_id(int(trainee_card_id or 0)) if trainee_card_id else 0
+    parents = (parent1 or {}, parent2 or {})
+    base = 0
+    parent_chara_ids = []
+    for parent in parents:
+        card_id = int(parent.get("card_id") or 0)
+        chara_id = card_to_chara_id(card_id) if card_id else 0
+        parent_chara_ids.append(chara_id)
+        base += _pair_relation_score(mdb_path, trainee_chara_id, chara_id)
+
+    saddle_gains = {}
+    for saddle_id in sorted({int(value) for value in (planned_g1_saddle_ids or set()) if int(value or 0) > 0}):
+        gain = 0
+        for parent in parents:
+            if saddle_id in set(parent.get("win_saddle_id_array") or []):
+                gain += 3
+        if gain:
+            saddle_gains[saddle_id] = gain
+    planned_race = sum(saddle_gains.values())
+    return {
+        "total": base + planned_race,
+        "base": base,
+        "planned_race": planned_race,
+        "saddle_gains": saddle_gains,
+        "trainee": trainee_chara_id,
+        "parents": parent_chara_ids,
+    }
+
+
+@lru_cache(maxsize=4)
+def load_g1_saddle_program_map(mdb_path):
+    """Return ``{program_id: {g1_saddle_ids}}`` from master-data race links.
+
+    Some schemas expose a direct program id on ``single_mode_wins_saddle``.
+    The current game schema instead stores up to eight ``race_instance_id_N``
+    values, which are resolved through ``single_mode_program.race_instance_id``.
+    Unknown schemas return an empty mapping rather than inventing affinity
+    evidence.
+    """
+    db = sqlite3.connect(f"file:{mdb_path}?mode=ro", uri=True)
+    try:
+        column_rows = db.execute("PRAGMA table_info(single_mode_wins_saddle)").fetchall()
+        columns = [str(row[1]) for row in column_rows]
+        program_column = next(
+            (name for name in ("race_program_id", "program_id") if name in columns),
+            "",
+        )
+        result = {}
+        if program_column:
+            rows = db.execute(
+                f"SELECT id, {program_column} FROM single_mode_wins_saddle "
+                "WHERE win_saddle_type = 3"
+            )
+            for saddle_id, program_id in rows:
+                if not saddle_id or not program_id:
+                    continue
+                result.setdefault(int(program_id), set()).add(int(saddle_id))
+            return result
+
+        instance_columns = sorted(
+            (name for name in columns if name.startswith("race_instance_id_")),
+            key=lambda name: int(name.rsplit("_", 1)[-1]),
+        )
+        if not instance_columns:
+            return {}
+        try:
+            program_rows = db.execute(
+                "SELECT id, race_instance_id FROM single_mode_program"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        programs_by_instance = {}
+        for program_id, race_instance_id in program_rows:
+            if not program_id or not race_instance_id:
+                continue
+            programs_by_instance.setdefault(int(race_instance_id), set()).add(int(program_id))
+
+        selected_columns = ", ".join(instance_columns)
+        rows = db.execute(
+            f"SELECT id, {selected_columns} FROM single_mode_wins_saddle "
+            "WHERE win_saddle_type = 3"
+        )
+        for row in rows:
+            saddle_id = int(row[0] or 0)
+            if saddle_id <= 0:
+                continue
+            for raw_instance_id in row[1:]:
+                race_instance_id = int(raw_instance_id or 0)
+                if race_instance_id <= 0:
+                    continue
+                for program_id in programs_by_instance.get(race_instance_id, ()):
+                    result.setdefault(program_id, set()).add(saddle_id)
+        return result
+    finally:
+        db.close()
+
+
 def calculate_veteran_affinity(mdb_path, veteran):
     """Score a completed veteran against its two direct inheritance parents.
 

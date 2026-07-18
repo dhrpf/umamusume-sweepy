@@ -16,6 +16,7 @@ from career_bot.campaigns.store import CampaignStore
 def valid_spec(**overrides):
     payload = {
         "account": "acct01",
+        "spec_version": 2,
         "goal": {
             "purpose": "parent",
             "target_factors": [
@@ -39,6 +40,52 @@ def valid_spec(**overrides):
         ],
         "options": {"allow_rental": False, "auto_use_best_veteran": False},
     }
+    payload.update(overrides)
+    return payload
+
+
+def valid_v3_spec(**overrides):
+    payload = valid_spec(
+        spec_version=3,
+        final_uma={
+            "card_id": 100401,
+            "deck_id": 4,
+            "friend_support": {
+                "viewer_id": 904,
+                "support_card_id": 30016,
+                "support_name": "Final Support",
+            },
+        },
+        loop_members=[
+            {
+                "chara_id": 1001,
+                "deck_id": 1,
+                "friend_support": {
+                    "viewer_id": 901,
+                    "support_card_id": 30011,
+                    "support_name": "Bootstrap 1",
+                },
+            },
+            {
+                "chara_id": 1002,
+                "deck_id": 2,
+                "friend_support": {
+                    "viewer_id": 902,
+                    "support_card_id": 30012,
+                    "support_name": "Bootstrap 2",
+                },
+            },
+            {
+                "chara_id": 1003,
+                "deck_id": 3,
+                "friend_support": {
+                    "viewer_id": 903,
+                    "support_card_id": 30013,
+                    "support_name": "Bootstrap 3",
+                },
+            },
+        ],
+    )
     payload.update(overrides)
     return payload
 
@@ -247,7 +294,7 @@ class FakePresetStore:
         return deepcopy(preset)
 
 
-def service(store=None, runner=None, *, start_career=None, snapshot=None, preset_store=None, default_career_request=False):
+def service(store=None, runner=None, *, start_career=None, snapshot=None, preset_store=None, default_career_request=False, projected_affinity=None):
     store = store or FakeStore()
     runner = runner or FakeRunner()
     started = []
@@ -257,6 +304,7 @@ def service(store=None, runner=None, *, start_career=None, snapshot=None, preset
         preset_store=preset_store or FakePresetStore(),
         runtime_snapshot=snapshot or (lambda account: {"account": account}),
         affinity_for_setup=lambda *_args, **_kwargs: 150,
+        projected_affinity_for_pair=projected_affinity,
         start_career=start_career or (lambda request: started.append(request) or {"started": True}),
         planned_slots=lambda campaign, rotation, runtime: [
             {"role": "parent1", "mode": "FLEXIBLE", "trained_chara_id": 10}
@@ -290,14 +338,14 @@ def real_running_service(tmp_path, *, prepared_run=None):
     [
         ({"final_uma": {"card_id": 0}}, "final_uma.card_id"),
         ({"spark_targets": [{"category": "blue", "name": "speed", "minimum_stars": 3, "priority": "preferred"}]}, "required spark"),
-        ({"loop_members": valid_spec()["loop_members"][:3]}, "exactly four"),
-        ({"loop_members": [{"chara_id": 1, "deck_id": 0}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}, {"chara_id": 4, "deck_id": 4}]}, "deck_id"),
+        ({"loop_members": valid_v3_spec()["loop_members"][:2]}, "exactly three"),
+        ({"loop_members": [{"chara_id": 1, "deck_id": 0}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}]}, "deck_id"),
     ],
 )
 def test_create_campaign_enforces_web_workflow(change, match):
     svc, *_ = service()
     with pytest.raises(ValueError, match=match):
-        svc.create_campaign(valid_spec(**change))
+        svc.create_campaign(valid_v3_spec(**change))
 
 
 @pytest.mark.parametrize(
@@ -308,8 +356,8 @@ def test_create_campaign_enforces_web_workflow(change, match):
         ({"deck": {"deck_id": True}}, "deck.deck_id"),
         ({"final_parent": {"chara_id": True}}, "final_parent.chara_id"),
         ({"final_parent": {"trained_chara_id": True}}, "final_parent.trained_chara_id"),
-        ({"loop_members": [{"chara_id": True, "deck_id": 1}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}, {"chara_id": 4, "deck_id": 4}]}, "chara_id"),
-        ({"loop_members": [{"chara_id": 1, "deck_id": True}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}, {"chara_id": 4, "deck_id": 4}]}, "deck_id"),
+        ({"loop_members": [{"chara_id": True, "deck_id": 1}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}]}, "chara_id"),
+        ({"loop_members": [{"chara_id": 1, "deck_id": True}, {"chara_id": 2, "deck_id": 2}, {"chara_id": 3, "deck_id": 3}]}, "deck_id"),
         ({"strategy": {**valid_spec()["strategy"], "maximum_runs": True}}, "maximum_runs"),
         ({"spark_targets": [{"category": "blue", "name": "stamina", "minimum_stars": True}]}, "minimum_stars"),
     ],
@@ -317,7 +365,7 @@ def test_create_campaign_enforces_web_workflow(change, match):
 def test_create_rejects_boolean_integer_fields_before_pydantic(change, match):
     svc, *_ = service()
     with pytest.raises(ValueError, match=match):
-        svc.create_campaign(valid_spec(**change))
+        svc.create_campaign(valid_v3_spec(**change))
 
 
 def test_get_campaign_enriches_legacy_candidate_sparks_from_runtime_cache():
@@ -354,14 +402,20 @@ def test_create_list_get_and_recommend_delegate():
     svc.planner_factory = lambda request: type("Planner", (), {
         "recommend_final_parents": lambda self, **kwargs: planner_calls.append(("parents", kwargs)) or [1],
         "recommend_loops": lambda self, **kwargs: planner_calls.append(("loops", kwargs)) or {"loops": [2]},
+        "recommend_bootstraps": lambda self, **kwargs: planner_calls.append(("bootstraps", kwargs)) or {"bootstraps": [3]},
     })()
-    created = svc.create_campaign(valid_spec())
+    created = svc.create_campaign(valid_v3_spec())
     assert ParentCampaignSpec.model_validate(created["spec"])
     assert svc.list_campaigns("acct01") == [store.campaign]
     assert svc.get_campaign("cmp1")["campaign_id"] == "cmp1"
     assert svc.recommend_final_parents({"limit": 2}) == [1]
     assert svc.recommend_loops({"limit": 3, "final_parent_chara_id": 1004, "pinned_chara_ids": [1001]}) == {"loops": [2]}
-    assert planner_calls == [("parents", {"limit": 2}), ("loops", {"limit": 3, "pinned_chara_ids": {1001}, "final_parent_chara_id": 1004})]
+    assert svc.recommend_bootstraps({"limit": 2, "pinned_chara_ids": [1001]}) == {"bootstraps": [3]}
+    assert planner_calls == [
+        ("parents", {"limit": 2}),
+        ("loops", {"limit": 3, "pinned_chara_ids": {1001}, "final_parent_chara_id": 1004}),
+        ("bootstraps", {"limit": 2, "pinned_chara_ids": {1001}}),
+    ]
 
 
 def test_default_candidates_normalize_raw_runtime_rows_and_dedupe():
@@ -440,7 +494,7 @@ def test_default_career_request_uses_loop_member_friend_support():
 def test_create_generates_deterministic_campaign_preset_and_context():
     presets = FakePresetStore()
     svc, *_ = service(preset_store=presets)
-    payload = valid_spec(spark_targets=[{"category": "blue", "name": "power", "minimum_stars": 9}], race_plan={"core": [101], "optional": [202], "deferable": [303]})
+    payload = valid_v3_spec(spark_targets=[{"category": "blue", "name": "power", "minimum_stars": 9}], race_plan={"core": [101], "optional": [202], "deferable": [303]})
     first = svc.create_campaign(payload)
     second = svc.create_campaign(payload)
     generated = presets.saved[-1]
@@ -703,6 +757,42 @@ def test_prepare_unresolved_slot_persists_review_and_never_builds_request():
     assert result["prepared_run"] is None
     assert store.campaign["context"]["pending_review"]["kind"] == "unresolved_legacy_slots"
     assert runner.calls[-1] == ("require_user_input", "cmp1", "prepare_next_run")
+
+def test_reconcile_runtime_migrates_legacy_four_member_campaign_before_recovery():
+    svc, store, _, _ = service()
+    store.campaign.update({
+        "state": "RUNNING_CAREER",
+        "context": {
+            "rotation": {
+                "loop_chara_ids": [1, 2, 3, 4],
+                "run_index": 2,
+                "produced": [[1, "v1"], [2, "v2"]],
+            },
+            "prepared_run": {
+                "card_id": 100101,
+                "deck_id": 2,
+                "parent_id_1": 10,
+                "parent_id_2": 11,
+            },
+        },
+    })
+
+    result = svc.reconcile_runtime(
+        "cmp1",
+        current_career={
+            "active": True,
+            "card_id": 100101,
+            "deck_id": 2,
+            "parent_id_1": 10,
+            "parent_id_2": 11,
+        },
+    )
+
+    assert result["state"] == "RUNNING_CAREER"
+    assert store.campaign["context"]["stage_state"]["bootstrap_chara_ids"] == [3, 4, 1, 2]
+    assert store.campaign["context"]["stage_state"]["stage_index"] == 0
+    assert store.campaign["context"]["legacy_stage_migrated"] is True
+
 
 def test_reconcile_matching_active_career_resumes_running_state():
     svc, store, _, started = service()
@@ -1077,6 +1167,370 @@ def test_failed_gateway_marks_failed_and_allows_retry():
     assert store.campaign["context"]["run_start"]["status"] == "FAILED"
     assert svc.approve_run("cmp1") == {"job_id": "job-2"}
     assert len(attempts) == 2
+
+
+def _v3_campaign_for_stage(stage_index=0):
+    spec = ParentCampaignSpec.model_validate(
+        valid_v3_spec(race_plan={"core": [101], "optional": [], "deferable": []})
+    ).model_dump(mode="json")
+    return {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "SELECTING_LINEAGE",
+        "spec": spec,
+        "context": {
+            "stage_state": {
+                "bootstrap_chara_ids": [1001, 1002, 1003],
+                "stage_index": stage_index,
+                "completed_bootstrap_stages": list(range(min(stage_index, 3))),
+                "final_repeat_count": 0,
+                "produced": [],
+            },
+            "stage_goal_assignments": {
+                "0": [spec["spark_targets"][0]],
+                "1": [],
+                "2": [],
+            },
+            "bootstrap_goal_state": {},
+            "race_agenda": {"CORE": [101], "OPTIONAL": [], "DEFERABLE": []},
+        },
+        "version": 1,
+    }
+
+
+def _v3_runtime():
+    def display(trained_id, *, dirt=0, stamina=0):
+        factors = []
+        if dirt:
+            factors.append({"category": "aptitude", "name": "Dirt", "stars": dirt})
+        if stamina:
+            factors.append({"category": "stat", "name": "Stamina", "stars": stamina})
+        return {
+            "trained_chara_id": trained_id,
+            "tree": {
+                "self": {"factors": factors},
+                "p1": {"factors": []},
+                "p2": {"factors": []},
+            },
+        }
+
+    owned = [
+        {"trained_chara_id": 11, "card_id": 100201, "rank_score": 100, "win_saddle_id_array": [10]},
+        {"trained_chara_id": 12, "card_id": 100301, "rank_score": 90, "win_saddle_id_array": [10]},
+        {"trained_chara_id": 13, "card_id": 100501, "rank_score": 1000, "win_saddle_id_array": []},
+    ]
+    return {
+        "owned_candidates": owned,
+        "rental_candidates": [],
+        "display_by_id": {
+            11: display(11, dirt=2, stamina=3),
+            12: display(12, dirt=2, stamina=3),
+            13: display(13),
+        },
+        "umas": [
+            {"id": 100101, "card_id": 100101},
+            {"id": 100201, "card_id": 100201},
+            {"id": 100301, "card_id": 100301},
+            {"id": 100401, "card_id": 100401},
+        ],
+        "base_aptitudes": {
+            "100101": {"dirt": "D", "long": "A"},
+            "100201": {"dirt": "A", "long": "A"},
+            "100301": {"dirt": "A", "long": "A"},
+            "100401": {"dirt": "D", "long": "A"},
+        },
+        "race_rows": [
+            {"program_id": 101, "turn": 20, "date": "Classic Year Early Jan", "name": "Dirt G1", "type": "G1", "terrain": "Dirt", "distance": "Long"},
+        ],
+        "g1_saddle_program_map": {101: {10}},
+    }
+
+
+def test_v3_prepare_uses_stage_trainee_and_ranks_aptitude_feasible_pair():
+    store = FakeStore(_v3_campaign_for_stage(0))
+    runtime = _v3_runtime()
+    svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    prepared = result["prepared_run"]
+    assert prepared["trainee_chara_id"] == 1001
+    assert prepared["card_id"] == 100101
+    assert [row["trained_chara_id"] for row in prepared["legacy_slots"]] == [11, 12]
+    assert store.campaign["context"]["aptitude_targets"][0]["aptitude"] == "dirt"
+    assert store.campaign["context"]["aptitude_shortfalls"] == []
+    assert store.campaign["context"]["aptitude_evidence"]["dirt"]["total_stars"] == 4
+
+
+def test_v3_prepare_includes_parent_specific_affinity_races_in_aptitude_targets():
+    campaign = _v3_campaign_for_stage(0)
+    campaign["spec"]["race_plan"] = {"core": [], "optional": [], "deferable": []}
+    campaign["context"]["race_agenda"] = {"CORE": [], "OPTIONAL": [], "DEFERABLE": []}
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["prepared_run"]["race_overrides"]["extra_race_list"] == [101]
+    assert store.campaign["context"]["aptitude_targets"] == [
+        {
+            "aptitude": "dirt",
+            "starting_grade": "D",
+            "required_red_stars": 4,
+            "achievable_target_grade": "B",
+            "supporting_race_ids": [101],
+        }
+    ]
+    assert store.campaign["context"]["aptitude_shortfalls"] == []
+
+
+def test_v3_prepare_uses_projected_displayed_affinity_callback():
+    store = FakeStore(_v3_campaign_for_stage(0))
+    runtime = _v3_runtime()
+    calls = []
+    svc, _, _, _ = service(
+        store=store,
+        snapshot=lambda _account: runtime,
+        projected_affinity=lambda card_id, first, second, saddles: calls.append(
+            (card_id, first["trained_chara_id"], second["trained_chara_id"], set(saddles))
+        ) or {"total": 77},
+    )
+    svc.candidate_pool = svc._default_candidates
+
+    svc.prepare_next_run("cmp1")
+
+    assert store.campaign["context"]["projected_displayed_affinity"] == 77
+    assert calls
+    assert all(call[0] == 100101 for call in calls)
+    assert all(call[3] == {10} for call in calls)
+
+
+def test_v3_prepare_final_stage_uses_exact_final_uma_card_and_durable_setup():
+    store = FakeStore(_v3_campaign_for_stage(3))
+    runtime = _v3_runtime()
+    svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    prepared = result["prepared_run"]
+    assert prepared["trainee_chara_id"] == 1004
+    assert prepared["card_id"] == 100401
+    assert prepared["deck_id"] == 4
+    assert prepared["friend_support"]["viewer_id"] == 904
+
+
+def test_migrated_legacy_final_stage_pauses_when_durable_final_setup_is_missing():
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "SELECTING_LINEAGE",
+        "spec": valid_spec(final_uma={"card_id": 100101}),
+        "context": {
+            "stage_state": {
+                "bootstrap_chara_ids": [1, 2, 3, 4],
+                "stage_index": 4,
+                "completed_bootstrap_stages": [0, 1, 2, 3],
+                "final_repeat_count": 0,
+                "produced": [],
+            },
+            "stage_goal_assignments": {"0": [], "1": [], "2": [], "3": []},
+        },
+        "version": 1,
+    }
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["campaign"]["state"] == "PAUSED"
+    assert result["campaign"]["next_action"] == "resolve_final_uma_setup"
+    assert "deck" in result["campaign"]["error"].lower()
+
+
+def test_v3_prepare_pauses_when_exact_final_uma_is_unavailable():
+    store = FakeStore(_v3_campaign_for_stage(3))
+    runtime = _v3_runtime()
+    runtime["umas"] = [row for row in runtime["umas"] if row["id"] != 100401]
+    svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["campaign"]["state"] == "PAUSED"
+    assert result["campaign"]["next_action"] == "resolve_final_uma_unavailable"
+    assert "100401" in result["campaign"]["error"]
+
+
+def test_legacy_v2_resume_migrates_four_members_without_dropping_next_trainee():
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "PAUSED",
+        "spec": valid_spec(),
+        "context": {
+            "rotation": {
+                "loop_chara_ids": [1, 2, 3, 4],
+                "run_index": 2,
+                "produced": [[1, "v1"], [2, "v2"]],
+            }
+        },
+        "version": 1,
+    }
+    store = FakeStore(campaign)
+    svc, _, _, _ = service(store=store)
+
+    svc.resume("cmp1")
+
+    assert store.campaign["context"]["stage_state"] == {
+        "bootstrap_chara_ids": [3, 4, 1, 2],
+        "stage_index": 0,
+        "completed_bootstrap_stages": [],
+        "final_repeat_count": 0,
+        "produced": [[1, "v1"], [2, "v2"]],
+    }
+    assert set(store.campaign["context"]["stage_goal_assignments"]) == {"0", "1", "2", "3"}
+    assert store.campaign["context"]["bootstrap_goal_state"] == {}
+
+
+def test_migrated_v2_result_uses_stage_progression_instead_of_old_rotation():
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "SELECTING_LINEAGE",
+        "spec": valid_spec(),
+        "context": {
+            "stage_state": {
+                "bootstrap_chara_ids": [1, 2, 3, 4],
+                "stage_index": 0,
+                "completed_bootstrap_stages": [],
+                "final_repeat_count": 0,
+                "produced": [],
+            },
+            "stage_goal_assignments": {
+                "0": [{"category": "blue", "name": "stamina", "minimum_stars": 9, "priority": "required"}],
+                "1": [],
+                "2": [],
+                "3": [],
+            },
+            "bootstrap_goal_state": {},
+        },
+        "version": 1,
+    }
+    store = FakeStore(campaign)
+    svc, _, _, _ = service(store=store)
+
+    result = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "legacy-stage-result",
+            "trained_chara_id": 99,
+            "name": "Migrated Result",
+            "spark_totals": {("blue", "stamina"): 9},
+            "displayed_affinity": {"total": 10},
+        },
+        [],
+    )
+
+    assert result["campaign"]["context"]["stage_state"]["stage_index"] == 1
+    assert result["candidate"]["evaluation"]["stage_kind"] == "bootstrap"
+
+
+def test_v3_bootstrap_result_repeats_until_assigned_goal_is_complete():
+    store = FakeStore(_v3_campaign_for_stage(0))
+    svc, _, _, _ = service(store=store)
+
+    result = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "bootstrap-incomplete",
+            "trained_chara_id": 99,
+            "name": "Bootstrap Result",
+            "rank_score": 100,
+            "spark_totals": {("blue", "stamina"): 8},
+            "displayed_affinity": {"total": 999},
+        },
+        [],
+    )
+
+    assert result["campaign"]["context"]["stage_state"]["stage_index"] == 0
+    assert result["campaign"]["next_action"] == "prepare_next_run"
+    assert result["candidate"]["evaluation"]["stage_kind"] == "bootstrap"
+    assert result["candidate"]["evaluation"]["accepted"] is False
+
+
+def test_v3_bootstrap_result_advances_once_when_assigned_goal_completes():
+    store = FakeStore(_v3_campaign_for_stage(0))
+    svc, _, _, _ = service(store=store)
+
+    result = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "bootstrap-complete",
+            "trained_chara_id": 99,
+            "name": "Bootstrap Result",
+            "rank_score": 100,
+            "spark_totals": {("blue", "stamina"): 9},
+            "displayed_affinity": {"total": 10},
+        },
+        [],
+    )
+
+    context = result["campaign"]["context"]
+    assert context["stage_state"]["stage_index"] == 1
+    assert context["stage_state"]["completed_bootstrap_stages"] == [0]
+    assert context["bootstrap_goal_state"]["0"]["complete"] is True
+    assert result["campaign"]["next_action"] == "prepare_next_run"
+
+
+def test_v3_final_uma_repeats_until_final_factor_goals_complete_even_with_high_affinity():
+    store = FakeStore(_v3_campaign_for_stage(3))
+    svc, _, _, _ = service(store=store)
+
+    result = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "final-incomplete",
+            "trained_chara_id": 199,
+            "name": "Final Result",
+            "rank_score": 100,
+            "spark_totals": {("blue", "stamina"): 8},
+            "displayed_affinity": {"total": 999},
+        },
+        [],
+    )
+
+    assert result["campaign"]["state"] == "SELECTING_LINEAGE"
+    assert result["campaign"]["context"]["stage_state"]["final_repeat_count"] == 1
+    assert result["candidate"]["evaluation"]["accepted"] is False
+
+
+def test_v3_final_factor_goal_completes_below_old_affinity_threshold():
+    store = FakeStore(_v3_campaign_for_stage(3))
+    svc, _, _, _ = service(store=store)
+
+    result = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "final-complete",
+            "trained_chara_id": 199,
+            "name": "Final Result",
+            "rank_score": 100,
+            "spark_totals": {("blue", "stamina"): 9},
+            "displayed_affinity": {"total": 42},
+        },
+        [],
+    )
+
+    assert result["campaign"]["state"] == "COMPLETED"
+    assert result["campaign"]["selected_candidate_id"] == "final-complete"
+    assert result["candidate"]["evaluation"]["completed_displayed_affinity"] == 42
+    assert result["campaign"]["context"]["stage_state"]["final_repeat_count"] == 1
 
 
 def completed_candidate(affinity=150, required=9, preferred=0):

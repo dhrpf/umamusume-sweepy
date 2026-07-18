@@ -184,6 +184,53 @@ class CampaignPlanner:
             "score_breakdown": breakdown,
         }
 
+    def recommend_bootstraps(
+        self,
+        *,
+        pinned_chara_ids: set[int] | None = None,
+        limit: int = 3,
+        mdb_path: str | Path = "",
+    ) -> dict[str, list[dict[str, Any]]]:
+        pinned = {int(value) for value in (pinned_chara_ids or set())}
+        names = {
+            trained_id: str(display.get("name") or "")
+            for trained_id, display in self.display_by_id.items()
+        }
+
+        def scan(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            result = scan_legacy_loop_pools(
+                records,
+                mdb_path=mdb_path,
+                veteran_names=names,
+                limit=50,
+                affinity_calculator=lambda _path, trainee, first, second: self.affinity_for_pair(
+                    trainee, first, second
+                ),
+                g1_saddle_ids=self.g1_saddle_ids,
+                required_base_chara_ids=pinned,
+                pool_size=3,
+            )
+            return [
+                pool
+                for pool in result["pools"]
+                if pinned.issubset(set(pool["base_chara_ids"]))
+            ]
+
+        owned_records = [
+            row for row in self.veteran_records if self._chara_id(row) in self.owned_chara_ids
+        ]
+        runnable = [self._loop_row(pool, owned=True) for pool in scan(owned_records)]
+        upgrades = [
+            self._loop_row(pool, owned=False)
+            for pool in scan(self.veteran_records)
+            if not set(pool["base_chara_ids"]).issubset(self.owned_chara_ids)
+        ]
+        order = lambda row: (-row["score"], tuple(row["chara_ids"]))
+        return {
+            "bootstraps": sorted(runnable, key=order)[: max(0, int(limit))],
+            "ideal_upgrades": sorted(upgrades, key=order)[: max(0, int(limit))],
+        }
+
     def recommend_loops(
         self,
         *,

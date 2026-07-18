@@ -9,18 +9,18 @@ from career_bot.campaigns.store import CampaignError, CampaignNotFound, InvalidT
 def valid_web_spec():
     return {
         "account": "acct01",
+        "spec_version": 3,
         "goal": {
             "purpose": "parent",
             "target_factors": [{"name": "stamina", "minimum_stars": 2, "scope": "lineage"}],
         },
         "strategy": {"preset_name": "parent", "maximum_runs": 20, "maximum_runtime_hours": 4},
-        "final_uma": {"card_id": 100101},
+        "final_uma": {"card_id": 100101, "deck_id": 4},
         "spark_targets": [{"category": "blue", "name": "stamina", "minimum_stars": 9}],
         "loop_members": [
-            {"chara_id": 1, "deck_id": 1},
-            {"chara_id": 2, "deck_id": 2},
-            {"chara_id": 3, "deck_id": 3},
-            {"chara_id": 4, "deck_id": 4},
+            {"chara_id": 1001, "deck_id": 1},
+            {"chara_id": 1002, "deck_id": 2},
+            {"chara_id": 1003, "deck_id": 3},
         ],
     }
 
@@ -44,6 +44,9 @@ class FakeCampaignService:
 
     def recommend_loops(self, request):
         return self._call("recommend_loops", request)
+
+    def recommend_bootstraps(self, request):
+        return self._call("recommend_bootstraps", request)
 
     def create_campaign(self, spec):
         return self._call("create_campaign", spec)
@@ -94,6 +97,7 @@ def client():
         ("get", "/api/campaigns?account=acct01", None, ("list_campaigns", ("acct01",), {})),
         ("post", "/api/campaigns/recommend-final-parents", {"final_uma_card_id": 100101, "limit": 2}, ("recommend_final_parents", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 2},), {})),
         ("post", "/api/campaigns/recommend-loop", {"final_uma_card_id": 100101, "final_parent_chara_id": 1004, "limit": 3, "pinned_chara_ids": [1, 2]}, ("recommend_loops", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 3, "pinned_chara_ids": [1, 2], "final_parent_chara_id": 1004},), {})),
+        ("post", "/api/campaigns/recommend-bootstraps", {"final_uma_card_id": 100101, "limit": 3, "pinned_chara_ids": [1001]}, ("recommend_bootstraps", ({"account": None, "final_uma_card_id": 100101, "spark_targets": [], "limit": 3, "pinned_chara_ids": [1001]},), {})),
         ("get", "/api/campaigns/cmp1", None, ("get_campaign", ("cmp1",), {})),
         ("post", "/api/campaigns/cmp1/activate", None, ("activate", ("cmp1",), {})),
         ("post", "/api/campaigns/cmp1/pause", None, ("pause", ("cmp1",), {})),
@@ -215,6 +219,24 @@ def test_campaign_runtime_snapshot_uses_nested_runner_contract(monkeypatch):
         "dailies": {"running": True},
     }
 
+def test_campaign_runtime_snapshot_exposes_stage_planning_data(monkeypatch):
+    monkeypatch.setattr(main, "active_account", {"name": "acct01", "career": None})
+    monkeypatch.setattr(main, "active_dashboard_data", {"umas": [{"id": 100101, "name": "Uma"}]})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(main.career_runner, "snapshot", lambda: {"running": False, "finished": False})
+    monkeypatch.setattr(main.aptitude, "_load_chara_aptitude", lambda _path: {"100101": {"dirt": 4}})
+    monkeypatch.setattr(main, "_campaign_race_rows", lambda: [{"program_id": 101}])
+    monkeypatch.setattr(main.master_data, "configured_master_mdb_path", lambda _base: "/tmp/master.mdb")
+    monkeypatch.setattr(main.affinity_calc, "load_g1_saddle_program_map", lambda _path: {101: {10}})
+
+    snapshot = main._campaign_runtime_snapshot("acct01")
+
+    assert snapshot["umas"] == [{"id": 100101, "name": "Uma"}]
+    assert snapshot["base_aptitudes"] == {"100101": {"dirt": 4}}
+    assert snapshot["race_rows"] == [{"program_id": 101}]
+    assert snapshot["g1_saddle_program_map"] == {101: {10}}
+
+
 def test_campaign_runtime_snapshot_rejects_active_account_mismatch(monkeypatch):
     monkeypatch.setattr(main, "active_account", {"name": "acct01"})
     monkeypatch.setattr(main, "active_dashboard_data", {})
@@ -240,6 +262,69 @@ def _stub_campaign_runtime_launch(monkeypatch):
     monkeypatch.setattr(main, "apply_deck_type_counts", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(main, "_apply_preset_turn_delay", lambda _preset: None)
     monkeypatch.setattr(main, "career_runner", FakeCareerRunner())
+
+
+def test_campaign_projected_affinity_uses_displayed_metric(monkeypatch):
+    captured = []
+    monkeypatch.setattr(main, "_campaign_master_mdb_path", lambda: "/tmp/master.mdb")
+    monkeypatch.setattr(
+        main.affinity_calc,
+        "project_displayed_veteran_affinity",
+        lambda mdb_path, **kwargs: captured.append((mdb_path, kwargs)) or {"total": 77},
+    )
+
+    result = main._campaign_projected_affinity(
+        100101,
+        {"trained_chara_id": 11},
+        {"trained_chara_id": 22},
+        {10, 20},
+    )
+
+    assert result == {"total": 77}
+    assert captured == [
+        (
+            "/tmp/master.mdb",
+            {
+                "trainee_card_id": 100101,
+                "parent1": {"trained_chara_id": 11},
+                "parent2": {"trained_chara_id": 22},
+                "planned_g1_saddle_ids": {10, 20},
+            },
+        )
+    ]
+
+
+def test_campaign_start_honors_exact_prepared_card_id(monkeypatch):
+    captured = []
+    _stub_campaign_runtime_launch(monkeypatch)
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+    monkeypatch.setattr(main, "active_client", object())
+    monkeypatch.setattr(
+        main,
+        "active_dashboard_data",
+        {
+            "umas": [{"id": 100101}, {"id": 100102}],
+            "decks": [{"id": 3, "cards": [{"id": value} for value in [1, 2, 3, 4, 5]]}],
+        },
+    )
+    monkeypatch.setattr(
+        main,
+        "start_career_from_request",
+        lambda request: captured.append(request) or {"success": True, "result": {"started": True}},
+    )
+
+    main._campaign_start_career({
+        "account": "acct01",
+        "card_id": 100102,
+        "deck_id": 3,
+        "trainee_chara_id": 1001,
+        "legacy_slots": [{"trained_chara_id": 11}, {"trained_chara_id": 22}],
+        "friend_support": {"viewer_id": 33, "support_card_id": 44},
+        "race_overrides": [],
+        "preset": {"name": "parent"},
+    })
+
+    assert captured[0].card_id == 100102
 
 
 def test_campaign_start_propagates_friend_and_races(monkeypatch):
@@ -274,6 +359,7 @@ def test_campaign_start_propagates_friend_and_races(monkeypatch):
     assert request.friend_viewer_id == 33
     assert request.friend_card_id == 44
     assert request.support_card_ids == [1, 2, 3, 4, 5]
+    assert request.card_id == 100101
     assert request.deck_id == 3
     assert request.preset_overrides["mandatory_race_list"] == [7]
     assert request.preset_overrides["extra_race_list"] == [8]
@@ -624,6 +710,96 @@ def test_campaign_completed_result_uses_new_matching_trainee_and_lineage_sparks(
         "rental": False,
     }]
     assert parent_ids == [10, 11, 12, 13]
+
+
+def test_v3_campaign_completed_result_records_displayed_affinity_without_final_parent(monkeypatch):
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "spec": {"spec_version": 3, "final_uma": {"card_id": 100101}},
+        "context": {
+            "baseline_parent_ids": [10, 11],
+            "prepared_run": {"card_id": 100101, "trainee_chara_id": 1001},
+        },
+    }
+    raw_candidate = {
+        "trained_chara_id": 12,
+        "card_id": 100101,
+        "rank_score": 3517,
+        "create_time": "2026-07-16 11:05:12",
+        "win_saddle_id_array": [1],
+        "succession_chara_array": [],
+    }
+    snapshot = {
+        "owned_candidates": [
+            {"trained_chara_id": 10, "card_id": 101401},
+            {"trained_chara_id": 11, "card_id": 101501},
+            raw_candidate,
+        ],
+        "display_by_id": {
+            12: {
+                "instance_id": 12,
+                "name": "Special Week",
+                "tree": {"self": {"factors": []}},
+            }
+        },
+    }
+    monkeypatch.setattr(main, "_campaign_master_mdb_path", lambda: "/tmp/master.mdb")
+    monkeypatch.setattr(
+        main.affinity_calc,
+        "calculate_veteran_affinity",
+        lambda path, veteran: {"total": 42, "base": 30, "race": 12},
+    )
+
+    candidate, pairings, parent_ids = main._campaign_completed_result(campaign, snapshot)
+
+    assert candidate["displayed_affinity"] == {"total": 42, "base": 30, "race": 12}
+    assert pairings == []
+    assert parent_ids == [10, 11, 12]
+
+
+def test_migrated_v2_campaign_completed_result_uses_stage_affinity_path(monkeypatch):
+    campaign = {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "spec": {"spec_version": 2, "final_uma": {"card_id": 100101}},
+        "context": {
+            "stage_state": {
+                "bootstrap_chara_ids": [1001, 1002, 1003, 1004],
+                "stage_index": 0,
+                "completed_bootstrap_stages": [],
+                "final_repeat_count": 0,
+                "produced": [],
+            },
+            "baseline_parent_ids": [10, 11],
+            "prepared_run": {"card_id": 100101, "trainee_chara_id": 1001},
+        },
+    }
+    snapshot = {
+        "owned_candidates": [
+            {"trained_chara_id": 10, "card_id": 101401},
+            {"trained_chara_id": 11, "card_id": 101501},
+            {
+                "trained_chara_id": 12,
+                "card_id": 100101,
+                "create_time": "2026-07-16 11:05:12",
+                "win_saddle_id_array": [],
+                "succession_chara_array": [],
+            },
+        ],
+        "display_by_id": {12: {"name": "Migrated Result", "tree": {"self": {"factors": []}}}},
+    }
+    monkeypatch.setattr(main, "_campaign_master_mdb_path", lambda: "/tmp/master.mdb")
+    monkeypatch.setattr(
+        main.affinity_calc,
+        "calculate_veteran_affinity",
+        lambda _path, _veteran: {"total": 33, "base": 30, "race": 3},
+    )
+
+    candidate, pairings, _parent_ids = main._campaign_completed_result(campaign, snapshot)
+
+    assert candidate["displayed_affinity"]["total"] == 33
+    assert pairings == []
 
 
 def test_campaign_start_applies_result_and_launches_career_runner(monkeypatch):

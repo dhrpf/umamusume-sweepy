@@ -56,6 +56,27 @@ def fake_affinity(_mdb_path, trainee_card_id, parent1, parent2):
     }
 
 
+def test_scanner_can_rank_three_member_bootstrap_pools(tmp_path):
+    rows = [
+        record(101, 100101),
+        record(201, 100201),
+        record(301, 100301),
+        record(401, 100401),
+    ]
+
+    result = scan_legacy_loop_pools(
+        rows,
+        mdb_path=tmp_path / "unused.mdb",
+        pool_size=3,
+        affinity_calculator=fake_affinity,
+        g1_saddle_ids={10, 20},
+    )
+
+    assert result["pools"]
+    assert all(len(pool["base_chara_ids"]) == 3 for pool in result["pools"])
+    assert all(len(pool["affinity"]["rotations"]) == 3 for pool in result["pools"])
+
+
 def test_scanner_finds_four_distinct_character_double_circle_pool(tmp_path):
     records = [
         record(101, 100101),

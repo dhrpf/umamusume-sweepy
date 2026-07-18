@@ -53,29 +53,25 @@
                 </div>
 
                 <div class="builder-step">
-                    <h3><span>3</span> Final Parent</h3>
-                    <button id="recommend-parent-btn" class="btn btn-primary" type="button">Recommend Final Parents</button>
-                    <div id="parent-recommendations" class="recommendation-grid"></div>
-                </div>
-
-                <div class="builder-step">
-                    <h3><span>4</span> Four-Member Loop</h3>
-                    <button id="recommend-loop-btn" class="btn btn-primary" type="button">Recommend Loops</button>
+                    <h3><span>3</span> Three Bootstrap Members</h3>
+                    <button id="recommend-loop-btn" class="btn btn-primary" type="button">Recommend Bootstrap Pool</button>
                     <button id="recompute-loop-btn" class="btn" type="button">Recompute with Pins</button>
-                    <h4>Runnable</h4><div id="loop-recommendations" class="recommendation-grid"></div>
+                    <div id="parent-recommendations" hidden></div>
+                    <h4>Runnable Bootstrap Pools</h4><div id="loop-recommendations" class="recommendation-grid"></div>
                     <h4>Ideal Upgrades</h4><div id="loop-upgrades" class="recommendation-grid"></div>
                 </div>
 
                 <div class="builder-step">
                     <div class="campaign-heading-row">
-                        <h3><span>5</span> Manual Deck &amp; Friend Assignment</h3>
+                        <h3><span>4</span> Stage Deck &amp; Friend Assignment</h3>
                         <button id="refresh-friend-supports-btn" class="btn btn-sm" type="button">Load Friend Supports</button>
                     </div>
+                    <p class="muted">Assign a durable deck and friend support to each bootstrap stage and the Final Uma stage.</p>
                     <div id="deck-assignments"></div>
                 </div>
 
                 <div class="builder-step">
-                    <h3><span>6</span> Strategy</h3>
+                    <h3><span>5</span> Strategy</h3>
                     <div class="form-grid">
                         <label>Base preset<select id="base-preset-select" class="form-input"><option value="">Select preset</option></select></label>
                         <label>Maximum runs<input id="maximum-runs" class="form-input" type="number" min="1" max="1000" value="30"></label>
@@ -87,7 +83,7 @@
                 </div>
 
                 <div class="builder-step">
-                    <h3><span>7</span> Preview &amp; Save</h3>
+                    <h3><span>6</span> Preview &amp; Save</h3>
                     <pre id="campaign-preview" class="campaign-preview"></pre>
                     <button id="save-campaign-btn" class="btn btn-primary" type="button">Save Campaign</button>
                 </div>

@@ -17,6 +17,8 @@ const state = {
         pinnedCharaIds: [],
         deckAssignments: {},
         friendAssignments: {},
+        finalDeckId: 0,
+        finalFriend: null,
         options: {
             allowRental: false,
             autoUseBestVeteran: false,
@@ -141,7 +143,7 @@ function resetDraft() {
     state.loopRecommendations = { loops: [], ideal_upgrades: [] };
     state.draft = {
         finalUmaCardId: 0, sparkTargets: [], selectedFinalParent: null, selectedLoop: null,
-        pinnedCharaIds: [], deckAssignments: {}, friendAssignments: {},
+        pinnedCharaIds: [], deckAssignments: {}, friendAssignments: {}, finalDeckId: 0, finalFriend: null,
         options: { allowRental: false, autoUseBestVeteran: false, stopWhenTargetReached: false, presetName: defaultPreset, maximumRuns: 30, maximumRuntimeHours: 24 },
     };
     syncInputs();
@@ -290,25 +292,41 @@ function friendConflictsWithDeck(friend, deckId) {
     return supportCardId > 0 && deckSupportIds(deckId).has(supportCardId);
 }
 
+function friendSpec(friend) {
+    if (!friendKey(friend)) return null;
+    return {
+        viewer_id: numberFrom(friend, ['viewer_id', 'friend_viewer_id']),
+        support_card_id: numberFrom(friend, ['support_card_id', 'friend_card_id']),
+        support_name: String(friend?.support_name || ''),
+    };
+}
+
+function friendOptions(deckId, selectedFriend, friends) {
+    const selectedFriendKey = friendKey(selectedFriend);
+    return friends.map((friend) => {
+        const key = friendKey(friend);
+        const conflict = friendConflictsWithDeck(friend, deckId);
+        return `<option value="${escapeHtml(key)}"${selectedFriendKey === key ? ' selected' : ''}${conflict ? ' disabled' : ''}>${escapeHtml(friendLabel(friend))}${conflict ? ' (already in deck)' : ''}</option>`;
+    }).join('');
+}
+
 function renderDecks() {
     const members = loopMembers(state.draft.selectedLoop);
-    if (members.length !== 4) {
-        els.decks.innerHTML = '<p class="empty-state">Choose a runnable four-member loop first.</p>';
+    if (members.length !== 3) {
+        els.decks.innerHTML = '<p class="empty-state">Choose a runnable three-member bootstrap pool first.</p>';
         return;
     }
     const decks = availableDecks();
     const friends = state.friendSupports.filter((friend) => friendKey(friend));
-    els.decks.innerHTML = members.map((member) => {
+    const bootstrapRows = members.map((member) => {
         const deckId = Number(state.draft.deckAssignments[member.charaId]);
         const selectedFriend = state.draft.friendAssignments[member.charaId];
-        const selectedFriendKey = friendKey(selectedFriend);
-        const friendOptions = friends.map((friend) => {
-            const key = friendKey(friend);
-            const conflict = friendConflictsWithDeck(friend, deckId);
-            return `<option value="${escapeHtml(key)}"${selectedFriendKey === key ? ' selected' : ''}${conflict ? ' disabled' : ''}>${escapeHtml(friendLabel(friend))}${conflict ? ' (already in deck)' : ''}</option>`;
-        }).join('');
-        return `<div class="deck-row"><strong>${escapeHtml(member.name)}</strong><select class="form-input" data-deck-chara="${member.charaId}" aria-label="Deck for ${escapeHtml(member.name)}"><option value="">Select deck</option>${decks.map((deck) => `<option value="${deck.id}"${deckId === deck.id ? ' selected' : ''}>${escapeHtml(deck.name)} (ID ${deck.id})</option>`).join('')}</select><select class="form-input" data-friend-chara="${member.charaId}" aria-label="Friend support for ${escapeHtml(member.name)}"><option value="">${friends.length ? 'Select friend support' : 'Load friend supports first'}</option>${friendOptions}</select></div>`;
+        return `<div class="deck-row"><strong>Bootstrap · ${escapeHtml(member.name)}</strong><select class="form-input" data-deck-chara="${member.charaId}" aria-label="Deck for ${escapeHtml(member.name)}"><option value="">Select deck</option>${decks.map((deck) => `<option value="${deck.id}"${deckId === deck.id ? ' selected' : ''}>${escapeHtml(deck.name)} (ID ${deck.id})</option>`).join('')}</select><select class="form-input" data-friend-chara="${member.charaId}" aria-label="Friend support for ${escapeHtml(member.name)}"><option value="">${friends.length ? 'Select friend support' : 'Load friend supports first'}</option>${friendOptions(deckId, selectedFriend, friends)}</select></div>`;
     }).join('');
+    const finalUma = resolveUmaIdentity(state.draft.finalUmaCardId);
+    const finalDeckId = Number(state.draft.finalDeckId);
+    const finalRow = `<div class="deck-row is-final-stage"><strong>Final Uma · ${escapeHtml(finalUma.name)}</strong><select class="form-input" data-final-deck aria-label="Deck for Final Uma"><option value="">Select deck</option>${decks.map((deck) => `<option value="${deck.id}"${finalDeckId === deck.id ? ' selected' : ''}>${escapeHtml(deck.name)} (ID ${deck.id})</option>`).join('')}</select><select class="form-input" data-final-friend aria-label="Friend support for Final Uma"><option value="">${friends.length ? 'Select friend support' : 'Load friend supports first'}</option>${friendOptions(finalDeckId, state.draft.finalFriend, friends)}</select></div>`;
+    els.decks.innerHTML = bootstrapRows + finalRow;
 }
 
 function recommendationContext() {
@@ -321,9 +339,8 @@ function recommendationContext() {
 
 function buildSpec() {
     const context = recommendationContext();
-    if (!state.draft.selectedFinalParent) throw new Error('Choose a final parent recommendation.');
     const selectedMembers = loopMembers(state.draft.selectedLoop);
-    if (selectedMembers.length !== 4) throw new Error('Choose a runnable four-member loop.');
+    if (selectedMembers.length !== 3) throw new Error('Choose a runnable three-member bootstrap pool.');
     const loopMembersSpec = selectedMembers.map((member) => {
         const deckId = Number(state.draft.deckAssignments[member.charaId]);
         if (deckId < 1 || deckId > 10) throw new Error(`Assign a deck to ${member.name}.`);
@@ -334,20 +351,19 @@ function buildSpec() {
             chara_id: member.charaId,
             deck_id: deckId,
             pinned: state.draft.pinnedCharaIds.includes(member.charaId),
-            friend_support: {
-                viewer_id: numberFrom(friend, ['viewer_id', 'friend_viewer_id']),
-                support_card_id: numberFrom(friend, ['support_card_id', 'friend_card_id']),
-                support_name: String(friend.support_name || ''),
-            },
+            friend_support: friendSpec(friend),
         };
     });
+    if (Number(state.draft.finalDeckId) < 1 || Number(state.draft.finalDeckId) > 10) throw new Error('Assign a deck to Final Uma.');
+    if (!friendKey(state.draft.finalFriend)) throw new Error('Assign a friend support to Final Uma.');
+    if (friendConflictsWithDeck(state.draft.finalFriend, state.draft.finalDeckId)) throw new Error('Friend support for Final Uma is already present in the selected deck.');
     const account = accountName();
     if (!account) throw new Error('Backend session exposes no usable campaign account name.');
     if (!state.draft.options.presetName) throw new Error('Select a persisted base preset.');
     const agenda = state.draft.selectedLoop?.shared_g1_agenda || {};
     const raceIds = (rows) => [...new Set((Array.isArray(rows) ? rows : []).map((row) => numberFrom(row, ['program_id', 'id'])).filter((id) => id > 0))];
     return {
-        account, spec_version: 2,
+        account, spec_version: 3,
         goal: { purpose: 'parent', target_factors: [] },
         strategy: {
             preset_name: state.draft.options.presetName,
@@ -356,9 +372,12 @@ function buildSpec() {
             tp_mode: 'wait', approval_mode: 'ambiguity_only',
             stop_when_target_reached: state.draft.options.stopWhenTargetReached,
         },
-        final_uma: { card_id: context.final_uma_card_id },
+        final_uma: {
+            card_id: context.final_uma_card_id,
+            deck_id: Number(state.draft.finalDeckId),
+            friend_support: friendSpec(state.draft.finalFriend),
+        },
         spark_targets: context.spark_targets,
-        final_parent: { chara_id: Number(state.draft.selectedFinalParent.chara_id), trained_chara_id: parentTrainedId(state.draft.selectedFinalParent) },
         loop_members: loopMembersSpec,
         race_plan: { core: raceIds(agenda.agenda), optional: raceIds(agenda.optional), deferable: raceIds(agenda.skipped) },
         options: { allow_rental: state.draft.options.allowRental, auto_use_best_veteran: state.draft.options.autoUseBestVeteran },
@@ -620,8 +639,8 @@ function renderCandidateHistory(campaign, excludedIds) {
 
 function agendaProgramIds(agenda, group) {
     const aliases = {
-        CORE: ['CORE', 'core', 'agenda'],
-        OPTIONAL: ['OPTIONAL', 'optional'],
+        CORE: ['CORE', 'core', 'mandatory_race_list', 'agenda'],
+        OPTIONAL: ['OPTIONAL', 'optional', 'extra_race_list', 'affinity_program_ids', 'factor_program_ids'],
         DEFERABLE: ['DEFERABLE', 'deferable', 'skipped'],
     }[group];
     const raw = aliases.map((key) => agenda?.[key]).find((value) => Array.isArray(value)) || [];
@@ -689,15 +708,51 @@ function renderReview(campaign) {
     return '';
 }
 
+function renderStageTimeline(spec, context) {
+    const stage = context?.stage_state || {};
+    const bootstrapIds = Array.isArray(stage.bootstrap_chara_ids)
+        ? stage.bootstrap_chara_ids.map(Number)
+        : (spec?.loop_members || []).map((member) => Number(member.chara_id)).filter((value) => value > 0);
+    if (!bootstrapIds.length) return '<p class="empty-state">Stage progress is unavailable for this legacy campaign.</p>';
+    const stageIndex = Number(stage.stage_index ?? 0);
+    const completed = new Set((stage.completed_bootstrap_stages || []).map(Number));
+    const bootstrapStages = bootstrapIds.map((charaId, index) => {
+        const uma = (state.session?.umas || []).find((row) => baseCharaId(numberFrom(row, ['card_id', 'id'])) === charaId);
+        const status = completed.has(index) ? 'is-complete' : stageIndex === index ? 'is-active' : '';
+        return `<div class="campaign-stage ${status}"><span>${index + 1}</span><div><strong>Bootstrap ${index + 1}</strong><small>${escapeHtml(labelFor(uma, `Chara ${charaId}`))}</small></div></div>`;
+    }).join('');
+    const finalUma = resolveUmaIdentity(spec?.final_uma?.card_id);
+    const finalActive = stageIndex >= bootstrapIds.length;
+    const finalStage = `<div class="campaign-stage is-final${finalActive ? ' is-active' : ''}"><span>${bootstrapIds.length + 1}</span><div><strong>Final Uma</strong><small>${escapeHtml(finalUma.name)} · Repeats ${escapeHtml(stage.final_repeat_count ?? 0)}</small></div></div>`;
+    return `<div class="campaign-stage-timeline">${bootstrapStages}${finalStage}</div>`;
+}
+
+function renderAptitudePlanning(context) {
+    const targets = Array.isArray(context?.aptitude_targets) ? context.aptitude_targets : [];
+    const evidence = context?.aptitude_evidence && typeof context.aptitude_evidence === 'object' ? context.aptitude_evidence : {};
+    const shortfalls = Array.isArray(context?.aptitude_shortfalls) ? context.aptitude_shortfalls : [];
+    const warnings = Array.isArray(context?.aptitude_warnings) ? context.aptitude_warnings : [];
+    const targetRows = targets.length ? targets.map((target) => {
+        const name = String(target.aptitude || 'unknown').toLowerCase();
+        const item = evidence[name] || {};
+        const sources = Array.isArray(item.sources) ? item.sources : [];
+        const sourceHtml = sources.length ? sources.map((source) => `<span class="aptitude-source">P${escapeHtml(source.parent)} ${escapeHtml(source.source)} ${escapeHtml(source.stars)}★</span>`).join('') : '<span class="muted">No decoded red-spark evidence</span>';
+        const shortfall = shortfalls.find((row) => String(row.aptitude || '').toLowerCase() === name);
+        return `<article class="aptitude-target-row${shortfall ? ' is-shortfall' : ''}"><div><strong>${escapeHtml(target.aptitude || 'Unknown')}</strong><small>${escapeHtml(target.starting_grade || '?')} → ${escapeHtml(target.achievable_target_grade || '?')} · Need ${escapeHtml(target.required_red_stars || 0)}★</small></div><div class="aptitude-source-list">${sourceHtml}</div><strong>${shortfall ? `Missing ${escapeHtml(shortfall.missing_red_stars || 0)}★` : `${escapeHtml(item.total_stars || 0)}★ covered`}</strong></article>`;
+    }).join('') : '<p class="empty-state">No race-required aptitude rescue is needed for this stage.</p>';
+    const warningHtml = warnings.length ? `<ul class="aptitude-warnings">${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>` : '';
+    return `<div class="affinity-metrics"><div><span>Projected displayed affinity</span><strong>${escapeHtml(context?.projected_displayed_affinity ?? '—')}</strong></div><div><span>Completed displayed affinity</span><strong>${escapeHtml(context?.completed_displayed_affinity ?? '—')}</strong></div></div><div class="aptitude-target-list">${targetRows}</div>${warningHtml}`;
+}
+
 function renderDetail() {
     const campaign = state.selectedCampaign;
     if (!campaign) { els.detail.innerHTML = '<p class="empty-state">Select a campaign.</p>'; return; }
     const spec = campaign.spec || {};
     const context = campaign.context || {};
-    const agenda = context.race_agenda || context.shared_g1_agenda || campaign.race_agenda || spec.race_plan || {};
+    const agenda = context.affinity_agenda || context.race_agenda || context.shared_g1_agenda || campaign.race_agenda || spec.race_plan || {};
     const selected = selectedCandidate(campaign);
     const finalUma = resolveUmaIdentity(spec.final_uma?.card_id);
-    const finalParent = resolveParentIdentity(campaign, spec.final_parent || {});
+    const finalParent = resolveParentIdentity(campaign, context.final_parent_result || spec.final_parent || {});
     const required = context.required_progress ?? campaign.required_progress ?? selected?.evaluation?.required_progress;
     const preferred = context.preferred_progress ?? campaign.preferred_progress ?? selected?.evaluation?.preferred_progress;
     const runs = campaign.usage?.runs ?? campaign.run_count ?? context.run_count ?? 0;
@@ -711,6 +766,8 @@ function renderDetail() {
     els.detail.innerHTML = `
         <div class="status-strip"><span class="badge">${escapeHtml(campaign.state || campaign.status || 'UNKNOWN')}</span><span>Next: ${escapeHtml(campaign.next_action || '—')}</span>${selected ? `<span>Selected: ${escapeHtml(labelFor(selected, candidateId(selected)))}</span>` : ''}</div>
         <div class="detail-grid"><article><h3>Final Setup</h3><div class="setup-identity-list"><div class="setup-identity-row"><span>Final Uma</span><div><strong>${escapeHtml(finalUma.name)}</strong><small class="setup-identity-meta">Card #${escapeHtml(finalUma.cardId || '—')}</small></div></div><div class="setup-identity-row"><span>Final Parent</span><div><strong>${escapeHtml(finalParent.name)}</strong><small class="setup-identity-meta">Chara #${escapeHtml(finalParent.charaId || '—')} · Veteran #${escapeHtml(finalParent.trainedCharaId || '—')}${finalParent.cardId ? ` · Card #${escapeHtml(finalParent.cardId)}` : ''}</small></div></div></div></article><article><h3>Usage</h3><p>Runs: ${escapeHtml(runs)}</p><p>Rotation run: ${escapeHtml(Number.isFinite(runIndex) ? runIndex : '—')} · Next trainee: ${escapeHtml(nextTrainee?.name || nextTrainee?.chara_id || nextTrainee)}</p></article></div>
+        <section><h3>Campaign Stages</h3>${renderStageTimeline(spec, context)}</section>
+        <section><h3>Aptitude &amp; Affinity Planning</h3>${renderAptitudePlanning(context)}</section>
         <section><h3>Target Progress</h3>${progressBar('Required', required)}${progressBar('Preferred', preferred)}</section>
         ${renderReview(campaign)}
         <section><h3>Actions</h3><div class="inline-actions">${detailActions(campaign)}</div></section>
@@ -784,21 +841,19 @@ async function recommendParents(button) {
 
 async function recommendLoops(button) {
     return withPending('recommend-loop', button, async () => {
-        if (!state.draft.selectedFinalParent) { showMessage('Choose a final parent before recommending loops.', 'error'); return; }
         const sequence = ++loopRequestSequence;
         loopController?.abort();
         loopController = new AbortController();
         try {
             const payload = {
                 ...recommendationContext(),
-                final_parent_chara_id: Number(state.draft.selectedFinalParent.chara_id),
                 pinned_chara_ids: state.draft.pinnedCharaIds,
             };
-            const data = await apiJson('/api/campaigns/recommend-loop', { method: 'POST', signal: loopController.signal, body: JSON.stringify(payload) });
+            const data = await apiJson('/api/campaigns/recommend-bootstraps', { method: 'POST', signal: loopController.signal, body: JSON.stringify(payload) });
             if (sequence !== loopRequestSequence) return;
             const recommendation = data.recommendation || {};
             state.loopRecommendations = {
-                loops: Array.isArray(recommendation.loops) ? recommendation.loops : [],
+                loops: Array.isArray(recommendation.bootstraps) ? recommendation.bootstraps : [],
                 ideal_upgrades: Array.isArray(recommendation.ideal_upgrades) ? recommendation.ideal_upgrades : [],
             };
             state.draft.selectedLoop = null; state.draft.deckAssignments = {}; state.draft.friendAssignments = {};
@@ -851,7 +906,6 @@ function bindEvents() {
     byId('close-create-btn').addEventListener('click', () => { els.create.hidden = true; });
     byId('add-blue-target-btn').addEventListener('click', () => addTarget('blue'));
     byId('add-pink-target-btn').addEventListener('click', () => addTarget('pink'));
-    byId('recommend-parent-btn').addEventListener('click', (event) => recommendParents(event.currentTarget));
     byId('recommend-loop-btn').addEventListener('click', (event) => recommendLoops(event.currentTarget));
     byId('recompute-loop-btn').addEventListener('click', (event) => recommendLoops(event.currentTarget));
     byId('save-campaign-btn').addEventListener('click', (event) => saveCampaign(event.currentTarget));
@@ -884,6 +938,16 @@ function bindEvents() {
             const selected = state.friendSupports.find((friend) => friendKey(friend) === event.target.value);
             if (selected) state.draft.friendAssignments[charaId] = { ...selected };
             else delete state.draft.friendAssignments[charaId];
+            renderPreview();
+        }
+        if (event.target.hasAttribute('data-final-deck')) {
+            state.draft.finalDeckId = Number(event.target.value);
+            if (state.draft.finalFriend && friendConflictsWithDeck(state.draft.finalFriend, state.draft.finalDeckId)) state.draft.finalFriend = null;
+            renderDecks(); renderPreview();
+        }
+        if (event.target.hasAttribute('data-final-friend')) {
+            const selected = state.friendSupports.find((friend) => friendKey(friend) === event.target.value);
+            state.draft.finalFriend = selected ? { ...selected } : null;
             renderPreview();
         }
     });
