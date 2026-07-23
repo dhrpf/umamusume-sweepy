@@ -815,6 +815,18 @@
     "late": 1,
     "end": 1
   },
+  "104602": {
+    "turf": 3,
+    "dirt": 7,
+    "short": 6,
+    "mile": 7,
+    "medium": 7,
+    "long": 3,
+    "front": 7,
+    "pace": 4,
+    "late": 1,
+    "end": 1
+  },
   "104801": {
     "turf": 7,
     "dirt": 1,
@@ -1090,5 +1102,17 @@
     "pace": 4,
     "late": 7,
     "end": 7
+  },
+  "109801": {
+    "turf": 2,
+    "dirt": 7,
+    "short": 5,
+    "mile": 7,
+    "medium": 7,
+    "long": 1,
+    "front": 7,
+    "pace": 7,
+    "late": 5,
+    "end": 1
   }
 }

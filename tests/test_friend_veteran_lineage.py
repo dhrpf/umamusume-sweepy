@@ -67,6 +67,21 @@ def test_normalize_friend_veterans_emits_parent_compatible_lineage_tree(monkeypa
     assert veterans[0]["parent_card_ids"] == [100201, 100301]
 
 
+def test_get_win_summary_counts_g1_saddles_from_master_data(monkeypatch, tmp_path):
+    mdb_path = tmp_path / "master.mdb"
+    mdb_path.touch()
+    monkeypatch.setattr(main.master_data, "configured_master_mdb_path", lambda _base_dir: mdb_path)
+    monkeypatch.setattr(main.affinity_calc, "_load_g1_saddles", lambda _path: {10, 12})
+    monkeypatch.setattr(main, "race_map", {"meta": {}, "program": {}, "instance": {}})
+
+    assert main.get_win_summary([10, 11, 12]) == {
+        "g1": 2,
+        "g2": 0,
+        "g3": 0,
+        "total": 2,
+    }
+
+
 def test_veteran_views_use_chrono_style_grouped_direct_lineage_sparks():
     app_js = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
 
@@ -128,6 +143,8 @@ def test_veteran_page_renders_affinity_badge_breakdown_and_sorting():
     detail_end = app_js.index("function openVeteranDetail", detail_start)
     detail_source = app_js[detail_start:detail_end]
     assert "renderVeteranAffinityBreakdown(parent)" in detail_source
+    assert "parent.wins?.g1 || 0" in detail_source
+    assert "G1 Wins" in detail_source
 
     assert ".veteran-affinity-badge" in styles
     assert ".veteran-affinity-breakdown" in styles

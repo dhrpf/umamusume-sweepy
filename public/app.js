@@ -1291,6 +1291,17 @@ const els = {
             } catch (e) {}
         }
 
+        function fallbackRaceBanner(img, rawProgramId) {
+            const programId = Number(rawProgramId);
+            if (!img.dataset.gametoraTried && Number.isFinite(programId) && programId > 0) {
+                img.dataset.gametoraTried = '1';
+                img.src = `https://media.gametora.com/umamusume/races/banners/en/${programId}.png`;
+                return;
+            }
+            img.onerror = null;
+            img.src = '/broom.png';
+        }
+
         function getCurrentPreset() {
             return (state.presets || []).find(p => p.name === state.selectedPreset);
         }
@@ -1437,7 +1448,7 @@ const els = {
                         const mandatory = state.mandatoryRaces?.includes(mainRaceId);
                         html += `
                             <div class="race-cell-selected-img">
-                                <img src="/races/${encodeURIComponent(selected.name)}.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                                <img src="/races/${encodeURIComponent(selected.name)}.png" onerror="fallbackRaceBanner(this, ${Number(selected.program_id || 0)})">
                                 <div class="race-image-fallback" style="display:none">${selected.type}</div>
                                 <span class="race-cell-selected-grade badge-${selected.type.toLowerCase().replace('-', '')}">${selected.type}</span>
                             </div>
@@ -1491,7 +1502,7 @@ const els = {
                     item.className = `race-slot-popup-item ${isSelected ? 'on' : ''}`;
                     item.innerHTML = `
                         <div class="race-slot-popup-img">
-                            <img src="/races/${encodeURIComponent(race.name)}.png" onerror="this.src='/broom.png'">
+                            <img src="/races/${encodeURIComponent(race.name)}.png" onerror="fallbackRaceBanner(this, ${Number(race.program_id || 0)})">
                         </div>
                         <div class="race-slot-popup-info">
                             <div class="race-slot-popup-name-row">
@@ -3234,7 +3245,7 @@ const els = {
                 <img class="veteran-detail-img" src="/api/images/${imgId}.png" onerror="hideBrokenImage(this)">
                 <div>
                     <div class="veteran-detail-name">${escapeHtml(parent.name || 'Unknown')}</div>
-                    <div class="veteran-page-id">ID ${escapeHtml(parent.instance_id || '?')} · ${escapeHtml(parent.rank_score || 0)} · ${rankMap[parent.rank] || '??'}</div>
+                    <div class="veteran-page-id">ID ${escapeHtml(parent.instance_id || '?')} · ${escapeHtml(parent.rank_score || 0)} · ${rankMap[parent.rank] || '??'} · G1 Wins ${escapeHtml(parent.wins?.g1 || 0)}</div>
                     <div class="vet-stat-row veteran-page-stats">${renderParentStats(parent)}</div>
                 </div>
             </div>

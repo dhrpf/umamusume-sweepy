@@ -743,6 +743,17 @@
       ]
     },
     {
+      "id": 101107,
+      "program_id": 1107,
+      "turn": 24,
+      "name": "Zen-Nippon Junior Yushun",
+      "date": "Junior Year Late Dec",
+      "type": "G1",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Kawasaki"
+    },
+    {
       "id": 100652,
       "program_id": 652,
       "turn": 24,
@@ -1163,6 +1174,17 @@
       ]
     },
     {
+      "id": 201128,
+      "program_id": 1128,
+      "turn": 31,
+      "name": "Marine Cup",
+      "date": "Classic Year Early Apr",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
+    },
+    {
       "id": 200204,
       "program_id": 204,
       "turn": 31,
@@ -1399,6 +1421,17 @@
       "legacy_ids": [
         2107
       ]
+    },
+    {
+      "id": 201122,
+      "program_id": 1122,
+      "turn": 35,
+      "name": "Kanto Oaks",
+      "date": "Classic Year Early Jun",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Medium",
+      "venue": "Kawasaki"
     },
     {
       "id": 200095,
@@ -1653,6 +1686,17 @@
       ]
     },
     {
+      "id": 201127,
+      "program_id": 1127,
+      "turn": 37,
+      "name": "Sparking Lady Cup",
+      "date": "Classic Year Early Jul",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Kawasaki"
+    },
+    {
       "id": 200099,
       "program_id": 99,
       "turn": 37,
@@ -1735,6 +1779,17 @@
       "legacy_ids": [
         2127
       ]
+    },
+    {
+      "id": 201130,
+      "program_id": 1130,
+      "turn": 38,
+      "name": "Mercury Cup",
+      "date": "Classic Year Late Jul",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Medium",
+      "venue": "Morioka"
     },
     {
       "id": 200103,
@@ -1889,6 +1944,17 @@
       "legacy_ids": [
         2142
       ]
+    },
+    {
+      "id": 201131,
+      "program_id": 1131,
+      "turn": 40,
+      "name": "Cluster Cup",
+      "date": "Classic Year Late Aug",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Sprint",
+      "venue": "Morioka"
     },
     {
       "id": 200108,
@@ -2129,6 +2195,17 @@
       ]
     },
     {
+      "id": 201124,
+      "program_id": 1124,
+      "turn": 42,
+      "name": "Sazanka TV Hai",
+      "date": "Classic Year Late Sep",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
+    },
+    {
       "id": 200177,
       "program_id": 177,
       "turn": 42,
@@ -2185,6 +2262,17 @@
       ]
     },
     {
+      "id": 201109,
+      "program_id": 1109,
+      "turn": 43,
+      "name": "M.C. Nambu Hai",
+      "date": "Classic Year Early Oct",
+      "type": "G1",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Morioka"
+    },
+    {
       "id": 200088,
       "program_id": 88,
       "turn": 43,
@@ -2213,6 +2301,17 @@
       ]
     },
     {
+      "id": 201119,
+      "program_id": 1119,
+      "turn": 43,
+      "name": "Ladies' Prelude",
+      "date": "Classic Year Early Oct",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Ooi"
+    },
+    {
       "id": 200086,
       "program_id": 86,
       "turn": 43,
@@ -2225,6 +2324,17 @@
       "legacy_ids": [
         2163
       ]
+    },
+    {
+      "id": 201120,
+      "program_id": 1120,
+      "turn": 43,
+      "name": "Tokyo Hai",
+      "date": "Classic Year Early Oct",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Sprint",
+      "venue": "Ooi"
     },
     {
       "id": 200142,
@@ -2731,6 +2841,17 @@
       ]
     },
     {
+      "id": 201129,
+      "program_id": 1129,
+      "turn": 47,
+      "name": "Queen Sho",
+      "date": "Classic Year Early Dec",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
+    },
+    {
       "id": 200120,
       "program_id": 120,
       "turn": 47,
@@ -3081,6 +3202,17 @@
       ]
     },
     {
+      "id": 301125,
+      "program_id": 1125,
+      "turn": 50,
+      "name": "TCK Jo-o Hai",
+      "date": "Senior Year Late Jan",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Ooi"
+    },
+    {
       "id": 300043,
       "program_id": 43,
       "turn": 50,
@@ -3107,6 +3239,17 @@
       "legacy_ids": [
         2224
       ]
+    },
+    {
+      "id": 301106,
+      "program_id": 1106,
+      "turn": 51,
+      "name": "Kawasaki Kinen",
+      "date": "Senior Year Early Feb",
+      "type": "G1",
+      "terrain": "Dirt",
+      "distance": "Medium",
+      "venue": "Kawasaki"
     },
     {
       "id": 300009,
@@ -3305,6 +3448,17 @@
       ]
     },
     {
+      "id": 301121,
+      "program_id": 1121,
+      "turn": 53,
+      "name": "Empress Hai",
+      "date": "Senior Year Early Mar",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Medium",
+      "venue": "Kawasaki"
+    },
+    {
       "id": 300011,
       "program_id": 11,
       "turn": 53,
@@ -3431,6 +3585,17 @@
       ]
     },
     {
+      "id": 301123,
+      "program_id": 1123,
+      "turn": 54,
+      "name": "Diolite Kinen",
+      "date": "Senior Year Late Mar",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Medium",
+      "venue": "Funabashi"
+    },
+    {
       "id": 300012,
       "program_id": 12,
       "turn": 54,
@@ -3541,6 +3706,17 @@
       "legacy_ids": [
         2260
       ]
+    },
+    {
+      "id": 301128,
+      "program_id": 1128,
+      "turn": 55,
+      "name": "Marine Cup",
+      "date": "Senior Year Early Apr",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
     },
     {
       "id": 301058,
@@ -3655,6 +3831,17 @@
       ]
     },
     {
+      "id": 301126,
+      "program_id": 1126,
+      "turn": 56,
+      "name": "Tokyo Sprint",
+      "date": "Senior Year Late Apr",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Sprint",
+      "venue": "Ooi"
+    },
+    {
       "id": 300061,
       "program_id": 61,
       "turn": 56,
@@ -3681,6 +3868,17 @@
       "legacy_ids": [
         2266
       ]
+    },
+    {
+      "id": 301108,
+      "program_id": 1108,
+      "turn": 57,
+      "name": "Kashiwa Kinen",
+      "date": "Senior Year Early May",
+      "type": "G1",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
     },
     {
       "id": 300005,
@@ -4131,6 +4329,17 @@
       ]
     },
     {
+      "id": 301127,
+      "program_id": 1127,
+      "turn": 61,
+      "name": "Sparking Lady Cup",
+      "date": "Senior Year Early Jul",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Kawasaki"
+    },
+    {
       "id": 300099,
       "program_id": 99,
       "turn": 61,
@@ -4213,6 +4422,17 @@
       "legacy_ids": [
         2305
       ]
+    },
+    {
+      "id": 301130,
+      "program_id": 1130,
+      "turn": 62,
+      "name": "Mercury Cup",
+      "date": "Senior Year Late Jul",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Medium",
+      "venue": "Morioka"
     },
     {
       "id": 300103,
@@ -4353,6 +4573,17 @@
       "legacy_ids": [
         2319
       ]
+    },
+    {
+      "id": 301131,
+      "program_id": 1131,
+      "turn": 64,
+      "name": "Cluster Cup",
+      "date": "Senior Year Late Aug",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Sprint",
+      "venue": "Morioka"
     },
     {
       "id": 300108,
@@ -4551,6 +4782,17 @@
       ]
     },
     {
+      "id": 301124,
+      "program_id": 1124,
+      "turn": 66,
+      "name": "Sazanka TV Hai",
+      "date": "Senior Year Late Sep",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
+    },
+    {
       "id": 300111,
       "program_id": 111,
       "turn": 66,
@@ -4593,6 +4835,17 @@
       ]
     },
     {
+      "id": 301109,
+      "program_id": 1109,
+      "turn": 67,
+      "name": "M.C. Nambu Hai",
+      "date": "Senior Year Early Oct",
+      "type": "G1",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Morioka"
+    },
+    {
       "id": 300088,
       "program_id": 88,
       "turn": 67,
@@ -4621,6 +4874,17 @@
       ]
     },
     {
+      "id": 301119,
+      "program_id": 1119,
+      "turn": 67,
+      "name": "Ladies' Prelude",
+      "date": "Senior Year Early Oct",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Ooi"
+    },
+    {
       "id": 300086,
       "program_id": 86,
       "turn": 67,
@@ -4633,6 +4897,17 @@
       "legacy_ids": [
         2336
       ]
+    },
+    {
+      "id": 301120,
+      "program_id": 1120,
+      "turn": 67,
+      "name": "Tokyo Hai",
+      "date": "Senior Year Early Oct",
+      "type": "G2",
+      "terrain": "Dirt",
+      "distance": "Sprint",
+      "venue": "Ooi"
     },
     {
       "id": 300142,
@@ -5109,6 +5384,17 @@
       "legacy_ids": [
         2368
       ]
+    },
+    {
+      "id": 301129,
+      "program_id": 1129,
+      "turn": 71,
+      "name": "Queen Sho",
+      "date": "Senior Year Early Dec",
+      "type": "G3",
+      "terrain": "Dirt",
+      "distance": "Mile",
+      "venue": "Funabashi"
     },
     {
       "id": 300120,

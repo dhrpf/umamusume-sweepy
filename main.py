@@ -23,6 +23,10 @@ from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
 from career_bot.presets import PresetStore
 from career_bot.runner import CareerRunner
+from career_bot.campaigns.factor_semantics import (
+    direct_lineage_spark_totals,
+    self_spark_totals,
+)
 from career_bot.campaigns.friend_support import find_trainee_deck_conflicts
 from career_bot.campaigns.models import CampaignSparkTarget, ParentCampaignSpec
 from career_bot.campaigns.planner import CampaignPlanner
@@ -435,16 +439,21 @@ def _campaign_completed_result(campaign, snapshot):
     raw_candidate = candidates[0]
     trained_id = _campaign_parent_id(raw_candidate)
     display = (snapshot.get("display_by_id") or {}).get(trained_id) or {}
+    spec_version = int(((campaign.get("spec") or {}).get("spec_version") or 0))
+    factor_tree = deepcopy(display.get("tree") or {})
+    self_totals = self_spark_totals(factor_tree)
+    direct_totals = direct_lineage_spark_totals(factor_tree)
     candidate = {
         **raw_candidate,
         "candidate_id": f"veteran-{trained_id}",
         "trained_chara_id": trained_id,
         "name": str(display.get("name") or raw_candidate.get("name") or f"Veteran #{trained_id}"),
-        "spark_totals": _campaign_spark_totals(display),
-        "factor_tree": deepcopy(display.get("tree") or {}),
+        "spark_totals": direct_totals if spec_version >= 3 else _campaign_spark_totals(display),
+        "self_spark_totals": self_totals,
+        "direct_lineage_spark_totals": direct_totals,
+        "factor_tree": factor_tree,
     }
 
-    spec_version = int(((campaign.get("spec") or {}).get("spec_version") or 0))
     if spec_version >= 3 or isinstance(context.get("stage_state"), dict):
         candidate["displayed_affinity"] = affinity_calc.calculate_veteran_affinity(
             _campaign_master_mdb_path(),
@@ -611,6 +620,15 @@ def _campaign_affinity(final_uma, first, second):
     return affinity_calc.calculate_affinity(_campaign_master_mdb_path(), card_id, first, second)
 
 
+def _campaign_direct_compatibility(final_card_id, parent_chara_id):
+    final_chara_id = affinity_calc.card_to_chara_id(int(final_card_id or 0))
+    return affinity_calc.direct_relation_score(
+        _campaign_master_mdb_path(),
+        final_chara_id,
+        int(parent_chara_id or 0),
+    )
+
+
 def _campaign_projected_affinity(trainee_card_id, first, second, planned_g1_saddle_ids):
     return affinity_calc.project_displayed_veteran_affinity(
         _campaign_master_mdb_path(),
@@ -673,6 +691,11 @@ def _campaign_planner_factory(request):
         race_rows=_campaign_race_rows(),
         affinity_for_pair=lambda trainee, first, second: affinity_calc.calculate_affinity(
             mdb_path, trainee, first, second
+        ),
+        direct_compatibility_for_parent=lambda final_card_id, parent_chara_id: affinity_calc.direct_relation_score(
+            mdb_path,
+            affinity_calc.card_to_chara_id(int(final_card_id or 0)),
+            int(parent_chara_id or 0),
         ),
         factor_map=factor_map,
         spark_targets=payload.get("spark_targets") or [],
@@ -919,6 +942,7 @@ campaign_service = CampaignService(
     runtime_snapshot=_campaign_runtime_snapshot,
     affinity_for_setup=_campaign_affinity,
     projected_affinity_for_pair=_campaign_projected_affinity,
+    direct_compatibility_for_parent=_campaign_direct_compatibility,
     start_career=_campaign_start_career,
     planner_factory=_campaign_planner_factory,
 )
@@ -1435,8 +1459,32 @@ def get_win_summary(win_saddle_ids):
         "g3": 0
     }
 
+    g1_saddle_ids = set()
+    try:
+        mdb_path = master_data.configured_master_mdb_path(base_dir)
+        if mdb_path and Path(mdb_path).exists():
+            g1_saddle_ids = set(affinity_calc._load_g1_saddles(str(mdb_path)))
+    except Exception:
+        g1_saddle_ids = set()
+
+    # Current race_map.json is keyed by meta/program/instance, while
+    # win_saddle_id_array contains single_mode_wins_saddle IDs.  Keep the old
+    # flat-map fallback for legacy fixtures, but use master.mdb for G1 trophies.
+    legacy_race_map = race_map
+    if isinstance(race_map, dict) and any(key in race_map for key in ("meta", "program", "instance")):
+        legacy_race_map = {}
+
     for saddle_id in win_saddle_ids or []:
-        race = race_map.get(str(saddle_id))
+        try:
+            normalized_saddle_id = int(saddle_id)
+        except (TypeError, ValueError):
+            normalized_saddle_id = saddle_id
+
+        if normalized_saddle_id in g1_saddle_ids:
+            summary["g1"] += 1
+            continue
+
+        race = legacy_race_map.get(str(saddle_id)) if isinstance(legacy_race_map, dict) else None
         grade = race.get("grade") if race else None
         if grade == "G1":
             summary["g1"] += 1
@@ -2299,8 +2347,6 @@ def start_career_from_request(req):
     current_money = active_start_state['current_money']
     p1_rank = active_parent_rank_points.get(int(req.parent_id_1))
     p2_rank = active_parent_rank_points.get(int(req.parent_id_2))
-    # JP server: current_succession_rank_point = computed affinity score.
-    # +3 per shared G1, +1 per non-G1, incl parent↔parent. See affinity.py.
     succession_rank_point = 0
     computed_affinity = None
     try:
@@ -2317,8 +2363,6 @@ def start_career_from_request(req):
     except Exception as e:
         print(f"[start_career] affinity calc FAILED: {e}", flush=True)
 
-    # Server expects current_succession_rank_point = item 75 balance.
-    # Affinity is only diagnostic; do not send it as the current balance.
     print(f"[start_career] parents={req.parent_id_1}(rank={p1_rank.get('rank') if p1_rank else '?'}) {req.parent_id_2}(rank={p2_rank.get('rank') if p2_rank else '?'}) sp={succession_rank_point}", flush=True)
 
     # Only clean up a leftover career if load/index already showed one active.

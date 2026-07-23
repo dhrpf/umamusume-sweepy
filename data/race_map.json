@@ -3576,6 +3576,312 @@
       "turn": 12,
       "name": "Junior Make Debut"
     },
+    "301106": {
+      "program_id": 1106,
+      "race_instance_id": 110701,
+      "turn": 51,
+      "name": "Kawasaki Kinen"
+    },
+    "101107": {
+      "program_id": 1107,
+      "race_instance_id": 110801,
+      "turn": 24,
+      "name": "Zen-Nippon Junior Yushun"
+    },
+    "301108": {
+      "program_id": 1108,
+      "race_instance_id": 110901,
+      "turn": 57,
+      "name": "Kashiwa Kinen"
+    },
+    "201109": {
+      "program_id": 1109,
+      "race_instance_id": 111001,
+      "turn": 43,
+      "name": "M.C. Nambu Hai"
+    },
+    "301109": {
+      "program_id": 1109,
+      "race_instance_id": 111001,
+      "turn": 67,
+      "name": "M.C. Nambu Hai"
+    },
+    "201110": {
+      "program_id": 1110,
+      "race_instance_id": 111101,
+      "turn": 45,
+      "name": "JBC Ladies’ Classic"
+    },
+    "301110": {
+      "program_id": 1110,
+      "race_instance_id": 111101,
+      "turn": 69,
+      "name": "JBC Ladies’ Classic"
+    },
+    "201111": {
+      "program_id": 1111,
+      "race_instance_id": 111201,
+      "turn": 45,
+      "name": "JBC Sprint"
+    },
+    "301111": {
+      "program_id": 1111,
+      "race_instance_id": 111201,
+      "turn": 69,
+      "name": "JBC Sprint"
+    },
+    "201112": {
+      "program_id": 1112,
+      "race_instance_id": 111301,
+      "turn": 45,
+      "name": "JBC Classic"
+    },
+    "301112": {
+      "program_id": 1112,
+      "race_instance_id": 111301,
+      "turn": 69,
+      "name": "JBC Classic"
+    },
+    "201113": {
+      "program_id": 1113,
+      "race_instance_id": 111401,
+      "turn": 45,
+      "name": "JBC Ladies’ Classic"
+    },
+    "301113": {
+      "program_id": 1113,
+      "race_instance_id": 111401,
+      "turn": 69,
+      "name": "JBC Ladies’ Classic"
+    },
+    "201114": {
+      "program_id": 1114,
+      "race_instance_id": 111501,
+      "turn": 45,
+      "name": "JBC Sprint"
+    },
+    "301114": {
+      "program_id": 1114,
+      "race_instance_id": 111501,
+      "turn": 69,
+      "name": "JBC Sprint"
+    },
+    "201115": {
+      "program_id": 1115,
+      "race_instance_id": 111601,
+      "turn": 45,
+      "name": "JBC Classic"
+    },
+    "301115": {
+      "program_id": 1115,
+      "race_instance_id": 111601,
+      "turn": 69,
+      "name": "JBC Classic"
+    },
+    "201116": {
+      "program_id": 1116,
+      "race_instance_id": 111701,
+      "turn": 45,
+      "name": "JBC Ladies’ Classic"
+    },
+    "301116": {
+      "program_id": 1116,
+      "race_instance_id": 111701,
+      "turn": 69,
+      "name": "JBC Ladies’ Classic"
+    },
+    "201117": {
+      "program_id": 1117,
+      "race_instance_id": 111801,
+      "turn": 45,
+      "name": "JBC Sprint"
+    },
+    "301117": {
+      "program_id": 1117,
+      "race_instance_id": 111801,
+      "turn": 69,
+      "name": "JBC Sprint"
+    },
+    "201118": {
+      "program_id": 1118,
+      "race_instance_id": 111901,
+      "turn": 45,
+      "name": "JBC Classic"
+    },
+    "301118": {
+      "program_id": 1118,
+      "race_instance_id": 111901,
+      "turn": 69,
+      "name": "JBC Classic"
+    },
+    "201119": {
+      "program_id": 1119,
+      "race_instance_id": 203601,
+      "turn": 43,
+      "name": "Ladies' Prelude"
+    },
+    "301119": {
+      "program_id": 1119,
+      "race_instance_id": 203601,
+      "turn": 67,
+      "name": "Ladies' Prelude"
+    },
+    "201120": {
+      "program_id": 1120,
+      "race_instance_id": 203701,
+      "turn": 43,
+      "name": "Tokyo Hai"
+    },
+    "301120": {
+      "program_id": 1120,
+      "race_instance_id": 203701,
+      "turn": 67,
+      "name": "Tokyo Hai"
+    },
+    "301121": {
+      "program_id": 1121,
+      "race_instance_id": 203801,
+      "turn": 53,
+      "name": "Empress Hai"
+    },
+    "201122": {
+      "program_id": 1122,
+      "race_instance_id": 203901,
+      "turn": 35,
+      "name": "Kanto Oaks"
+    },
+    "301123": {
+      "program_id": 1123,
+      "race_instance_id": 204001,
+      "turn": 54,
+      "name": "Diolite Kinen"
+    },
+    "201124": {
+      "program_id": 1124,
+      "race_instance_id": 204101,
+      "turn": 42,
+      "name": "Sazanka TV Hai"
+    },
+    "301124": {
+      "program_id": 1124,
+      "race_instance_id": 204101,
+      "turn": 66,
+      "name": "Sazanka TV Hai"
+    },
+    "301125": {
+      "program_id": 1125,
+      "race_instance_id": 307101,
+      "turn": 50,
+      "name": "TCK Jo-o Hai"
+    },
+    "301126": {
+      "program_id": 1126,
+      "race_instance_id": 307201,
+      "turn": 56,
+      "name": "Tokyo Sprint"
+    },
+    "201127": {
+      "program_id": 1127,
+      "race_instance_id": 307301,
+      "turn": 37,
+      "name": "Sparking Lady Cup"
+    },
+    "301127": {
+      "program_id": 1127,
+      "race_instance_id": 307301,
+      "turn": 61,
+      "name": "Sparking Lady Cup"
+    },
+    "201128": {
+      "program_id": 1128,
+      "race_instance_id": 307401,
+      "turn": 31,
+      "name": "Marine Cup"
+    },
+    "301128": {
+      "program_id": 1128,
+      "race_instance_id": 307401,
+      "turn": 55,
+      "name": "Marine Cup"
+    },
+    "201129": {
+      "program_id": 1129,
+      "race_instance_id": 307501,
+      "turn": 47,
+      "name": "Queen Sho"
+    },
+    "301129": {
+      "program_id": 1129,
+      "race_instance_id": 307501,
+      "turn": 71,
+      "name": "Queen Sho"
+    },
+    "201130": {
+      "program_id": 1130,
+      "race_instance_id": 307601,
+      "turn": 38,
+      "name": "Mercury Cup"
+    },
+    "301130": {
+      "program_id": 1130,
+      "race_instance_id": 307601,
+      "turn": 62,
+      "name": "Mercury Cup"
+    },
+    "201131": {
+      "program_id": 1131,
+      "race_instance_id": 307701,
+      "turn": 40,
+      "name": "Cluster Cup"
+    },
+    "301131": {
+      "program_id": 1131,
+      "race_instance_id": 307701,
+      "turn": 64,
+      "name": "Cluster Cup"
+    },
+    "201132": {
+      "program_id": 1132,
+      "race_instance_id": 110501,
+      "turn": 45,
+      "name": "JBC Classic"
+    },
+    "301132": {
+      "program_id": 1132,
+      "race_instance_id": 110501,
+      "turn": 69,
+      "name": "JBC Classic"
+    },
+    "201133": {
+      "program_id": 1133,
+      "race_instance_id": 110401,
+      "turn": 45,
+      "name": "JBC Sprint"
+    },
+    "301133": {
+      "program_id": 1133,
+      "race_instance_id": 110401,
+      "turn": 69,
+      "name": "JBC Sprint"
+    },
+    "201134": {
+      "program_id": 1134,
+      "race_instance_id": 110301,
+      "turn": 45,
+      "name": "JBC Ladies’ Classic"
+    },
+    "301134": {
+      "program_id": 1134,
+      "race_instance_id": 110301,
+      "turn": 69,
+      "name": "JBC Ladies’ Classic"
+    },
+    "101135": {
+      "program_id": 1135,
+      "race_instance_id": 904198,
+      "turn": 12,
+      "name": "Junior Make Debut"
+    },
     "2001": {
       "program_id": 676,
       "race_instance_id": 901110,
@@ -10337,6 +10643,276 @@
       "ground": 1,
       "distance": 1200
     },
+    "1106": {
+      "race_instance_id": 110701,
+      "month": 2,
+      "half": 1,
+      "name": "Kawasaki Kinen",
+      "grade": 100,
+      "ground": 2,
+      "distance": 2100
+    },
+    "1107": {
+      "race_instance_id": 110801,
+      "month": 12,
+      "half": 2,
+      "name": "Zen-Nippon Junior Yushun",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1108": {
+      "race_instance_id": 110901,
+      "month": 5,
+      "half": 1,
+      "name": "Kashiwa Kinen",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1109": {
+      "race_instance_id": 111001,
+      "month": 10,
+      "half": 1,
+      "name": "M.C. Nambu Hai",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1110": {
+      "race_instance_id": 111101,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Ladies’ Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1111": {
+      "race_instance_id": 111201,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Sprint",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1400
+    },
+    "1112": {
+      "race_instance_id": 111301,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 2100
+    },
+    "1113": {
+      "race_instance_id": 111401,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Ladies’ Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1114": {
+      "race_instance_id": 111501,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Sprint",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1000
+    },
+    "1115": {
+      "race_instance_id": 111601,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1116": {
+      "race_instance_id": 111701,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Ladies’ Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1117": {
+      "race_instance_id": 111801,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Sprint",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1200
+    },
+    "1118": {
+      "race_instance_id": 111901,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 2000
+    },
+    "1119": {
+      "race_instance_id": 203601,
+      "month": 10,
+      "half": 1,
+      "name": "Ladies' Prelude",
+      "grade": 200,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1120": {
+      "race_instance_id": 203701,
+      "month": 10,
+      "half": 1,
+      "name": "Tokyo Hai",
+      "grade": 200,
+      "ground": 2,
+      "distance": 1200
+    },
+    "1121": {
+      "race_instance_id": 203801,
+      "month": 3,
+      "half": 1,
+      "name": "Empress Hai",
+      "grade": 200,
+      "ground": 2,
+      "distance": 2100
+    },
+    "1122": {
+      "race_instance_id": 203901,
+      "month": 6,
+      "half": 1,
+      "name": "Kanto Oaks",
+      "grade": 200,
+      "ground": 2,
+      "distance": 2100
+    },
+    "1123": {
+      "race_instance_id": 204001,
+      "month": 3,
+      "half": 2,
+      "name": "Diolite Kinen",
+      "grade": 200,
+      "ground": 2,
+      "distance": 2400
+    },
+    "1124": {
+      "race_instance_id": 204101,
+      "month": 9,
+      "half": 2,
+      "name": "Sazanka TV Hai",
+      "grade": 200,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1125": {
+      "race_instance_id": 307101,
+      "month": 1,
+      "half": 2,
+      "name": "TCK Jo-o Hai",
+      "grade": 300,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1126": {
+      "race_instance_id": 307201,
+      "month": 4,
+      "half": 2,
+      "name": "Tokyo Sprint",
+      "grade": 300,
+      "ground": 2,
+      "distance": 1200
+    },
+    "1127": {
+      "race_instance_id": 307301,
+      "month": 7,
+      "half": 1,
+      "name": "Sparking Lady Cup",
+      "grade": 300,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1128": {
+      "race_instance_id": 307401,
+      "month": 4,
+      "half": 1,
+      "name": "Marine Cup",
+      "grade": 300,
+      "ground": 2,
+      "distance": 1600
+    },
+    "1129": {
+      "race_instance_id": 307501,
+      "month": 12,
+      "half": 1,
+      "name": "Queen Sho",
+      "grade": 300,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1130": {
+      "race_instance_id": 307601,
+      "month": 7,
+      "half": 2,
+      "name": "Mercury Cup",
+      "grade": 300,
+      "ground": 2,
+      "distance": 2000
+    },
+    "1131": {
+      "race_instance_id": 307701,
+      "month": 8,
+      "half": 2,
+      "name": "Cluster Cup",
+      "grade": 300,
+      "ground": 2,
+      "distance": 1200
+    },
+    "1132": {
+      "race_instance_id": 110501,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 2000
+    },
+    "1133": {
+      "race_instance_id": 110401,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Sprint",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1200
+    },
+    "1134": {
+      "race_instance_id": 110301,
+      "month": 11,
+      "half": 1,
+      "name": "JBC Ladies’ Classic",
+      "grade": 100,
+      "ground": 2,
+      "distance": 1800
+    },
+    "1135": {
+      "race_instance_id": 904198,
+      "month": 6,
+      "half": 2,
+      "name": "Junior Make Debut",
+      "grade": 900,
+      "ground": 2,
+      "distance": 1800
+    },
     "2001": {
       "race_instance_id": 910001,
       "month": 1,
@@ -13835,13 +14411,16 @@
       1104
     ],
     "110301": [
-      1024
+      1024,
+      1134
     ],
     "110401": [
-      1025
+      1025,
+      1133
     ],
     "110501": [
-      1026
+      1026,
+      1132
     ],
     "110601": [
       1027
@@ -14007,6 +14586,87 @@
     ],
     "904197": [
       1105
+    ],
+    "110701": [
+      1106
+    ],
+    "110801": [
+      1107
+    ],
+    "110901": [
+      1108
+    ],
+    "111001": [
+      1109
+    ],
+    "111101": [
+      1110
+    ],
+    "111201": [
+      1111
+    ],
+    "111301": [
+      1112
+    ],
+    "111401": [
+      1113
+    ],
+    "111501": [
+      1114
+    ],
+    "111601": [
+      1115
+    ],
+    "111701": [
+      1116
+    ],
+    "111801": [
+      1117
+    ],
+    "111901": [
+      1118
+    ],
+    "203601": [
+      1119
+    ],
+    "203701": [
+      1120
+    ],
+    "203801": [
+      1121
+    ],
+    "203901": [
+      1122
+    ],
+    "204001": [
+      1123
+    ],
+    "204101": [
+      1124
+    ],
+    "307101": [
+      1125
+    ],
+    "307201": [
+      1126
+    ],
+    "307301": [
+      1127
+    ],
+    "307401": [
+      1128
+    ],
+    "307501": [
+      1129
+    ],
+    "307601": [
+      1130
+    ],
+    "307701": [
+      1131
+    ],
+    "904198": [
+      1135
     ],
     "910001": [
       2001

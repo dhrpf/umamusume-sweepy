@@ -90,6 +90,42 @@ def test_final_parent_recommendations_exclude_final_uma_character():
     assert all(row["pairing"].get("second_parent_chara_id") != 1001 for row in result)
 
 
+def test_bootstrap_recommendations_exclude_pool_without_two_good_direct_parents(tmp_path):
+    records = [
+        veteran(101, 100101, rank_score=40000),
+        veteran(201, 100201, rank_score=39000),
+        veteran(301, 100301, rank_score=38000),
+        veteran(401, 100401, rank_score=1000),
+    ]
+    direct_scores = {1001: 9, 1002: 10, 1003: 17, 1004: 15}
+    campaign_planner = CampaignPlanner(
+        owned_chara_ids={1001, 1002, 1003, 1004},
+        veteran_records=records,
+        display_by_id={},
+        g1_saddle_ids={10, 20},
+        race_rows=[],
+        affinity_for_pair=lambda *_args: {
+            "total": 999,
+            "chara_compat": 999,
+            "race_compat": 0,
+        },
+        direct_compatibility_for_parent=lambda _final_card_id, chara_id: direct_scores[chara_id],
+        final_uma_card_id=100601,
+    )
+
+    result = campaign_planner.recommend_bootstraps(
+        limit=10,
+        mdb_path=tmp_path / "unused.mdb",
+    )
+
+    assert result["bootstraps"]
+    assert {1001, 1002, 1003} not in [set(row["chara_ids"]) for row in result["bootstraps"]]
+    assert all(
+        sum(direct_scores[chara_id] >= 15 for chara_id in row["chara_ids"]) >= 2
+        for row in result["bootstraps"]
+    )
+
+
 def test_bootstrap_recommendations_return_three_owned_members_without_final_parent_pin(tmp_path):
     campaign_planner = planner()
 

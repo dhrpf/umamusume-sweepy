@@ -10,6 +10,7 @@ from .final_setup import rank_final_parent_candidates
 from .legacy.race_planner import build_shared_g1_agenda
 from .legacy.scanner import scan_legacy_loop_pools
 from .legacy.veteran_inventory import summarize_veteran
+from .parent_pairs import direct_pair_compatible
 from .targets import evaluate_spark_targets
 
 
@@ -30,6 +31,7 @@ class CampaignPlanner:
         g1_saddle_ids: set[int],
         race_rows: list[dict[str, Any]],
         affinity_for_pair: Callable[[int, dict[str, Any], dict[str, Any]], Mapping[str, Any]],
+        direct_compatibility_for_parent: Callable[[int, int], Any] | None = None,
         factor_map: dict[str, Any] | None = None,
         spark_targets: Sequence[Mapping[str, Any]] = (),
         final_uma_card_id: int = 0,
@@ -43,6 +45,23 @@ class CampaignPlanner:
         self.g1_saddle_ids = set(g1_saddle_ids)
         self.race_rows = race_rows
         self.affinity_for_pair = affinity_for_pair
+        self.direct_compatibility_for_parent = direct_compatibility_for_parent
+
+    def _direct_compatibility(self, chara_id: int) -> int:
+        scorer = self.direct_compatibility_for_parent
+        if not callable(scorer) or self.final_uma_card_id <= 0 or int(chara_id or 0) <= 0:
+            return 0
+        return _int(scorer(self.final_uma_card_id, int(chara_id)))
+
+    def _pool_has_compatible_final_pair(self, pool: Mapping[str, Any]) -> bool:
+        if not callable(self.direct_compatibility_for_parent) or self.final_uma_card_id <= 0:
+            return True
+        chara_ids = [_int(value) for value in pool.get("base_chara_ids") or []]
+        scores = {chara_id: self._direct_compatibility(chara_id) for chara_id in chara_ids}
+        return any(
+            direct_pair_compatible(scores[first], scores[second])
+            for first, second in itertools.combinations(chara_ids, 2)
+        )
 
     @staticmethod
     def _chara_id(record: Mapping[str, Any]) -> int:
@@ -214,6 +233,7 @@ class CampaignPlanner:
                 pool
                 for pool in result["pools"]
                 if pinned.issubset(set(pool["base_chara_ids"]))
+                and self._pool_has_compatible_final_pair(pool)
             ]
 
         owned_records = [
@@ -264,6 +284,7 @@ class CampaignPlanner:
                 pool
                 for pool in result["pools"]
                 if required_chara_ids.issubset(set(pool["base_chara_ids"]))
+                and self._pool_has_compatible_final_pair(pool)
             ]
 
         owned_records = [

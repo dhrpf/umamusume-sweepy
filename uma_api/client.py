@@ -748,7 +748,23 @@ class UmaClient:
         req_id = str(uuid.uuid4())[:8]
         payload = args or {}
         payload.update(self.common())
-        
+
+        if ep in {
+            'single_mode_free/start',
+            'single_mode_team/start',
+            'single_mode/start',
+        }:
+            button_info = {
+                'ViewerId': self.viewer_id,
+                'DeviceId': 4,
+                'ScenarioId': 0,
+                'ClickPosX': 9401648 + dna_randint(-100, 100),
+                'ClickPosY': 1397585 + dna_randint(-100, 100),
+                'ClickServerTime': int(time.time()),
+                'LogType': 6,
+            }
+            payload['button_info'] = json.dumps(button_info, separators=(',', ':'))
+
         if ep == 'single_mode_free/race_out':
             if platform.system() == 'Windows':
                 import ctypes

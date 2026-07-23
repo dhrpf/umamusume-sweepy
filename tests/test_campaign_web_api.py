@@ -294,6 +294,21 @@ def _stub_campaign_runtime_launch(monkeypatch):
     monkeypatch.setattr(main, "career_runner", FakeCareerRunner())
 
 
+def test_campaign_direct_compatibility_uses_base_relation_score(monkeypatch):
+    captured = []
+    monkeypatch.setattr(main, "_campaign_master_mdb_path", lambda: "/tmp/master.mdb")
+    monkeypatch.setattr(
+        main.affinity_calc,
+        "direct_relation_score",
+        lambda mdb_path, first, second: captured.append((mdb_path, first, second)) or 17,
+    )
+
+    result = main._campaign_direct_compatibility(100401, 1068)
+
+    assert result == 17
+    assert captured == [("/tmp/master.mdb", 1004, 1068)]
+
+
 def test_campaign_projected_affinity_uses_displayed_metric(monkeypatch):
     captured = []
     monkeypatch.setattr(main, "_campaign_master_mdb_path", lambda: "/tmp/master.mdb")
@@ -817,7 +832,12 @@ def test_v3_campaign_completed_result_records_displayed_affinity_without_final_p
             12: {
                 "instance_id": 12,
                 "name": "Special Week",
-                "tree": {"self": {"factors": []}},
+                "tree": {
+                    "self": {"factors": [{"category": "stat", "name": "Power", "stars": 2}]},
+                    "p1": {"factors": [{"category": "stat", "name": "Power", "stars": 3}]},
+                    "p2": {"factors": [{"category": "stat", "name": "Power", "stars": 3}]},
+                    "gp1": {"factors": [{"category": "stat", "name": "Power", "stars": 3}]},
+                },
             }
         },
     }
@@ -831,6 +851,9 @@ def test_v3_campaign_completed_result_records_displayed_affinity_without_final_p
     candidate, pairings, parent_ids = main._campaign_completed_result(campaign, snapshot)
 
     assert candidate["displayed_affinity"] == {"total": 42, "base": 30, "race": 12}
+    assert candidate["self_spark_totals"] == {("blue", "power"): 2}
+    assert candidate["direct_lineage_spark_totals"] == {("blue", "power"): 8}
+    assert candidate["spark_totals"] == {("blue", "power"): 8}
     assert pairings == []
     assert parent_ids == [10, 11, 12]
 

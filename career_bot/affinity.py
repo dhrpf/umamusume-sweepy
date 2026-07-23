@@ -8,10 +8,10 @@ real client computes locally and the server validates. It equals the gametora
 
 chara_compat: gametora's relation-group algorithm over master.mdb
     succession_relation / succession_relation_member.
-race_compat: shared win-saddle trophies between each parent and its own two
+race_compat: shared G1 win-saddle trophies between each parent and its own two
     grandparents, PLUS between the two parents. Each shared G1 trophy
-    (single_mode_wins_saddle.win_saddle_type = 3) counts +3; non-G1 shared
-    trophies count +1. Triple Crown etc. are their own saddle ids.
+    (single_mode_wins_saddle.win_saddle_type = 3) counts +3; non-G1 trophies
+    are ignored. Triple Crown etc. are their own saddle ids.
 
 Verified: chara 97 + race 51 = 148 (parents 1210+264, trainee 100601).
 """
@@ -83,13 +83,11 @@ def chara_compat(mdb_path, trainee, p1, p2, p1_gp, p2_gp):
 def race_compat(p1_saddles, p1_gp_saddles, p2_saddles, p2_gp_saddles, g1_saddle_ids):
     """Shared win-saddle trophies between parents and grandparents + parent↔parent.
 
-    Each shared G1 trophy (win_saddle_type=3) counts +3; non-G1 counts +1.
+    Each shared G1 trophy (win_saddle_type=3) counts +3; non-G1 is ignored.
     g1_saddle_ids: set of saddle ids flagged as G1 in master.mdb.
     """
     def subtotal(parent, other):
-        shared = set(parent or []) & set(other or [])
-        g1 = sum(1 for s in shared if s in g1_saddle_ids)
-        return g1 * 3 + (len(shared) - g1)
+        return len(set(parent or []) & set(other or []) & set(g1_saddle_ids or [])) * 3
 
     p1 = p1_saddles or []
     p2 = p2_saddles or []
@@ -112,6 +110,15 @@ def _pair_relation_score(mdb_path, first_chara_id, second_chara_id):
         for relation_type, points in points.items()
         if first_chara_id in groups.get(relation_type, ())
         and second_chara_id in groups.get(relation_type, ())
+    )
+
+
+def direct_relation_score(mdb_path, first_chara_id, second_chara_id):
+    """Return base relation compatibility for two base character ids."""
+    return _pair_relation_score(
+        mdb_path,
+        int(first_chara_id or 0),
+        int(second_chara_id or 0),
     )
 
 

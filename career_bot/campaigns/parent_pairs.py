@@ -9,6 +9,20 @@ from .aptitude_planner import evaluate_aptitude_pair
 from .targets import evaluate_spark_targets
 
 
+MIN_DIRECT_PARENT_COMPATIBILITY = 15
+MIN_DIRECT_PAIR_COMPATIBILITY = 30
+
+
+def direct_pair_compatible(first_score: int, second_score: int) -> bool:
+    first = _int(first_score)
+    second = _int(second_score)
+    return (
+        first >= MIN_DIRECT_PARENT_COMPATIBILITY
+        and second >= MIN_DIRECT_PARENT_COMPATIBILITY
+        and first + second >= MIN_DIRECT_PAIR_COMPATIBILITY
+    )
+
+
 def _int(value: Any) -> int:
     try:
         return int(value or 0)
@@ -192,4 +206,9 @@ def rank_parent_pairs(
     return ranked
 
 
-__all__ = ["rank_parent_pairs"]
+__all__ = [
+    "MIN_DIRECT_PAIR_COMPATIBILITY",
+    "MIN_DIRECT_PARENT_COMPATIBILITY",
+    "direct_pair_compatible",
+    "rank_parent_pairs",
+]

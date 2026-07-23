@@ -294,7 +294,7 @@ class FakePresetStore:
         return deepcopy(preset)
 
 
-def service(store=None, runner=None, *, start_career=None, snapshot=None, preset_store=None, default_career_request=False, projected_affinity=None):
+def service(store=None, runner=None, *, start_career=None, snapshot=None, preset_store=None, default_career_request=False, projected_affinity=None, direct_compatibility=None):
     store = store or FakeStore()
     runner = runner or FakeRunner()
     started = []
@@ -305,6 +305,7 @@ def service(store=None, runner=None, *, start_career=None, snapshot=None, preset
         runtime_snapshot=snapshot or (lambda account: {"account": account}),
         affinity_for_setup=lambda *_args, **_kwargs: 150,
         projected_affinity_for_pair=projected_affinity,
+        direct_compatibility_for_parent=direct_compatibility or (lambda _card_id, _chara_id: 15),
         start_career=start_career or (lambda request: started.append(request) or {"started": True}),
         planned_slots=lambda campaign, rotation, runtime: [
             {"role": "parent1", "mode": "FLEXIBLE", "trained_chara_id": 10}
@@ -368,6 +369,27 @@ def test_create_rejects_boolean_integer_fields_before_pydantic(change, match):
         svc.create_campaign(valid_v3_spec(**change))
 
 
+def test_create_campaign_rejects_bootstrap_loop_without_two_compatible_parents():
+    scores = {1001: 9, 1002: 10, 1003: 17}
+    svc, *_ = service(
+        direct_compatibility=lambda _final_card_id, chara_id: scores[chara_id]
+    )
+
+    with pytest.raises(ValueError, match="two compatible bootstrap characters"):
+        svc.create_campaign(valid_v3_spec())
+
+
+def test_create_campaign_accepts_exact_direct_compatibility_threshold():
+    scores = {1001: 15, 1002: 15, 1003: 0}
+    svc, *_ = service(
+        direct_compatibility=lambda _final_card_id, chara_id: scores[chara_id]
+    )
+
+    created = svc.create_campaign(valid_v3_spec())
+
+    assert created["campaign_id"] == "cmp1"
+
+
 def test_get_campaign_enriches_legacy_candidate_sparks_from_runtime_cache():
     store = FakeStore()
     store.candidates.append({
@@ -416,6 +438,26 @@ def test_create_list_get_and_recommend_delegate():
         ("loops", {"limit": 3, "pinned_chara_ids": {1001}, "final_parent_chara_id": 1004}),
         ("bootstraps", {"limit": 2, "pinned_chara_ids": {1001}}),
     ]
+
+
+def test_v3_create_campaign_uses_cyclic_context():
+    svc, _, *_ = service()
+
+    created = svc.create_campaign(valid_v3_spec())
+    context = created["context"]
+
+    assert context["bootstrap_rotation"] == {
+        "bootstrap_chara_ids": [1001, 1002, 1003],
+        "run_index": 0,
+        "final_stage_active": False,
+        "final_repeat_count": 0,
+        "produced": [],
+    }
+    assert context["ready_parent_candidates"] == []
+    assert context["selected_ready_pair"] is None
+    assert "stage_state" not in context
+    assert "stage_goal_assignments" not in context
+    assert "bootstrap_goal_state" not in context
 
 
 def test_default_candidates_normalize_raw_runtime_rows_and_dedupe():
@@ -1169,6 +1211,32 @@ def test_failed_gateway_marks_failed_and_allows_retry():
     assert len(attempts) == 2
 
 
+def _v3_campaign_for_cycle(*, final_stage_active=False):
+    spec = ParentCampaignSpec.model_validate(
+        valid_v3_spec(race_plan={"core": [101], "optional": [], "deferable": []})
+    ).model_dump(mode="json")
+    return {
+        "campaign_id": "cmp1",
+        "account": "acct01",
+        "state": "SELECTING_LINEAGE",
+        "spec": spec,
+        "context": {
+            "bootstrap_rotation": {
+                "bootstrap_chara_ids": [1001, 1002, 1003],
+                "run_index": 0,
+                "final_stage_active": final_stage_active,
+                "final_repeat_count": 0,
+                "produced": [],
+            },
+            "ready_parent_candidates": [],
+            "selected_ready_pair": None,
+            "cycle_migrated": True,
+            "race_agenda": {"CORE": [101], "OPTIONAL": [], "DEFERABLE": []},
+        },
+        "version": 1,
+    }
+
+
 def _v3_campaign_for_stage(stage_index=0):
     spec = ParentCampaignSpec.model_validate(
         valid_v3_spec(race_plan={"core": [101], "optional": [], "deferable": []})
@@ -1247,10 +1315,10 @@ def _v3_runtime():
 
 
 def test_v3_prepare_requires_user_input_when_trainee_is_in_stage_deck():
-    campaign = _v3_campaign_for_stage(0)
+    campaign = _v3_campaign_for_cycle()
     campaign["spec"]["loop_members"][0]["chara_id"] = 1068
     campaign["spec"]["loop_members"][0]["deck_id"] = 4
-    campaign["context"]["stage_state"]["bootstrap_chara_ids"][0] = 1068
+    campaign["context"]["bootstrap_rotation"]["bootstrap_chara_ids"][0] = 1068
     store = FakeStore(campaign)
     runtime = _v3_runtime()
     runtime["umas"].append({"id": 106801, "card_id": 106801, "name": "Kitasan Black"})
@@ -1273,11 +1341,62 @@ def test_v3_prepare_requires_user_input_when_trainee_is_in_stage_deck():
     assert result["campaign"]["next_action"] == "resolve_stage_deck_conflict"
     review = store.campaign["context"]["pending_review"]
     assert review["kind"] == "stage_deck_conflict"
-    assert review["stage_index"] == 0
+    assert review["rotation_index"] == 0
+    assert review["stage_kind"] == "cycle_bootstrap"
     assert review["trainee_chara_id"] == 1068
     assert review["deck_id"] == 4
     assert review["conflicts"][0]["support_card_id"] == 30028
     assert runner.calls[-1] == ("require_user_input", "cmp1", "resolve_stage_deck_conflict")
+
+
+def test_v3_ambiguity_only_auto_starts_deterministic_cycle_run():
+    campaign = _v3_campaign_for_cycle()
+    campaign["spec"]["strategy"]["approval_mode"] = "ambiguity_only"
+    campaign["spec"]["options"]["auto_use_best_veteran"] = False
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    svc, _, runner, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["campaign"]["next_action"] == "start_career"
+    assert store.campaign["context"]["review_required"] is False
+    assert store.campaign["context"]["pending_review"] is None
+    assert not any(call[0] == "require_user_input" for call in runner.calls)
+
+
+def test_v3_per_generation_still_requires_pre_run_approval():
+    campaign = _v3_campaign_for_cycle()
+    campaign["spec"]["strategy"]["approval_mode"] = "per_generation"
+    campaign["spec"]["options"]["auto_use_best_veteran"] = True
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    svc, _, runner, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["campaign"]["next_action"] == "approve_run"
+    assert store.campaign["context"]["review_required"] is True
+    assert store.campaign["context"]["pending_review"]["kind"] == "prepared_run"
+    assert runner.calls[-1] == ("require_user_input", "cmp1", "approve_run")
+
+
+def test_v3_fully_automatic_auto_starts_deterministic_cycle_run():
+    campaign = _v3_campaign_for_cycle()
+    campaign["spec"]["strategy"]["approval_mode"] = "fully_automatic"
+    campaign["spec"]["options"]["auto_use_best_veteran"] = False
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    svc, _, runner, _ = service(store=store, snapshot=lambda _account: runtime)
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    assert result["campaign"]["next_action"] == "start_career"
+    assert store.campaign["context"]["review_required"] is False
+    assert not any(call[0] == "require_user_input" for call in runner.calls)
 
 
 def test_v3_prepare_uses_stage_trainee_and_ranks_aptitude_feasible_pair():
@@ -1343,7 +1462,12 @@ def test_v3_prepare_uses_projected_displayed_affinity_callback():
 
 
 def test_v3_prepare_final_stage_uses_exact_final_uma_card_and_durable_setup():
-    store = FakeStore(_v3_campaign_for_stage(3))
+    campaign = _v3_campaign_for_cycle(final_stage_active=True)
+    campaign["context"]["ready_parent_candidates"] = [
+        {"candidate_id": "v11", "trained_chara_id": 11, "bootstrap_chara_id": 1001},
+        {"candidate_id": "v12", "trained_chara_id": 12, "bootstrap_chara_id": 1002},
+    ]
+    store = FakeStore(campaign)
     runtime = _v3_runtime()
     svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
     svc.candidate_pool = svc._default_candidates
@@ -1388,7 +1512,12 @@ def test_migrated_legacy_final_stage_pauses_when_durable_final_setup_is_missing(
 
 
 def test_v3_prepare_pauses_when_exact_final_uma_is_unavailable():
-    store = FakeStore(_v3_campaign_for_stage(3))
+    campaign = _v3_campaign_for_cycle(final_stage_active=True)
+    campaign["context"]["ready_parent_candidates"] = [
+        {"candidate_id": "v11", "trained_chara_id": 11, "bootstrap_chara_id": 1001},
+        {"candidate_id": "v12", "trained_chara_id": 12, "bootstrap_chara_id": 1002},
+    ]
+    store = FakeStore(campaign)
     runtime = _v3_runtime()
     runtime["umas"] = [row for row in runtime["umas"] if row["id"] != 100401]
     svc, _, _, _ = service(store=store, snapshot=lambda _account: runtime)
@@ -1399,6 +1528,105 @@ def test_v3_prepare_pauses_when_exact_final_uma_is_unavailable():
     assert result["campaign"]["state"] == "PAUSED"
     assert result["campaign"]["next_action"] == "resolve_final_uma_unavailable"
     assert "100401" in result["campaign"]["error"]
+
+
+def test_resume_migrates_v3_stage_state_to_cyclic_context_from_self_sparks():
+    campaign = _v3_campaign_for_stage(3)
+    campaign["state"] = "PAUSED"
+    campaign["context"]["stage_state"]["produced"] = [
+        [1001, "1786"],
+        [1002, "1787"],
+        [1003, "1788"],
+    ]
+    store = FakeStore(campaign)
+    store.candidates = [
+        {
+            "candidate_id": "veteran-1786",
+            "trained_chara_id": 1786,
+            "evaluation": {
+                "stage_kind": "bootstrap",
+                "trainee_chara_id": 1001,
+                "rank_score": 100,
+                "factor_tree": {
+                    "self": {"factors": [{"category": "stat", "name": "Speed", "stars": 2}]},
+                    "p1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                    "p2": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                    "gp1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                },
+            },
+        },
+        {
+            "candidate_id": "veteran-1787",
+            "trained_chara_id": 1787,
+            "evaluation": {
+                "stage_kind": "bootstrap",
+                "trainee_chara_id": 1002,
+                "rank_score": 200,
+                "factor_tree": {
+                    "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                },
+            },
+        },
+        {
+            "candidate_id": "veteran-1788",
+            "trained_chara_id": 1788,
+            "evaluation": {
+                "stage_kind": "bootstrap",
+                "trainee_chara_id": 1003,
+                "rank_score": 300,
+                "factor_tree": {
+                    "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 2}]},
+                },
+            },
+        },
+    ]
+    svc, _, _, _ = service(store=store)
+
+    svc.resume("cmp1")
+
+    context = store.campaign["context"]
+    assert context["bootstrap_rotation"]["final_stage_active"] is False
+    assert context["bootstrap_rotation"]["run_index"] == 3
+    assert context["bootstrap_rotation"]["bootstrap_chara_ids"] == [1001, 1002, 1003]
+    assert [row["trained_chara_id"] for row in context["ready_parent_candidates"]] == [1787]
+    assert context["stage_state"] is None
+
+
+def test_get_campaign_migrates_v3_stage_state_to_cycle_context():
+    campaign = _v3_campaign_for_stage(3)
+    campaign["context"]["stage_state"]["produced"] = [
+        [1001, "1786"],
+        [1002, "1787"],
+        [1003, "1788"],
+    ]
+    store = FakeStore(campaign)
+    store.candidates = [
+        {
+            "candidate_id": "veteran-1787",
+            "trained_chara_id": 1787,
+            "evaluation": {
+                "stage_kind": "bootstrap",
+                "trainee_chara_id": 1002,
+                "factor_tree": {
+                    "self": {
+                        "factors": [
+                            {"category": "stat", "name": "Stamina", "stars": 3}
+                        ]
+                    }
+                },
+            },
+        }
+    ]
+    svc, _, _, _ = service(store=store)
+
+    result = svc.get_campaign("cmp1")
+
+    assert result["context"]["bootstrap_rotation"]["run_index"] == 3
+    assert result["context"]["bootstrap_rotation"]["final_stage_active"] is False
+    assert [
+        row["trained_chara_id"]
+        for row in result["context"]["ready_parent_candidates"]
+    ] == [1787]
 
 
 def test_legacy_v2_resume_migrates_four_members_without_dropping_next_trainee():
@@ -1475,96 +1703,375 @@ def test_migrated_v2_result_uses_stage_progression_instead_of_old_rotation():
     assert result["candidate"]["evaluation"]["stage_kind"] == "bootstrap"
 
 
-def test_v3_bootstrap_result_repeats_until_assigned_goal_is_complete():
-    store = FakeStore(_v3_campaign_for_stage(0))
+def test_v3_cycle_rotates_until_two_distinct_ready_parents_exist():
+    store = FakeStore(_v3_campaign_for_cycle())
     svc, _, _, _ = service(store=store)
 
-    result = svc.record_completed_veteran(
+    first = svc.record_completed_veteran(
         "cmp1",
         {
-            "candidate_id": "bootstrap-incomplete",
-            "trained_chara_id": 99,
-            "name": "Bootstrap Result",
+            "candidate_id": "gold-1",
+            "trained_chara_id": 2001,
+            "name": "Gold Ship",
             "rank_score": 100,
-            "spark_totals": {("blue", "stamina"): 8},
-            "displayed_affinity": {"total": 999},
+            "spark_totals": {("blue", "stamina"): 9},
+            "factor_tree": {
+                "self": {"factors": [{"category": "stat", "name": "Speed", "stars": 2}]},
+                "p1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "p2": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "gp1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+            },
+            "displayed_affinity": {"total": 100},
+        },
+        [],
+    )
+    context = first["campaign"]["context"]
+    assert first["candidate"]["evaluation"]["ready_parent"] is False
+    assert context["bootstrap_rotation"]["run_index"] == 1
+    assert context["bootstrap_rotation"]["final_stage_active"] is False
+    assert context["ready_parent_candidates"] == []
+
+    second = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "rice-1",
+            "trained_chara_id": 2002,
+            "name": "Rice Shower",
+            "rank_score": 200,
+            "factor_tree": {
+                "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+            },
+            "displayed_affinity": {"total": 110},
+        },
+        [],
+    )
+    context = second["campaign"]["context"]
+    assert second["candidate"]["evaluation"]["ready_parent"] is True
+    assert context["bootstrap_rotation"]["run_index"] == 2
+    assert context["bootstrap_rotation"]["final_stage_active"] is False
+    assert [row["trained_chara_id"] for row in context["ready_parent_candidates"]] == [2002]
+
+    third = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "kitasan-1",
+            "trained_chara_id": 2003,
+            "name": "Kitasan Black",
+            "rank_score": 300,
+            "factor_tree": {
+                "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 1}]},
+            },
+            "displayed_affinity": {"total": 120},
+        },
+        [],
+    )
+    context = third["campaign"]["context"]
+    assert third["candidate"]["evaluation"]["ready_parent"] is False
+    assert context["bootstrap_rotation"]["run_index"] == 3
+    assert context["bootstrap_rotation"]["final_stage_active"] is False
+
+    fourth = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "gold-2",
+            "trained_chara_id": 2004,
+            "name": "Gold Ship",
+            "rank_score": 400,
+            "factor_tree": {
+                "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+            },
+            "displayed_affinity": {"total": 130},
+        },
+        [],
+    )
+    context = fourth["campaign"]["context"]
+    assert fourth["candidate"]["evaluation"]["ready_parent"] is True
+    assert fourth["candidate"]["evaluation"]["decision"] == "enter_final"
+    assert context["bootstrap_rotation"]["run_index"] == 4
+    assert context["bootstrap_rotation"]["final_stage_active"] is True
+    assert {row["trained_chara_id"] for row in context["ready_parent_candidates"]} == {2002, 2004}
+    assert fourth["campaign"]["next_action"] == "prepare_next_run"
+
+
+def test_compatible_ready_parent_pair_requires_distinct_bootstrap_characters():
+    svc, *_ = service()
+    spec = ParentCampaignSpec.model_validate(valid_v3_spec()).model_dump(mode="json")
+
+    pairs = svc._compatible_ready_parent_pairs(
+        spec,
+        [
+            {
+                "trained_chara_id": 2201,
+                "bootstrap_chara_id": 1001,
+                "direct_base_compatibility": 15,
+            },
+            {
+                "trained_chara_id": 2202,
+                "bootstrap_chara_id": 1001,
+                "direct_base_compatibility": 15,
+            },
+        ],
+    )
+
+    assert pairs == []
+
+
+def test_v3_cycle_waits_for_compatible_ready_parent_pair():
+    scores = {1001: 9, 1002: 17, 1003: 15}
+    store = FakeStore(_v3_campaign_for_cycle())
+    svc, _, _, _ = service(
+        store=store,
+        direct_compatibility=lambda _final_card_id, chara_id: scores[chara_id],
+    )
+    ready_factor_tree = {
+        "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+    }
+
+    first = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "weak-ready",
+            "trained_chara_id": 2101,
+            "name": "Weak Ready",
+            "factor_tree": ready_factor_tree,
+        },
+        [],
+    )
+    second = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "good-ready-a",
+            "trained_chara_id": 2102,
+            "name": "Good Ready A",
+            "factor_tree": ready_factor_tree,
         },
         [],
     )
 
-    assert result["campaign"]["context"]["stage_state"]["stage_index"] == 0
-    assert result["campaign"]["next_action"] == "prepare_next_run"
-    assert result["candidate"]["evaluation"]["stage_kind"] == "bootstrap"
-    assert result["candidate"]["evaluation"]["accepted"] is False
+    context = second["campaign"]["context"]
+    assert first["candidate"]["evaluation"]["decision"] == "advance"
+    assert second["candidate"]["evaluation"]["decision"] == "advance"
+    assert context["bootstrap_rotation"]["final_stage_active"] is False
+    assert {
+        row["trained_chara_id"]: row["direct_base_compatibility"]
+        for row in context["ready_parent_candidates"]
+    } == {2101: 9, 2102: 17}
+
+    third = svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "good-ready-b",
+            "trained_chara_id": 2103,
+            "name": "Good Ready B",
+            "factor_tree": ready_factor_tree,
+        },
+        [],
+    )
+
+    context = third["campaign"]["context"]
+    assert third["candidate"]["evaluation"]["decision"] == "enter_final"
+    assert context["bootstrap_rotation"]["final_stage_active"] is True
+    assert {
+        row["trained_chara_id"]: row["direct_base_compatibility"]
+        for row in context["ready_parent_candidates"]
+    } == {2101: 9, 2102: 17, 2103: 15}
 
 
-def test_v3_bootstrap_result_advances_once_when_assigned_goal_completes():
-    store = FakeStore(_v3_campaign_for_stage(0))
+def test_v3_cycle_dedupes_ready_parents_by_trained_chara_id():
+    store = FakeStore(_v3_campaign_for_cycle())
     svc, _, _, _ = service(store=store)
+    ready_factor_tree = {
+        "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+    }
 
+    svc.record_completed_veteran(
+        "cmp1",
+        {
+            "candidate_id": "ready-a",
+            "trained_chara_id": 3001,
+            "name": "Ready A",
+            "factor_tree": ready_factor_tree,
+        },
+        [],
+    )
     result = svc.record_completed_veteran(
         "cmp1",
         {
-            "candidate_id": "bootstrap-complete",
-            "trained_chara_id": 99,
-            "name": "Bootstrap Result",
-            "rank_score": 100,
-            "spark_totals": {("blue", "stamina"): 9},
-            "displayed_affinity": {"total": 10},
+            "candidate_id": "ready-a-duplicate",
+            "trained_chara_id": 3001,
+            "name": "Ready A Again",
+            "factor_tree": ready_factor_tree,
         },
         [],
     )
 
     context = result["campaign"]["context"]
-    assert context["stage_state"]["stage_index"] == 1
-    assert context["stage_state"]["completed_bootstrap_stages"] == [0]
-    assert context["bootstrap_goal_state"]["0"]["complete"] is True
-    assert result["campaign"]["next_action"] == "prepare_next_run"
+    assert [row["trained_chara_id"] for row in context["ready_parent_candidates"]] == [3001]
+    assert context["bootstrap_rotation"]["final_stage_active"] is False
 
 
-def test_v3_final_uma_repeats_until_final_factor_goals_complete_even_with_high_affinity():
-    store = FakeStore(_v3_campaign_for_stage(3))
+def test_v3_cycle_final_stage_selects_best_ready_pair():
+    campaign = _v3_campaign_for_cycle(final_stage_active=True)
+    campaign["context"]["ready_parent_candidates"] = [
+        {"candidate_id": "v11", "trained_chara_id": 11, "bootstrap_chara_id": 1001},
+        {"candidate_id": "v12", "trained_chara_id": 12, "bootstrap_chara_id": 1002},
+        {"candidate_id": "v13", "trained_chara_id": 13, "bootstrap_chara_id": 1003},
+    ]
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    runtime["display_by_id"][13] = {
+        "trained_chara_id": 13,
+        "tree": {
+            "self": {
+                "factors": [
+                    {"category": "aptitude", "name": "Dirt", "stars": 2},
+                    {"category": "stat", "name": "Stamina", "stars": 3},
+                ]
+            },
+            "p1": {"factors": []},
+            "p2": {"factors": []},
+        },
+    }
+
+    def projected(_card_id, first, second, _saddles):
+        pair = frozenset({first["trained_chara_id"], second["trained_chara_id"]})
+        return {
+            "total": {
+                frozenset({11, 12}): 100,
+                frozenset({11, 13}): 300,
+                frozenset({12, 13}): 200,
+            }[pair]
+        }
+
+    svc, _, _, _ = service(
+        store=store,
+        snapshot=lambda _account: runtime,
+        projected_affinity=projected,
+    )
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    prepared = result["prepared_run"]
+    context = store.campaign["context"]
+    assert prepared["card_id"] == campaign["spec"]["final_uma"]["card_id"]
+    assert [row["trained_chara_id"] for row in prepared["legacy_slots"]] == [11, 13]
+    assert context["selected_ready_pair"]["trained_chara_ids"] == [11, 13]
+    assert context["selected_ready_pair"]["aptitude_feasible"] is True
+    assert context["selected_ready_pair"]["target_factor_valid"] is True
+    assert context["selected_ready_pair"]["projected_displayed_affinity"] == 300
+
+
+def test_v3_cycle_final_stage_excludes_weak_parent_even_with_higher_projected_affinity():
+    campaign = _v3_campaign_for_cycle(final_stage_active=True)
+    campaign["context"]["ready_parent_candidates"] = [
+        {"candidate_id": "v11", "trained_chara_id": 11, "bootstrap_chara_id": 1001},
+        {"candidate_id": "v12", "trained_chara_id": 12, "bootstrap_chara_id": 1002},
+        {"candidate_id": "v13", "trained_chara_id": 13, "bootstrap_chara_id": 1003},
+    ]
+    store = FakeStore(campaign)
+    runtime = _v3_runtime()
+    runtime["display_by_id"][13] = deepcopy(runtime["display_by_id"][12])
+    runtime["display_by_id"][13]["trained_chara_id"] = 13
+    direct_scores = {1001: 9, 1002: 17, 1003: 15}
+
+    def projected(_card_id, first, second, _saddles):
+        pair = frozenset({first["trained_chara_id"], second["trained_chara_id"]})
+        return {
+            "total": {
+                frozenset({11, 12}): 999,
+                frozenset({11, 13}): 800,
+                frozenset({12, 13}): 100,
+            }[pair]
+        }
+
+    svc, _, _, _ = service(
+        store=store,
+        snapshot=lambda _account: runtime,
+        projected_affinity=projected,
+        direct_compatibility=lambda _final_card_id, chara_id: direct_scores[chara_id],
+    )
+    svc.candidate_pool = svc._default_candidates
+
+    result = svc.prepare_next_run("cmp1")
+
+    prepared = result["prepared_run"]
+    context = store.campaign["context"]
+    assert [row["trained_chara_id"] for row in prepared["legacy_slots"]] == [12, 13]
+    assert context["selected_ready_pair"]["trained_chara_ids"] == [12, 13]
+    assert context["selected_ready_pair"]["direct_base_compatibility"] == [17, 15]
+    assert context["selected_ready_pair"]["projected_displayed_affinity"] == 100
+
+
+def test_v3_cycle_final_direct_lineage_eight_stars_repeats_even_with_grandparent_power():
+    campaign = _v3_campaign_for_cycle(final_stage_active=True)
+    campaign["context"]["ready_parent_candidates"] = [
+        {"candidate_id": "v11", "trained_chara_id": 11, "bootstrap_chara_id": 1001},
+        {"candidate_id": "v12", "trained_chara_id": 12, "bootstrap_chara_id": 1002},
+    ]
+    store = FakeStore(campaign)
     svc, _, _, _ = service(store=store)
 
     result = svc.record_completed_veteran(
         "cmp1",
         {
-            "candidate_id": "final-incomplete",
-            "trained_chara_id": 199,
-            "name": "Final Result",
-            "rank_score": 100,
-            "spark_totals": {("blue", "stamina"): 8},
+            "candidate_id": "final-8",
+            "trained_chara_id": 4001,
+            "name": "Final Uma",
+            "rank_score": 500,
+            "factor_tree": {
+                "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 2}]},
+                "p1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "p2": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "gp1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+            },
             "displayed_affinity": {"total": 999},
         },
         [],
     )
 
     assert result["campaign"]["state"] == "SELECTING_LINEAGE"
-    assert result["campaign"]["context"]["stage_state"]["final_repeat_count"] == 1
+    assert result["campaign"]["context"]["bootstrap_rotation"]["final_stage_active"] is True
+    assert result["campaign"]["context"]["bootstrap_rotation"]["final_repeat_count"] == 1
     assert result["candidate"]["evaluation"]["accepted"] is False
+    assert result["candidate"]["evaluation"]["direct_lineage_spark_totals"] == {
+        "blue:stamina": 8
+    }
 
 
-def test_v3_final_factor_goal_completes_below_old_affinity_threshold():
-    store = FakeStore(_v3_campaign_for_stage(3))
+def test_v3_cycle_final_direct_lineage_nine_stars_completes():
+    campaign = _v3_campaign_for_cycle(final_stage_active=True)
+    campaign["context"]["ready_parent_candidates"] = [
+        {"candidate_id": "v11", "trained_chara_id": 11, "bootstrap_chara_id": 1001},
+        {"candidate_id": "v12", "trained_chara_id": 12, "bootstrap_chara_id": 1002},
+    ]
+    store = FakeStore(campaign)
     svc, _, _, _ = service(store=store)
 
     result = svc.record_completed_veteran(
         "cmp1",
         {
-            "candidate_id": "final-complete",
-            "trained_chara_id": 199,
-            "name": "Final Result",
-            "rank_score": 100,
-            "spark_totals": {("blue", "stamina"): 9},
+            "candidate_id": "final-9",
+            "trained_chara_id": 4002,
+            "name": "Final Uma",
+            "rank_score": 600,
+            "factor_tree": {
+                "self": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "p1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "p2": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+                "gp1": {"factors": [{"category": "stat", "name": "Stamina", "stars": 3}]},
+            },
             "displayed_affinity": {"total": 42},
         },
         [],
     )
 
     assert result["campaign"]["state"] == "COMPLETED"
-    assert result["campaign"]["selected_candidate_id"] == "final-complete"
-    assert result["candidate"]["evaluation"]["completed_displayed_affinity"] == 42
-    assert result["campaign"]["context"]["stage_state"]["final_repeat_count"] == 1
+    assert result["campaign"]["selected_candidate_id"] == "final-9"
+    assert result["candidate"]["evaluation"]["accepted"] is True
+    assert result["candidate"]["evaluation"]["direct_lineage_spark_totals"] == {
+        "blue:stamina": 9
+    }
 
 
 def completed_candidate(affinity=150, required=9, preferred=0):

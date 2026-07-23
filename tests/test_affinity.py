@@ -61,6 +61,36 @@ def test_calculate_veteran_affinity_matches_uma_moe_lineage_breakdown(monkeypatc
     }
 
 
+def test_direct_relation_score_exposes_pair_base_compatibility(monkeypatch):
+    monkeypatch.setattr(
+        affinity,
+        "_load_relations",
+        lambda _mdb: (
+            {1: 5, 2: 10, 3: 20},
+            {
+                1: frozenset({1004, 1007}),
+                2: frozenset({1004, 1030}),
+                3: frozenset({1007, 1030}),
+            },
+        ),
+    )
+
+    assert affinity.direct_relation_score("/tmp/master.mdb", 1004, 1007) == 5
+    assert affinity.direct_relation_score("/tmp/master.mdb", 1004, 1030) == 10
+
+
+def test_race_compat_counts_three_points_per_shared_g1():
+    result = affinity.race_compat(
+        [1, 2, 9],
+        [[1, 2, 9], [2, 3]],
+        [2, 3, 4, 9],
+        [[3, 4], [1, 4]],
+        {1, 2, 3, 4},
+    )
+
+    assert result == 21
+
+
 def test_load_g1_saddle_program_map_resolves_race_instances_to_programs(tmp_path):
     path = tmp_path / "master.mdb"
     db = sqlite3.connect(path)

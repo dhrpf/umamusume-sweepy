@@ -272,6 +272,52 @@ TRACK_LABELS = {
     10009: "Hanshin",
     10010: "Kokura",
     10101: "Ooi",
+    10103: "Kawasaki",
+    10104: "Funabashi",
+    10105: "Morioka",
+}
+
+
+# Global currently exposes these Career programs from the live API while the
+# corresponding race/program rows are missing from master.mdb. Keep this
+# fallback narrow: a complete native master row always wins when Cygames adds it.
+GLOBAL_DIRT_G1_PROGRAM_FALLBACKS = {
+    1106: {
+        "race_instance_id": 110701,
+        "name": "Kawasaki Kinen",
+        "race_permission": 4,
+        "month": 2,
+        "half": 1,
+        "distance": 2100,
+        "race_track_id": 10103,
+    },
+    1107: {
+        "race_instance_id": 110801,
+        "name": "Zen-Nippon Junior Yushun",
+        "race_permission": 1,
+        "month": 12,
+        "half": 2,
+        "distance": 1600,
+        "race_track_id": 10103,
+    },
+    1108: {
+        "race_instance_id": 110901,
+        "name": "Kashiwa Kinen",
+        "race_permission": 4,
+        "month": 5,
+        "half": 1,
+        "distance": 1600,
+        "race_track_id": 10104,
+    },
+    1109: {
+        "race_instance_id": 111001,
+        "name": "M.C. Nambu Hai",
+        "race_permission": 3,
+        "month": 10,
+        "half": 1,
+        "distance": 1600,
+        "race_track_id": 10105,
+    },
 }
 
 MONTH_LABELS = [
@@ -357,6 +403,30 @@ def build_race_context(master_data):
             "race": race,
             "course": course,
             "name": name,
+        }
+
+    for program_id, fallback in GLOBAL_DIRT_G1_PROGRAM_FALLBACKS.items():
+        native = programs.get(program_id)
+        if native and int((native.get("race") or {}).get("grade") or 0):
+            continue
+        race_instance_id = int(fallback["race_instance_id"])
+        programs[program_id] = {
+            "program": {
+                "id": program_id,
+                "base_program_id": 0,
+                "race_instance_id": race_instance_id,
+                "race_permission": int(fallback["race_permission"]),
+                "month": int(fallback["month"]),
+                "half": int(fallback["half"]),
+            },
+            "race_instance_id": race_instance_id,
+            "race": {"grade": 100, "is_dirtgrade": 1},
+            "course": {
+                "ground": 2,
+                "distance": int(fallback["distance"]),
+                "race_track_id": int(fallback["race_track_id"]),
+            },
+            "name": race_names.get(race_instance_id, fallback["name"]),
         }
     return programs
 
