@@ -126,7 +126,20 @@ def test_base_preset_rejects_invalid_running_style(running_style):
         )
 
 
-@pytest.mark.parametrize("scenario_id", [True, False, 0, 3, 5, -1, "4", None])
+def test_base_preset_accepts_grand_live_scenario():
+    preset = build_campaign_base_preset(
+        name="Campaign / Grand Live",
+        running_style=3,
+        scenario_id=3,
+        spark_targets=[],
+        core_races=[],
+        optional_races=[],
+    )
+
+    assert preset["scenario_id"] == 3
+
+
+@pytest.mark.parametrize("scenario_id", [True, False, 0, 5, -1, "4", None])
 def test_base_preset_rejects_unsupported_scenario_id(scenario_id):
     with pytest.raises((TypeError, ValueError)):
         build_campaign_base_preset(

@@ -10,10 +10,12 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+from career_bot.scenarios.grand_live import GrandLiveStrategy
 from career_bot.scenarios.mant import MantStrategy
 from career_bot.scenarios.ura import UraStrategy
 from career_bot.scenarios.unity import UnityStrategy
 from career_bot.scenarios.base import Decision
+from career_bot.grand_live import select_lesson_pick
 from career_bot.races import RacePlanner
 from career_bot.skills import SkillBuyer
 from career_bot.items import MantItemManager, ITEM_NAMES, SHOP_ITEM_COSTS, DISPLAY_TO_ID, display_to_slug
@@ -26,6 +28,7 @@ from uma_api.client import StateRecoveryError
 
 STRATEGIES = {
     4: MantStrategy,
+    3: GrandLiveStrategy,
     2: UnityStrategy,
     1: UraStrategy,
 }
@@ -116,6 +119,8 @@ class CareerRunner:
             strategy_cls = STRATEGIES.get(scenario_id)
             if not strategy_cls:
                 raise RuntimeError(f"No runner for scenario {scenario_id}")
+            self.race_planner = RacePlanner(self.base_dir)
+            strategy = strategy_cls(self.race_planner)
             self.stop_requested = False
             self.burn_clocks = burn_clocks
             self._team_race_turn = None
@@ -123,7 +128,6 @@ class CareerRunner:
             self._last_race_result = None
             self.dev_mode = dev_mode
             self._exhausted_events = set()
-            self.race_planner = RacePlanner(self.base_dir)
             self.skill_buyer = SkillBuyer(self.base_dir)
             self.item_manager = MantItemManager()
             self.status = {
@@ -158,7 +162,7 @@ class CareerRunner:
                         })
                 client.on_api_log = _on_api_log
             self._log_locked("started", 0, f"preset {preset.get('name', '')} (burn_clocks={burn_clocks})")
-            self.thread = threading.Thread(target=self._run, args=(client, preset, initial_result, strategy_cls(self.race_planner), max_steps), daemon=True)
+            self.thread = threading.Thread(target=self._run, args=(client, preset, initial_result, strategy, max_steps), daemon=True)
             self.thread.start()
 
     def stop(self):
@@ -323,6 +327,30 @@ class CareerRunner:
                     if decision.action == "done":
                         self._mark(last_action=decision.reason, finished=True)
                         break
+
+                    if decision.action == "lessons":
+                        self._record_action(decision, chara)
+                        state = self._run_lessons(client, strategy, state)
+                        self._advance(decision.action)
+                        continue
+                    if decision.action == "live_perform":
+                        self._record_action(decision, chara)
+                        state = self._run_live(
+                            client,
+                            strategy,
+                            state,
+                            decision.payload,
+                        )
+                        self._advance(decision.action)
+                        continue
+                    if decision.action == "state_poll":
+                        state = self._poll_scenario_state(
+                            client,
+                            state,
+                            scenario_id=getattr(strategy, "scenario_id", 0),
+                        )
+                        self._advance(decision.action)
+                        continue
 
                     if decision.action == "event":
                         try:
@@ -1933,6 +1961,45 @@ class CareerRunner:
                 if used:
                     self._log_locked("items_use", turn, used)
         return state
+
+    def _run_lessons(self, client, strategy, state, limit=60):
+        for _ in range(limit):
+            data = state.get("data") or {}
+            if data.get("unchecked_event_array"):
+                break
+            live_data = data.get("live_data_set") or {}
+            pick = select_lesson_pick(
+                live_data,
+                getattr(strategy, "square_reference", {}),
+            )
+            if not pick:
+                break
+            chara = data.get("chara_info") or {}
+            turn = int(chara.get("turn") or 0)
+            response = client.master_square(
+                square_id=pick["square_id"],
+                current_turn=turn,
+            )
+            state = self._merge_state(state, response)
+        else:
+            turn = int(
+                ((state.get("data") or {}).get("chara_info") or {}).get("turn")
+                or 0
+            )
+            self._log("lessons_guard", turn, f"stopped after {limit} lessons")
+        return state
+
+    def _run_live(self, client, strategy, state, payload):
+        turn = int((payload or {}).get("current_turn") or 0)
+        response = client.live_start(current_turn=turn)
+        result = self._merge_state(state, response)
+        if hasattr(strategy, "mark_live_performed"):
+            strategy.mark_live_performed(turn)
+        return result
+
+    def _poll_scenario_state(self, client, state, scenario_id):
+        response = client.load_career(scenario_id=int(scenario_id))
+        return self._merge_state(state, response)
 
     def _merge_state(self, old_state, new_state):
         if not old_state:

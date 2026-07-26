@@ -375,6 +375,56 @@ class CampaignStore:
         finally:
             connection.close()
 
+    def rename_preset_references(self, old_name: str, new_name: str) -> int:
+        source_key = str(old_name or "").strip().casefold()
+        target_name = str(new_name or "").strip()
+        if not source_key:
+            raise ValueError("old preset name is required")
+        if not target_name:
+            raise ValueError("new preset name is required")
+        if source_key == target_name.casefold():
+            return 0
+
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                "SELECT campaign_id, spec_json FROM campaigns"
+            ).fetchall()
+            updated = 0
+            now = float(self.clock())
+            for row in rows:
+                spec = _json_loads(row["spec_json"])
+                if not isinstance(spec, dict):
+                    continue
+                strategy = spec.get("strategy")
+                if not isinstance(strategy, dict):
+                    continue
+                preset_name = strategy.get("preset_name")
+                if not isinstance(preset_name, str) or preset_name.strip().casefold() != source_key:
+                    continue
+                strategy["preset_name"] = target_name
+                connection.execute(
+                    "UPDATE campaigns SET spec_json=?, updated_at=?, version=version+1 "
+                    "WHERE campaign_id=?",
+                    (_json_dumps(spec), now, row["campaign_id"]),
+                )
+                self._insert_event(
+                    connection,
+                    row["campaign_id"],
+                    "preset_reference_renamed",
+                    {"old_name": preset_name, "new_name": target_name},
+                )
+                updated += 1
+            connection.execute("COMMIT")
+            return updated
+        except Exception:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
     def set_next_action(
         self,
         campaign_id: str,

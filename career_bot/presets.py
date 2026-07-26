@@ -1,5 +1,7 @@
 import json
+import math
 import re
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -61,6 +63,14 @@ def as_float(value, default):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def as_nonnegative_finite_float(value, default):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) and number >= 0 else default
 
 
 STAT_VECTOR_LEN = 5
@@ -179,6 +189,10 @@ def serialize_preset(raw):
     serialized["turn_delay_disabled"] = bool(data.get("turn_delay_disabled", False))
     serialized["scenario_id"] = int(data.get("scenario_id") or data.get("scenario") or 4)
     serialized["scenario"] = serialized["scenario_id"]
+    serialized["performance_training_weight"] = as_nonnegative_finite_float(
+        data.get("performance_training_weight"),
+        0.6,
+    )
 
     unity_cfg = data.get("unity_config") if isinstance(data.get("unity_config"), dict) else {}
     serialized["unity_config"] = {
@@ -245,6 +259,7 @@ def hydrate_preset(raw):
         "pal_recreation_required": False,
         "rest_threshold": 48,
         "manual_purchase_at_end": False,
+        "performance_training_weight": 0.6,
         "mant_config": {},
         "unity_config": {
             "unity_training_weight": 0.6,
@@ -263,6 +278,11 @@ def hydrate_preset(raw):
         merged["trackblazer"] = data["trackblazer"]
 
     return merged
+
+
+class PresetStoreError(ValueError):
+    pass
+
 
 class PresetStore:
     def __init__(self, base_dir):
@@ -296,6 +316,37 @@ class PresetStore:
         path = self.preset_dir / f"{slugify(serialized_data['name'])}.json"
         path.write_text(json.dumps(serialized_data, ensure_ascii=False, indent=2), encoding="utf-8")
         return hydrate_preset(serialized_data)
+
+    def rename(self, source_name, new_name):
+        source, target_name = self._resolve_copy_names(source_name, new_name)
+        if source["name"].casefold() == target_name.casefold():
+            return source
+        renamed = self.write({**source, "name": target_name})
+        if not self.delete(source["name"]):
+            self.delete(renamed["name"])
+            raise PresetStoreError(f"Preset not found: {source_name}")
+        return renamed
+
+    def duplicate(self, source_name, new_name):
+        source, target_name = self._resolve_copy_names(source_name, new_name)
+        if source["name"].casefold() == target_name.casefold():
+            raise PresetStoreError("New preset name must differ from source")
+        copied = deepcopy(source)
+        copied["name"] = target_name
+        return self.write(copied)
+
+    def _resolve_copy_names(self, source_name, new_name):
+        source = self.read_one(source_name)
+        if source is None:
+            raise PresetStoreError(f"Preset not found: {source_name}")
+        raw_target = str(new_name or "").strip()
+        if not raw_target:
+            raise PresetStoreError("Preset name is required")
+        target_name = slugify(raw_target)
+        existing = self.read_one(target_name)
+        if existing is not None and existing["name"].casefold() != source["name"].casefold():
+            raise PresetStoreError(f"Preset already exists: {target_name}")
+        return source, target_name
 
     def delete(self, name):
         path = self.preset_dir / f"{slugify(name)}.json"

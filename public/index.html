@@ -121,6 +121,8 @@
                                 <div class="preset-control-row preset-control-row-actions">
                                     <select id="preset-select" class="form-input master-data-input preset-input"></select>
                                     <button id="preset-add-btn" class="btn btn-sm preset-action-btn" type="button">NEW</button>
+                                    <button id="preset-rename-btn" class="btn btn-sm preset-action-btn" type="button">RENAME</button>
+                                    <button id="preset-duplicate-btn" class="btn btn-sm preset-action-btn" type="button">DUPLICATE</button>
                                     <button id="preset-del-btn" class="btn btn-sm btn-danger preset-action-btn" type="button">DEL</button>
                                 </div>
                                 <div class="preset-control-row preset-control-grid">
@@ -137,9 +139,14 @@
                                         <label class="form-label" for="preset-scenario">SCENARIO</label>
                                         <select id="preset-scenario" class="form-input master-data-input preset-input">
                                           <option value="4">Make a New Track</option>
+                                          <option value="3">Grand Live</option>
                                           <option value="2">Unity Cup</option>
                                           <option value="1">URA Finale</option>
                                         </select>
+                                        </div>
+                                        <div id="grand-live-config" class="preset-field" hidden>
+                                            <label class="form-label" for="performance-training-weight">PERFORMANCE TRAIN WEIGHT</label>
+                                            <input id="performance-training-weight" class="form-input master-data-input preset-input" type="number" min="0" step="0.05" value="0.6">
                                         </div>
                                         <div class="preset-field">
                                             <label class="form-label" for="unity-training-weight">UNITY TRAIN WEIGHT</label>
@@ -638,6 +645,6 @@
             </div>
         </div>
     </div>
-    <script src="app.js?v=20"></script>
+    <script src="app.js?v=22"></script>
 </body>
 </html>

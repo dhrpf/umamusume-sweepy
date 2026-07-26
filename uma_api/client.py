@@ -717,25 +717,30 @@ class UmaClient:
         if self.proxy_url:
             self.session.proxies.update({'http': self.proxy_url, 'https': self.proxy_url})
 
+    _SCENARIO_API_PREFIXES = {
+        1: "single_mode",
+        2: "single_mode_team",
+        3: "single_mode_live",
+    }
+    _SCENARIO_CORE_OPERATIONS = frozenset({
+        "load", "start", "exec_command", "check_event",
+        "race_entry", "race_start", "race_end", "race_out",
+        "finish", "factor_select", "continue", "change_running_style",
+        "gain_skills", "multi_item_use", "multi_item_exchange",
+        "minigame_end",
+    })
+
+    def _scenario_endpoint(self, ep):
+        if not ep.startswith("single_mode_free/"):
+            return ep
+        operation = ep[len("single_mode_free/"):]
+        prefix = self._SCENARIO_API_PREFIXES.get(self.current_scenario_id)
+        if prefix and operation in self._SCENARIO_CORE_OPERATIONS:
+            return f"{prefix}/{operation}"
+        return ep
+
     def call(self, ep, args=None, retry_208=6, retry_205=3, retry_501=1, anonymous=False):
-        # Aoharu/Team scenario uses single_mode_team/* for core endpoints.
-        if self.current_scenario_id == 2 and ep.startswith('single_mode_free/'):
-            rest = ep[len('single_mode_free/'):]
-            if rest in ('load', 'start', 'exec_command', 'check_event',
-                        'race_entry', 'race_start', 'race_end', 'race_out',
-                        'finish', 'factor_select', 'continue', 'change_running_style',
-                        'gain_skills', 'multi_item_use', 'multi_item_exchange',
-                        'minigame_end'):
-                ep = 'single_mode_team/' + rest
-        # URA (scenario 1) uses single_mode/* instead of single_mode_free/* for core endpoints
-        if self.current_scenario_id == 1 and ep.startswith('single_mode_free/'):
-            rest = ep[len('single_mode_free/'):]
-            if rest in ('load', 'start', 'exec_command', 'check_event',
-                        'race_entry', 'race_start', 'race_end', 'race_out',
-                        'finish', 'factor_select', 'continue', 'change_running_style',
-                        'gain_skills', 'multi_item_use', 'multi_item_exchange',
-                        'minigame_end'):
-                ep = 'single_mode/' + rest
+        ep = self._scenario_endpoint(ep)
         if not hasattr(self, '_last_raw_call_ts'):
             self._last_raw_call_ts = 0
 
@@ -752,6 +757,7 @@ class UmaClient:
         if ep in {
             'single_mode_free/start',
             'single_mode_team/start',
+            'single_mode_live/start',
             'single_mode/start',
         }:
             button_info = {
@@ -1328,6 +1334,17 @@ class UmaClient:
     def load_career(self, scenario_id=4):
         self.current_scenario_id = int(scenario_id or 4)
         return self.call('single_mode_free/load', {})
+
+    def master_square(self, square_id, current_turn):
+        return self.call('single_mode_live/master_square', {
+            'square_id': int(square_id),
+            'current_turn': int(current_turn),
+        })
+
+    def live_start(self, current_turn):
+        return self.call('single_mode_live/live_start', {
+            'current_turn': int(current_turn),
+        })
 
     def change_support_card_deck_party(self, support_card_deck_array):
         if not support_card_deck_array:

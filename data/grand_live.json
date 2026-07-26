@@ -1,0 +1,2776 @@
+{
+  "great_success_song_threshold": 3,
+  "perf_types": {
+    "1": "Dance",
+    "2": "Passion",
+    "3": "Vocal",
+    "4": "Visual",
+    "5": "Mental"
+  },
+  "square_types": {
+    "1": "technique",
+    "2": "skill_hint_lesson",
+    "3": "body_care",
+    "4": "song"
+  },
+  "squares": {
+    "11001": {
+      "square_type": 1,
+      "name": "Dance Step Basics",
+      "reward": "Speed <color=#ff911c>+5</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11002": {
+      "square_type": 1,
+      "name": "Audience Involvement Basics",
+      "reward": "Stamina <color=#ff911c>+5</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11003": {
+      "square_type": 1,
+      "name": "Vocal Training Basics",
+      "reward": "Power <color=#ff911c>+5</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11004": {
+      "square_type": 1,
+      "name": "Makeup Basics",
+      "reward": "Guts <color=#ff911c>+5</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11005": {
+      "square_type": 1,
+      "name": "Composure Training Basics",
+      "reward": "Wit <color=#ff911c>+5</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11006": {
+      "square_type": 1,
+      "name": "Watch an Up-and-Coming Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+5</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11007": {
+      "square_type": 1,
+      "name": "Watch an Up-and-Coming Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+5</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11008": {
+      "square_type": 1,
+      "name": "Watch an Up-and-Coming Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+5</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Vocal": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11009": {
+      "square_type": 1,
+      "name": "Watch an Up-and-Coming Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+5</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Visual": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11010": {
+      "square_type": 1,
+      "name": "Watch an Up-and-Coming Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+5</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Mental": 10
+      },
+      "adds_song_live_id": null
+    },
+    "11101": {
+      "square_type": 1,
+      "name": "Dance Step Intermediate Class",
+      "reward": "Speed <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11102": {
+      "square_type": 1,
+      "name": "Audience Involvement Intermediate Class",
+      "reward": "Stamina <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11103": {
+      "square_type": 1,
+      "name": "Vocal Training Intermediate Class",
+      "reward": "Power <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11104": {
+      "square_type": 1,
+      "name": "Makeup Intermediate Class",
+      "reward": "Guts <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11105": {
+      "square_type": 1,
+      "name": "Composure Training Intermediate Class",
+      "reward": "Wit <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11106": {
+      "square_type": 1,
+      "name": "Watch a Mid-Career Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Vocal": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11107": {
+      "square_type": 1,
+      "name": "Watch a Mid-Career Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11108": {
+      "square_type": 1,
+      "name": "Watch a Mid-Career Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11109": {
+      "square_type": 1,
+      "name": "Watch a Mid-Career Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Visual": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11110": {
+      "square_type": 1,
+      "name": "Watch a Mid-Career Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Mental": 16
+      },
+      "adds_song_live_id": null
+    },
+    "11201": {
+      "square_type": 1,
+      "name": "Dance Step Advanced Class",
+      "reward": "Speed <color=#ff911c>+12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11202": {
+      "square_type": 1,
+      "name": "Audience Involvement Advanced Class",
+      "reward": "Stamina <color=#ff911c>+12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11203": {
+      "square_type": 1,
+      "name": "Vocal Training Advanced Class",
+      "reward": "Power <color=#ff911c>+12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11204": {
+      "square_type": 1,
+      "name": "Makeup Advanced Class",
+      "reward": "Guts <color=#ff911c>+12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11205": {
+      "square_type": 1,
+      "name": "Composure Training Advanced Class",
+      "reward": "Wit <color=#ff911c>+12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11206": {
+      "square_type": 1,
+      "name": "Watch a Top-Tier Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+12</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Visual": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11207": {
+      "square_type": 1,
+      "name": "Watch a Top-Tier Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+12</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11208": {
+      "square_type": 1,
+      "name": "Watch a Top-Tier Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+12</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11209": {
+      "square_type": 1,
+      "name": "Watch a Top-Tier Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+12</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Vocal": 24
+      },
+      "adds_song_live_id": null
+    },
+    "11210": {
+      "square_type": 1,
+      "name": "Watch a Top-Tier Idol's Concert",
+      "reward": "Skill Pts <color=#ff911c>+12</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Mental": 24
+      },
+      "adds_song_live_id": null
+    },
+    "12001": {
+      "square_type": 1,
+      "name": "Rhythm Basics",
+      "reward": "Speed <color=#ff911c>+3 to 7</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 8
+      },
+      "adds_song_live_id": null
+    },
+    "12002": {
+      "square_type": 1,
+      "name": "Fan Interaction Basics",
+      "reward": "Stamina <color=#ff911c>+3 to 7</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 8
+      },
+      "adds_song_live_id": null
+    },
+    "12003": {
+      "square_type": 1,
+      "name": "Abdominal Breathing Basics",
+      "reward": "Power <color=#ff911c>+3 to 7</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 8
+      },
+      "adds_song_live_id": null
+    },
+    "12004": {
+      "square_type": 1,
+      "name": "Hair Styling Basics",
+      "reward": "Guts <color=#ff911c>+3 to 7</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 8
+      },
+      "adds_song_live_id": null
+    },
+    "12005": {
+      "square_type": 1,
+      "name": "Solo Performance Basics",
+      "reward": "Wit <color=#ff911c>+3 to 7</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 8
+      },
+      "adds_song_live_id": null
+    },
+    "12006": {
+      "square_type": 1,
+      "name": "Autograph Basics",
+      "reward": "Skill Pts <color=#ff911c>+3 to 7</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 8
+      },
+      "adds_song_live_id": null
+    },
+    "12101": {
+      "square_type": 1,
+      "name": "Rhythm Intermediate Class",
+      "reward": "Speed <color=#ff911c>+5 to 9</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 12
+      },
+      "adds_song_live_id": null
+    },
+    "12102": {
+      "square_type": 1,
+      "name": "Fan Interaction Intermediate Class",
+      "reward": "Stamina <color=#ff911c>+5 to 9</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 12
+      },
+      "adds_song_live_id": null
+    },
+    "12103": {
+      "square_type": 1,
+      "name": "Abdominal Breathing Intermediate Class",
+      "reward": "Power <color=#ff911c>+5 to 9</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 12
+      },
+      "adds_song_live_id": null
+    },
+    "12104": {
+      "square_type": 1,
+      "name": "Hair Styling Intermediate Class",
+      "reward": "Guts <color=#ff911c>+5 to 9</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 12
+      },
+      "adds_song_live_id": null
+    },
+    "12105": {
+      "square_type": 1,
+      "name": "Solo Performance Intermediate Class",
+      "reward": "Wit <color=#ff911c>+5 to 9</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 12
+      },
+      "adds_song_live_id": null
+    },
+    "12106": {
+      "square_type": 1,
+      "name": "Autograph Intermediate Class",
+      "reward": "Skill Pts <color=#ff911c>+5 to 9</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Visual": 12
+      },
+      "adds_song_live_id": null
+    },
+    "12201": {
+      "square_type": 1,
+      "name": "Rhythm Advanced Class",
+      "reward": "Speed <color=#ff911c>+8 to 12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 18
+      },
+      "adds_song_live_id": null
+    },
+    "12202": {
+      "square_type": 1,
+      "name": "Fan Interaction Advanced Class",
+      "reward": "Stamina <color=#ff911c>+8 to 12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 18
+      },
+      "adds_song_live_id": null
+    },
+    "12203": {
+      "square_type": 1,
+      "name": "Abdominal Breathing Advanced Class",
+      "reward": "Power <color=#ff911c>+8 to 12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 18
+      },
+      "adds_song_live_id": null
+    },
+    "12204": {
+      "square_type": 1,
+      "name": "Hair Styling Advanced Class",
+      "reward": "Guts <color=#ff911c>+8 to 12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 18
+      },
+      "adds_song_live_id": null
+    },
+    "12205": {
+      "square_type": 1,
+      "name": "Solo Performance Advanced Class",
+      "reward": "Wit <color=#ff911c>+8 to 12</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 18
+      },
+      "adds_song_live_id": null
+    },
+    "12206": {
+      "square_type": 1,
+      "name": "Autograph Advanced Class",
+      "reward": "Skill Pts <color=#ff911c>+8 to 12</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Mental": 18
+      },
+      "adds_song_live_id": null
+    },
+    "13001": {
+      "square_type": 1,
+      "name": "Expression Basics",
+      "reward": "Speed <color=#ff911c>+4</color>\\nStamina <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 8,
+        "Passion": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13002": {
+      "square_type": 1,
+      "name": "Dancing and Singing Basics",
+      "reward": "Speed <color=#ff911c>+4</color>\\nPower <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 8,
+        "Vocal": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13003": {
+      "square_type": 1,
+      "name": "Jazz Dance Basics",
+      "reward": "Speed <color=#ff911c>+4</color>\\nGuts <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 8,
+        "Visual": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13004": {
+      "square_type": 1,
+      "name": "Isolation Basics",
+      "reward": "Speed <color=#ff911c>+4</color>\\nWit <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 8,
+        "Mental": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13005": {
+      "square_type": 1,
+      "name": "Formation Basics",
+      "reward": "Speed <color=#ff911c>+4</color>\\nSkill Pts <color=#ff911c>+4</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 10,
+        "Visual": 6
+      },
+      "adds_song_live_id": null
+    },
+    "13006": {
+      "square_type": 1,
+      "name": "Vocal Expression Basics",
+      "reward": "Stamina <color=#ff911c>+4</color>\\nPower <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 8,
+        "Vocal": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13007": {
+      "square_type": 1,
+      "name": "Acting Basics",
+      "reward": "Stamina <color=#ff911c>+4</color>\\nGuts <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 8,
+        "Visual": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13008": {
+      "square_type": 1,
+      "name": "Mic Performance Basics",
+      "reward": "Stamina <color=#ff911c>+4</color>\\nWit <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 8,
+        "Mental": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13009": {
+      "square_type": 1,
+      "name": "Yoga Basics",
+      "reward": "Stamina <color=#ff911c>+4</color>\\nSkill Pts <color=#ff911c>+4</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 10,
+        "Vocal": 6
+      },
+      "adds_song_live_id": null
+    },
+    "13010": {
+      "square_type": 1,
+      "name": "Harmony Basics",
+      "reward": "Power <color=#ff911c>+4</color>\\nGuts <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 8,
+        "Visual": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13011": {
+      "square_type": 1,
+      "name": "Rap Basics",
+      "reward": "Power <color=#ff911c>+4</color>\\nWit <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 8,
+        "Mental": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13012": {
+      "square_type": 1,
+      "name": "Vocal Theory Basics",
+      "reward": "Power <color=#ff911c>+4</color>\\nSkill Pts <color=#ff911c>+4</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Vocal": 10,
+        "Mental": 6
+      },
+      "adds_song_live_id": null
+    },
+    "13013": {
+      "square_type": 1,
+      "name": "Flexibility Basics",
+      "reward": "Guts <color=#ff911c>+4</color>\\nWit <color=#ff911c>+4</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 8,
+        "Mental": 8
+      },
+      "adds_song_live_id": null
+    },
+    "13014": {
+      "square_type": 1,
+      "name": "Visuals Research Basics",
+      "reward": "Guts <color=#ff911c>+4</color>\\nSkill Pts <color=#ff911c>+4</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 6,
+        "Visual": 10
+      },
+      "adds_song_live_id": null
+    },
+    "13015": {
+      "square_type": 1,
+      "name": "Idol History Basics",
+      "reward": "Wit <color=#ff911c>+4</color>\\nSkill Pts <color=#ff911c>+4</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 6,
+        "Mental": 10
+      },
+      "adds_song_live_id": null
+    },
+    "13101": {
+      "square_type": 1,
+      "name": "Expression Intermediate Class",
+      "reward": "Speed <color=#ff911c>+6</color>\\nStamina <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 12,
+        "Passion": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13102": {
+      "square_type": 1,
+      "name": "Dancing and Singing Intermediate Class",
+      "reward": "Speed <color=#ff911c>+6</color>\\nPower <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 12,
+        "Vocal": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13103": {
+      "square_type": 1,
+      "name": "Jazz Dance Intermediate Class",
+      "reward": "Speed <color=#ff911c>+6</color>\\nGuts <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 12,
+        "Visual": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13104": {
+      "square_type": 1,
+      "name": "Isolation Intermediate Class",
+      "reward": "Speed <color=#ff911c>+6</color>\\nWit <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 12,
+        "Mental": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13105": {
+      "square_type": 1,
+      "name": "Formation Intermediate Class",
+      "reward": "Speed <color=#ff911c>+6</color>\\nSkill Pts <color=#ff911c>+6</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 14,
+        "Visual": 10
+      },
+      "adds_song_live_id": null
+    },
+    "13106": {
+      "square_type": 1,
+      "name": "Vocal Expression Intermediate Class",
+      "reward": "Stamina <color=#ff911c>+6</color>\\nPower <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 12,
+        "Vocal": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13107": {
+      "square_type": 1,
+      "name": "Acting Intermediate Class",
+      "reward": "Stamina <color=#ff911c>+6</color>\\nGuts <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 12,
+        "Visual": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13108": {
+      "square_type": 1,
+      "name": "Mic Performance Intermediate Class",
+      "reward": "Stamina <color=#ff911c>+6</color>\\nWit <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 12,
+        "Mental": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13109": {
+      "square_type": 1,
+      "name": "Yoga Intermediate Class",
+      "reward": "Stamina <color=#ff911c>+6</color>\\nSkill Pts <color=#ff911c>+6</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 14,
+        "Vocal": 10
+      },
+      "adds_song_live_id": null
+    },
+    "13110": {
+      "square_type": 1,
+      "name": "Harmony Intermediate Class",
+      "reward": "Power <color=#ff911c>+6</color>\\nGuts <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 12,
+        "Visual": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13111": {
+      "square_type": 1,
+      "name": "Rap Intermediate Class",
+      "reward": "Power <color=#ff911c>+6</color>\\nWit <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 12,
+        "Mental": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13112": {
+      "square_type": 1,
+      "name": "Vocal Theory Intermediate Class",
+      "reward": "Power <color=#ff911c>+6</color>\\nSkill Pts <color=#ff911c>+6</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Vocal": 14,
+        "Mental": 10
+      },
+      "adds_song_live_id": null
+    },
+    "13113": {
+      "square_type": 1,
+      "name": "Flexibility Intermediate Class",
+      "reward": "Guts <color=#ff911c>+6</color>\\nWit <color=#ff911c>+6</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 12,
+        "Mental": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13114": {
+      "square_type": 1,
+      "name": "Visuals Research Intermediate Class",
+      "reward": "Guts <color=#ff911c>+6</color>\\nSkill Pts <color=#ff911c>+6</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 10,
+        "Visual": 14
+      },
+      "adds_song_live_id": null
+    },
+    "13115": {
+      "square_type": 1,
+      "name": "Idol History Intermediate Class",
+      "reward": "Wit <color=#ff911c>+6</color>\\nSkill Pts <color=#ff911c>+6</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 10,
+        "Mental": 14
+      },
+      "adds_song_live_id": null
+    },
+    "13201": {
+      "square_type": 1,
+      "name": "Expression Advanced Class",
+      "reward": "Speed <color=#ff911c>+8</color>\\nStamina <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 16,
+        "Passion": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13202": {
+      "square_type": 1,
+      "name": "Dancing and Singing Advanced Class",
+      "reward": "Speed <color=#ff911c>+8</color>\\nPower <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 16,
+        "Vocal": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13203": {
+      "square_type": 1,
+      "name": "Jazz Dance Advanced Class",
+      "reward": "Speed <color=#ff911c>+8</color>\\nGuts <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 16,
+        "Visual": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13204": {
+      "square_type": 1,
+      "name": "Isolation Advanced Class",
+      "reward": "Speed <color=#ff911c>+8</color>\\nWit <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 16,
+        "Mental": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13205": {
+      "square_type": 1,
+      "name": "Formation Advanced Class",
+      "reward": "Speed <color=#ff911c>+8</color>\\nSkill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 20,
+        "Visual": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13206": {
+      "square_type": 1,
+      "name": "Vocal Expression Advanced Class",
+      "reward": "Stamina <color=#ff911c>+8</color>\\nPower <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 16,
+        "Vocal": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13207": {
+      "square_type": 1,
+      "name": "Acting Advanced Class",
+      "reward": "Stamina <color=#ff911c>+8</color>\\nGuts <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 16,
+        "Visual": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13208": {
+      "square_type": 1,
+      "name": "Mic Performance Advanced Class",
+      "reward": "Stamina <color=#ff911c>+8</color>\\nWit <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 16,
+        "Mental": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13209": {
+      "square_type": 1,
+      "name": "Yoga Advanced Class",
+      "reward": "Stamina <color=#ff911c>+8</color>\\nSkill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 20,
+        "Vocal": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13210": {
+      "square_type": 1,
+      "name": "Harmony Advanced Class",
+      "reward": "Power <color=#ff911c>+8</color>\\nGuts <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 16,
+        "Visual": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13211": {
+      "square_type": 1,
+      "name": "Rap Advanced Class",
+      "reward": "Power <color=#ff911c>+8</color>\\nWit <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 16,
+        "Mental": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13212": {
+      "square_type": 1,
+      "name": "Vocal Theory Advanced Class",
+      "reward": "Power <color=#ff911c>+8</color>\\nSkill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Vocal": 20,
+        "Mental": 12
+      },
+      "adds_song_live_id": null
+    },
+    "13213": {
+      "square_type": 1,
+      "name": "Flexibility Advanced Class",
+      "reward": "Guts <color=#ff911c>+8</color>\\nWit <color=#ff911c>+8</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 16,
+        "Mental": 16
+      },
+      "adds_song_live_id": null
+    },
+    "13214": {
+      "square_type": 1,
+      "name": "Visuals Research Advanced Class",
+      "reward": "Guts <color=#ff911c>+8</color>\\nSkill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 12,
+        "Visual": 20
+      },
+      "adds_song_live_id": null
+    },
+    "13215": {
+      "square_type": 1,
+      "name": "Idol History Advanced Class",
+      "reward": "Wit <color=#ff911c>+8</color>\\nSkill Pts <color=#ff911c>+8</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 12,
+        "Mental": 20
+      },
+      "adds_song_live_id": null
+    },
+    "20000": {
+      "square_type": 2,
+      "name": "Group Lesson",
+      "reward": "Skill hint appropriate for aptitude",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20001": {
+      "square_type": 2,
+      "name": "Group Lesson",
+      "reward": "Skill hint appropriate for aptitude",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20002": {
+      "square_type": 2,
+      "name": "Group Lesson",
+      "reward": "Skill hint appropriate for aptitude",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20003": {
+      "square_type": 2,
+      "name": "Group Lesson",
+      "reward": "Skill hint appropriate for aptitude",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20004": {
+      "square_type": 2,
+      "name": "Group Lesson",
+      "reward": "Skill hint appropriate for aptitude",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20005": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20006": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20007": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20008": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20009": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20010": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20011": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20012": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20013": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20014": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20015": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20016": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20017": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20018": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20019": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20020": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20021": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20022": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20023": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20024": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20025": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20026": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20027": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20028": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20029": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20030": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20031": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20032": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20033": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20034": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20035": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20036": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20037": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20038": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20039": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20040": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20041": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20042": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20043": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20044": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20045": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20046": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20047": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20048": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20049": {
+      "square_type": 2,
+      "name": "Group Lesson Basics",
+      "reward": "Skill Hint Lvl <color=#ff911c>+1</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 15
+      },
+      "adds_song_live_id": null
+    },
+    "20050": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20051": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20052": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20053": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20054": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20055": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20056": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20057": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20058": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20059": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20060": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20061": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20062": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20063": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20064": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20065": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20066": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20067": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20068": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20069": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20070": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20071": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20072": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20073": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20074": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20075": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20076": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20077": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20078": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20079": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20080": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20081": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20082": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20083": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20084": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20085": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20086": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20087": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20088": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20089": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20090": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20091": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20092": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20093": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20094": {
+      "square_type": 2,
+      "name": "Group Lesson Intermediate",
+      "reward": "Skill Hint Lvl <color=#ff911c>+2</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "20095": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20096": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20097": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20098": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20099": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Dirt)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20100": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20101": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20102": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20103": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20104": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Sprint)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20105": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20106": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20107": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20108": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20109": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Mile)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20110": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20111": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20112": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20113": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20114": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Medium)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20115": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20116": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20117": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20118": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20119": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Long)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20120": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20121": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20122": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20123": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20124": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Front Runner)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20125": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20126": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20127": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20128": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20129": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Pace Chaser)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20130": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20131": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20132": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20133": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20134": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (Late Surger)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20135": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20136": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20137": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20138": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "20139": {
+      "square_type": 2,
+      "name": "Group Lesson Advanced",
+      "reward": "Skill Hint Lvl <color=#ff911c>+3</color> (End Closer)",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "30000": {
+      "square_type": 3,
+      "name": "Facial-Slimming Massage",
+      "reward": "Energy <color=#ff911c>+20</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 25
+      },
+      "adds_song_live_id": null
+    },
+    "30001": {
+      "square_type": 3,
+      "name": "Relaxing Body Massage",
+      "reward": "Energy <color=#ff911c>+30</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 30
+      },
+      "adds_song_live_id": null
+    },
+    "30002": {
+      "square_type": 3,
+      "name": "Full-Body Detox",
+      "reward": "Energy <color=#ff911c>+40</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Mental": 35
+      },
+      "adds_song_live_id": null
+    },
+    "30003": {
+      "square_type": 3,
+      "name": "Facial-Slimming Massage",
+      "reward": "Energy <color=#ff911c>+20</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 25
+      },
+      "adds_song_live_id": null
+    },
+    "30004": {
+      "square_type": 3,
+      "name": "Relaxing Body Massage",
+      "reward": "Energy <color=#ff911c>+30</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 30
+      },
+      "adds_song_live_id": null
+    },
+    "30005": {
+      "square_type": 3,
+      "name": "Full-Body Detox",
+      "reward": "Energy <color=#ff911c>+40</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Visual": 35
+      },
+      "adds_song_live_id": null
+    },
+    "30006": {
+      "square_type": 3,
+      "name": "Facial-Slimming Massage",
+      "reward": "Energy <color=#ff911c>+20</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 25
+      },
+      "adds_song_live_id": null
+    },
+    "30007": {
+      "square_type": 3,
+      "name": "Relaxing Body Massage",
+      "reward": "Energy <color=#ff911c>+30</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 30
+      },
+      "adds_song_live_id": null
+    },
+    "30008": {
+      "square_type": 3,
+      "name": "Full-Body Detox",
+      "reward": "Energy <color=#ff911c>+40</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 35
+      },
+      "adds_song_live_id": null
+    },
+    "30009": {
+      "square_type": 3,
+      "name": "Facial-Slimming Massage",
+      "reward": "Energy <color=#ff911c>+20</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 25
+      },
+      "adds_song_live_id": null
+    },
+    "30010": {
+      "square_type": 3,
+      "name": "Relaxing Body Massage",
+      "reward": "Energy <color=#ff911c>+30</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 30
+      },
+      "adds_song_live_id": null
+    },
+    "30011": {
+      "square_type": 3,
+      "name": "Full-Body Detox",
+      "reward": "Energy <color=#ff911c>+40</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 35
+      },
+      "adds_song_live_id": null
+    },
+    "30012": {
+      "square_type": 3,
+      "name": "Facial-Slimming Massage",
+      "reward": "Energy <color=#ff911c>+20</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 25
+      },
+      "adds_song_live_id": null
+    },
+    "30013": {
+      "square_type": 3,
+      "name": "Relaxing Body Massage",
+      "reward": "Energy <color=#ff911c>+30</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 30
+      },
+      "adds_song_live_id": null
+    },
+    "30014": {
+      "square_type": 3,
+      "name": "Full-Body Detox",
+      "reward": "Energy <color=#ff911c>+40</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 35
+      },
+      "adds_song_live_id": null
+    },
+    "40000": {
+      "square_type": 4,
+      "name": "Run for Our Dream!",
+      "reward": "Training Skill Pt Gain <color=#ff911c>+2</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Passion": 21,
+        "Visual": 21
+      },
+      "adds_song_live_id": 1032
+    },
+    "40001": {
+      "square_type": 4,
+      "name": "Here Comes Our Time",
+      "reward": "Power <color=#ff911c>+22</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 32,
+        "Mental": 12
+      },
+      "adds_song_live_id": 1040
+    },
+    "40002": {
+      "square_type": 4,
+      "name": "Full Speed Ahead! Umadol Power☆",
+      "reward": "Speed <color=#ff911c>+22</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 32,
+        "Visual": 12
+      },
+      "adds_song_live_id": 1044
+    },
+    "40003": {
+      "square_type": 4,
+      "name": "Run n' Run!",
+      "reward": "Skill Pts <color=#ff911c>+22</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 14,
+        "Visual": 16,
+        "Mental": 14
+      },
+      "adds_song_live_id": 1003
+    },
+    "40004": {
+      "square_type": 4,
+      "name": "Grow Up and Shine!",
+      "reward": "Training Skill Pt Gain <color=#ff911c>+3</color>",
+      "grants_sp": true,
+      "token_cost": {
+        "Dance": 21,
+        "Vocal": 21,
+        "Mental": 21
+      },
+      "adds_song_live_id": 1012
+    },
+    "40005": {
+      "square_type": 4,
+      "name": "Sunbeam Cheer",
+      "reward": "Training Wit Gain <color=#ff911c>+2</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 42,
+        "Mental": 21
+      },
+      "adds_song_live_id": 1043
+    },
+    "40006": {
+      "square_type": 4,
+      "name": "Go This Way",
+      "reward": "Training Power Gain <color=#ff911c>+1</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 21,
+        "Mental": 21
+      },
+      "adds_song_live_id": 1042
+    },
+    "40007": {
+      "square_type": 4,
+      "name": "Believe in Miracles!",
+      "reward": "Training Wit Gain <color=#ff911c>+1</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 21,
+        "Mental": 21
+      },
+      "adds_song_live_id": 1038
+    },
+    "40008": {
+      "square_type": 4,
+      "name": "Seven Colors Scenery",
+      "reward": "Training Power Gain <color=#ff911c>+2</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 21,
+        "Mental": 42
+      },
+      "adds_song_live_id": 1045
+    },
+    "40009": {
+      "square_type": 4,
+      "name": "Getaway! Fallin' Love",
+      "reward": "Training Guts Gain <color=#ff911c>+1</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 21,
+        "Visual": 21
+      },
+      "adds_song_live_id": 1046
+    },
+    "40010": {
+      "square_type": 4,
+      "name": "Ring Ring Diary",
+      "reward": "Training Stamina Gain <color=#ff911c>+1</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 21,
+        "Visual": 21
+      },
+      "adds_song_live_id": 1047
+    },
+    "40011": {
+      "square_type": 4,
+      "name": "Our Blue Bird Days",
+      "reward": "Training Speed Gain <color=#ff911c>+2</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 21,
+        "Visual": 42
+      },
+      "adds_song_live_id": 1023
+    },
+    "40012": {
+      "square_type": 4,
+      "name": "The World's at Our Whim",
+      "reward": "Stamina <color=#ff911c>+22</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 32,
+        "Vocal": 12
+      },
+      "adds_song_live_id": 1021
+    },
+    "40013": {
+      "square_type": 4,
+      "name": "Hey, Guess What!",
+      "reward": "Training Guts Gain <color=#ff911c>+2</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 42,
+        "Visual": 21
+      },
+      "adds_song_live_id": 1011
+    },
+    "40014": {
+      "square_type": 4,
+      "name": "Sky-Blue Spring",
+      "reward": "Guts <color=#ff911c>+22</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 12,
+        "Visual": 32
+      },
+      "adds_song_live_id": 1014
+    },
+    "40015": {
+      "square_type": 4,
+      "name": "Dream Sky",
+      "reward": "Wit <color=#ff911c>+22</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 22,
+        "Mental": 22
+      },
+      "adds_song_live_id": 1041
+    },
+    "40016": {
+      "square_type": 4,
+      "name": "Present March♪",
+      "reward": "Power <color=#ff911c>+22</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Vocal": 22,
+        "Mental": 22
+      },
+      "adds_song_live_id": 1039
+    },
+    "40017": {
+      "square_type": 4,
+      "name": "Hoppity Sunny Days♪",
+      "reward": "Training Stamina Gain <color=#ff911c>+2</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Passion": 42,
+        "Vocal": 21
+      },
+      "adds_song_live_id": 1034
+    },
+    "40018": {
+      "square_type": 4,
+      "name": "Fanfare for the Future!",
+      "reward": "Guts <color=#ff911c>+26</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 26,
+        "Visual": 42
+      },
+      "adds_song_live_id": 1020
+    },
+    "40019": {
+      "square_type": 4,
+      "name": "Precious Treasure Box",
+      "reward": "Speed <color=#ff911c>+26</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 42,
+        "Visual": 26
+      },
+      "adds_song_live_id": 1024
+    },
+    "40020": {
+      "square_type": 4,
+      "name": "Zero Is Where the Center Stands!",
+      "reward": "Training Speed Gain <color=#ff911c>+1</color>",
+      "grants_sp": false,
+      "token_cost": {
+        "Dance": 21,
+        "Visual": 21
+      },
+      "adds_song_live_id": 1057
+    }
+  }
+}

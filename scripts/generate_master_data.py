@@ -12,9 +12,18 @@ from career_bot import master_data
 def main():
     parser = argparse.ArgumentParser(description="Generate Sweepy data JSONs from master.mdb.")
     parser.add_argument("--db-path", default=None, help="Path to Umamusume master.mdb.")
+    parser.add_argument(
+        "--only",
+        choices=("grand-live",),
+        default=None,
+        help="Generate only one derived data artifact.",
+    )
     args = parser.parse_args()
 
-    result = master_data.generate(ROOT, args.db_path)
+    if args.only == "grand-live":
+        result = master_data.generate_grand_live(ROOT, args.db_path)
+    else:
+        result = master_data.generate(ROOT, args.db_path)
     if not result.get("success"):
         print(result.get("detail") or "master_data generation failed")
         return 1

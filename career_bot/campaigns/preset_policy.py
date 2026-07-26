@@ -6,7 +6,7 @@ from typing import Any
 
 _BLUE_STATS = {"speed", "stamina", "power", "guts", "wisdom"}
 _RUNNING_STYLES = frozenset({1, 2, 3, 4})
-_SUPPORTED_SCENARIO_IDS = frozenset({1, 2, 4})
+_SUPPORTED_SCENARIO_IDS = frozenset({1, 2, 3, 4})
 
 
 def _require_supported_int(value: Any, *, field: str, supported: frozenset[int]) -> int:

@@ -17,6 +17,9 @@ DIRECT_TABLES = [
     "support_card_data",
     "single_mode_route",
     "single_mode_route_race",
+    "single_mode_live_square",
+    "single_mode_live_master_bonus",
+    "single_mode_live_song_list",
 ]
 
 TEXT_DATA_CATEGORIES = {
@@ -26,6 +29,8 @@ TEXT_DATA_CATEGORIES = {
     "cat_75_text": 75,
     "cat_147_text": 147,
     "cat_181_text": 181,
+    "cat_207_text": 207,
+    "cat_209_text": 209,
 }
 
 
@@ -737,8 +742,138 @@ def synthesize_career_objectives(base_dir, master_data):
     return {"file": "career_objectives.json", "routes": len(routes)}
 
 
+GRAND_LIVE_PERFORMANCE_TYPES = {
+    1: "Dance",
+    2: "Passion",
+    3: "Vocal",
+    4: "Visual",
+    5: "Mental",
+}
+GRAND_LIVE_SQUARE_TYPES = {1, 2, 3, 4}
+
+
+def synthesize_grand_live_data(base_dir, master_data):
+    data_dir = Path(base_dir) / "data"
+    square_rows = master_rows(master_data, "single_mode_live_square")
+    bonus_rows = master_rows(master_data, "single_mode_live_master_bonus")
+    song_rows = master_rows(master_data, "single_mode_live_song_list")
+    title_names = text_map(master_rows(master_data, "cat_209_text"))
+    reward_names = text_map(master_rows(master_data, "cat_207_text"))
+
+    if not square_rows:
+        existing = read_json(data_dir / "grand_live.json", {})
+        existing_squares = existing.get("squares") or {}
+        existing_songs = {
+            int(row.get("adds_song_live_id") or 0)
+            for row in existing_squares.values()
+            if isinstance(row, dict) and row.get("adds_song_live_id")
+        }
+        return {
+            "file": "grand_live.json",
+            "squares": len(existing_squares),
+            "songs": len(existing_songs),
+            "preserved_existing": bool(existing),
+        }
+
+    bonuses = {
+        int(row.get("id") or 0): row
+        for row in bonus_rows
+        if int(row.get("id") or 0) > 0
+    }
+    songs_by_content = {}
+    for row in sorted(song_rows, key=lambda item: int(item.get("id") or 0)):
+        content_id = int(row.get("master_bonus_content_text_id") or 0)
+        live_id = int(row.get("live_id") or 0)
+        if content_id and live_id:
+            songs_by_content.setdefault(content_id, live_id)
+
+    squares = {}
+    song_ids = set()
+    for row in square_rows:
+        square_id = int(row.get("id") or 0)
+        if square_id <= 0:
+            raise ValueError(f"invalid Grand Live square id: {square_id}")
+        key = str(square_id)
+        if key in squares:
+            raise ValueError(f"duplicate Grand Live square id: {square_id}")
+
+        square_type = int(row.get("square_type") or 0)
+        if square_type not in GRAND_LIVE_SQUARE_TYPES:
+            raise ValueError(
+                f"invalid Grand Live square type for {square_id}: {square_type}"
+            )
+
+        token_cost = {}
+        for index in range(1, 6):
+            perf_type = int(row.get(f"perf_type_{index}") or 0)
+            perf_value = int(row.get(f"perf_value_{index}") or 0)
+            if perf_value < 0:
+                raise ValueError(
+                    f"negative Grand Live token cost for {square_id}"
+                )
+            if perf_type == 0:
+                if perf_value:
+                    raise ValueError(
+                        f"missing Grand Live performance type for {square_id}"
+                    )
+                continue
+            perf_name = GRAND_LIVE_PERFORMANCE_TYPES.get(perf_type)
+            if not perf_name:
+                raise ValueError(
+                    f"unknown Grand Live performance type {perf_type} "
+                    f"for {square_id}"
+                )
+            if perf_value:
+                token_cost[perf_name] = perf_value
+
+        title_id = int(row.get("square_title_text_id") or square_id)
+        content_id = int(row.get("square_content_text_id") or square_id)
+        bonus = bonuses.get(int(row.get("master_bonus_id") or 0)) or {}
+        song_id = songs_by_content.get(content_id)
+        if not song_id and square_type == 4:
+            candidate = int(bonus.get("master_bonus_type_value") or 0)
+            song_id = candidate or None
+        if song_id:
+            song_ids.add(song_id)
+
+        reward = reward_names.get(content_id, "")
+        squares[key] = {
+            "square_type": square_type,
+            "name": title_names.get(title_id, str(square_id)),
+            "reward": reward,
+            "grants_sp": "skill pt" in reward.lower(),
+            "token_cost": token_cost,
+            "adds_song_live_id": song_id,
+        }
+
+    payload = {
+        "great_success_song_threshold": 3,
+        "perf_types": {
+            str(key): value
+            for key, value in GRAND_LIVE_PERFORMANCE_TYPES.items()
+        },
+        "square_types": {
+            "1": "technique",
+            "2": "skill_hint_lesson",
+            "3": "body_care",
+            "4": "song",
+        },
+        "squares": {
+            key: squares[key]
+            for key in sorted(squares, key=int)
+        },
+    }
+    write_json(data_dir / "grand_live.json", payload)
+    return {
+        "file": "grand_live.json",
+        "squares": len(squares),
+        "songs": len(song_ids),
+    }
+
+
 def synthesize_legacy_jsons(base_dir, master_data):
     generated = [
+        synthesize_grand_live_data(base_dir, master_data),
         synthesize_skill_data(base_dir, master_data),
         synthesize_chara_list(base_dir, master_data),
         synthesize_support_list(base_dir, master_data),
@@ -773,6 +908,55 @@ def load_master_data(cursor, existing_tables):
         skipped.extend(TEXT_DATA_CATEGORIES)
 
     return master_data, extracted, skipped
+
+
+def generate_grand_live(base_dir, master_mdb_path=None):
+    db_path = Path(master_mdb_path).expanduser() if master_mdb_path else configured_master_mdb_path(base_dir)
+    exists, access_error = path_access(db_path)
+    if not exists:
+        detail = f"master.mdb not found at {db_path}"
+        if access_error:
+            detail = f"master.mdb could not be accessed at {db_path}: {access_error}"
+        return {
+            **status(base_dir),
+            "success": False,
+            "detail": detail,
+        }
+
+    required = {
+        "single_mode_live_square",
+        "single_mode_live_master_bonus",
+        "single_mode_live_song_list",
+        "text_data",
+    }
+    with sqlite3.connect(str(db_path)) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        existing_tables = {row[0] for row in cursor.fetchall()}
+        missing = sorted(required - existing_tables)
+        if missing:
+            return {
+                **status(base_dir),
+                "success": False,
+                "detail": (
+                    "master.mdb is missing Grand Live tables: "
+                    + ", ".join(missing)
+                ),
+            }
+        master_data, extracted, _ = load_master_data(cursor, existing_tables)
+
+    generated = synthesize_grand_live_data(base_dir, master_data)
+    return {
+        **status(base_dir),
+        "success": True,
+        "extracted": [
+            row
+            for row in extracted
+            if row["table"].startswith("single_mode_live_")
+            or row["table"] in {"cat_207_text", "cat_209_text"}
+        ],
+        "legacy": {"generated": [generated], "preserved": []},
+    }
 
 
 def generate(base_dir, master_mdb_path=None):

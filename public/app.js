@@ -1,5 +1,5 @@
 (() => {
-const scenarioTypes = { 1: "Ura", 2: "Unity", 4: "Mant" };
+const scenarioTypes = { 1: "Ura", 2: "Unity", 3: "Grand Live", 4: "Mant" };
 
 const state = {
     needs2fa: false,
@@ -126,6 +126,8 @@ const els = {
     masterDataStatus: document.getElementById('master-data-status'),
     presetSection: document.getElementById('preset-section'),
     presetAddBtn: document.getElementById('preset-add-btn'),
+    presetRenameBtn: document.getElementById('preset-rename-btn'),
+    presetDuplicateBtn: document.getElementById('preset-duplicate-btn'),
     presetDelBtn: document.getElementById('preset-del-btn'),
     presetRunningStyle: document.getElementById('preset-running-style'),
     presetSkillThreshold: document.getElementById('preset-skill-threshold'),
@@ -133,6 +135,8 @@ const els = {
     presetDelayMax: document.getElementById('preset-delay-max'),
     presetTpMode: document.getElementById('preset-tp-mode'),
     presetScenario: document.getElementById('preset-scenario'),
+    grandLiveConfig: document.getElementById('grand-live-config'),
+    performanceTrainingWeight: document.getElementById('performance-training-weight'),
     unityTrainingWeight: document.getElementById('unity-training-weight'),
     unityBurstWeight: document.getElementById('unity-burst-weight'),
     presetUseMcts: document.getElementById('preset-use-mcts'),
@@ -1310,9 +1314,13 @@ const els = {
             return String(value || '').trim().replace(/[^a-zA-Z0-9._ -]+/g, '').replace(/\s+/g, ' ').trim();
         }
 
-        function presetNameExists(name) {
+        function presetNameExists(name, excludeName = '') {
             const normalized = normalizePresetName(name).toLowerCase();
-            return Boolean(normalized && (state.presets || []).some(p => p.name.toLowerCase() === normalized));
+            const excluded = normalizePresetName(excludeName).toLowerCase();
+            return Boolean(normalized && (state.presets || []).some(p => {
+                const presetName = p.name.toLowerCase();
+                return presetName === normalized && presetName !== excluded;
+            }));
         }
 
         function syncSelectedPresetRaces() {
@@ -1866,6 +1874,10 @@ const els = {
             renderSkillEditorRightSide();
         }
 
+        function updateScenarioConfigVisibility(scenarioId) {
+            if (els.grandLiveConfig) els.grandLiveConfig.hidden = scenarioId !== 3;
+        }
+
         async function savePresetConfig() {
             if (!state.selectedPreset || !state.presets) return;
             const current = getCurrentPreset();
@@ -1876,6 +1888,11 @@ const els = {
             current.scenario_id = parseInt(els.presetScenario?.value) || 4;
             current.scenario = current.scenario_id;
             state.scenarioType = scenarioTypes[current.scenario_id] || "Mant";
+            updateScenarioConfigVisibility(current.scenario_id);
+            const performanceTrainingWeight = parseFloat(els.performanceTrainingWeight?.value);
+            current.performance_training_weight = (
+                Number.isFinite(performanceTrainingWeight) && performanceTrainingWeight >= 0
+            ) ? performanceTrainingWeight : 0.6;
             current.unity_config = current.unity_config || {};
             const unityTrainingWeight = parseFloat(els.unityTrainingWeight?.value);
             const unityBurstWeight = parseFloat(els.unityBurstWeight?.value);
@@ -1934,6 +1951,10 @@ const els = {
             const scenarioId = Number(current.scenario_id || current.scenario || 4);
             state.scenarioType = scenarioTypes[scenarioId] || "Mant";
             if (els.presetScenario) els.presetScenario.value = String(scenarioId);
+            updateScenarioConfigVisibility(scenarioId);
+            if (els.performanceTrainingWeight) {
+                els.performanceTrainingWeight.value = current.performance_training_weight ?? 0.6;
+            }
             const unityConfig = current.unity_config || {};
             if (els.unityTrainingWeight) els.unityTrainingWeight.value = unityConfig.unity_training_weight ?? 0.6;
             if (els.unityBurstWeight) els.unityBurstWeight.value = unityConfig.spirit_burst_weight ?? 5.0;
@@ -1982,6 +2003,7 @@ const els = {
             els.presetDelayMax?.addEventListener('change', saveHandler);
             els.presetTpMode?.addEventListener('change', saveHandler);
             els.presetScenario?.addEventListener('change', saveHandler);
+            els.performanceTrainingWeight?.addEventListener('change', saveHandler);
             els.unityTrainingWeight?.addEventListener('change', saveHandler);
             els.unityBurstWeight?.addEventListener('change', saveHandler);
             els.presetUseMcts?.addEventListener('change', saveHandler);
@@ -2152,6 +2174,78 @@ const els = {
                     renderTrackblazer();
                     renderRaces();
                 } catch (e) { alert("Failed to save new preset."); }
+            });
+
+            els.presetRenameBtn?.addEventListener('click', async () => {
+                const current = getCurrentPreset();
+                if (!current) return;
+                const newName = prompt("Rename preset:", current.name);
+                if (newName === null) return;
+                const normalizedName = normalizePresetName(newName);
+                if (!normalizedName) {
+                    alert("Preset name cannot be empty.");
+                    return;
+                }
+                if (presetNameExists(normalizedName, current.name)) {
+                    alert("A preset with that name already exists.");
+                    return;
+                }
+
+                try {
+                    const res = await apiJson('/api/presets/rename', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ old_name: current.name, new_name: normalizedName })
+                    });
+                    if (!res.success || !res.preset?.name) {
+                        alert(res.detail || "Failed to rename preset.");
+                        return;
+                    }
+                    state.selectedPreset = res.preset.name;
+                    localStorage.setItem('uma_selected_preset', state.selectedPreset);
+                    await loadPresets();
+                    if (els.presetSelect) els.presetSelect.value = state.selectedPreset;
+                    syncSelectedPresetRaces();
+                    populatePresetUI();
+                    renderTrackblazer();
+                    renderRaces();
+                } catch (e) { alert("Failed to rename preset."); }
+            });
+
+            els.presetDuplicateBtn?.addEventListener('click', async () => {
+                const current = getCurrentPreset();
+                if (!current) return;
+                const newName = prompt("Duplicate preset:", `${current.name}_copy`);
+                if (newName === null) return;
+                const normalizedName = normalizePresetName(newName);
+                if (!normalizedName) {
+                    alert("Preset name cannot be empty.");
+                    return;
+                }
+                if (presetNameExists(normalizedName)) {
+                    alert("A preset with that name already exists.");
+                    return;
+                }
+
+                try {
+                    const res = await apiJson('/api/presets/duplicate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ source_name: current.name, new_name: normalizedName })
+                    });
+                    if (!res.success || !res.preset?.name) {
+                        alert(res.detail || "Failed to duplicate preset.");
+                        return;
+                    }
+                    state.selectedPreset = res.preset.name;
+                    localStorage.setItem('uma_selected_preset', state.selectedPreset);
+                    await loadPresets();
+                    if (els.presetSelect) els.presetSelect.value = state.selectedPreset;
+                    syncSelectedPresetRaces();
+                    populatePresetUI();
+                    renderTrackblazer();
+                    renderRaces();
+                } catch (e) { alert("Failed to duplicate preset."); }
             });
 
             els.presetDelBtn?.addEventListener('click', async () => {

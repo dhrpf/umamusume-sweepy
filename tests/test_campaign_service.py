@@ -550,6 +550,35 @@ def test_create_generates_deterministic_campaign_preset_and_context():
     assert second["context"]["step_race_overrides"] == {"mandatory_race_list": [101], "extra_race_list": [202], "parent_run": True}
 
 
+def test_grand_live_preset_survives_campaign_create_and_request():
+    presets = FakePresetStore()
+    presets.presets["parent"].update({
+        "scenario_id": 3,
+        "performance_training_weight": 0.75,
+    })
+    svc, *_ = service(
+        preset_store=presets,
+        default_career_request=True,
+    )
+
+    campaign = svc.create_campaign(valid_v3_spec())
+    generated_name = campaign["spec"]["strategy"]["preset_name"]
+    generated = presets.load(generated_name)
+
+    assert generated["scenario_id"] == 3
+    assert generated["performance_training_weight"] == 0.75
+
+    request = svc._default_career_request(
+        campaign,
+        RotationState.bootstrap([1001, 1002, 1003, 1004]),
+        [],
+        {"mandatory_race_list": [], "extra_race_list": []},
+        {},
+    )
+    assert request["preset"]["scenario_id"] == 3
+    assert request["preset"]["performance_training_weight"] == 0.75
+
+
 def test_default_career_request_uses_rotating_members_manual_deck():
     svc, store, *_ = service(default_career_request=True)
     request = svc._default_career_request(store.campaign, RotationState(loop_chara_ids=(1, 2, 3, 4), run_index=2, produced=()), [], [], {})

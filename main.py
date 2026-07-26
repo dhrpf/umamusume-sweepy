@@ -21,7 +21,7 @@ from career_bot import affinity as affinity_calc
 from career_bot import advisor
 from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
-from career_bot.presets import PresetStore
+from career_bot.presets import PresetStore, PresetStoreError
 from career_bot.runner import CareerRunner
 from career_bot.campaigns.factor_semantics import (
     direct_lineage_spark_totals,
@@ -1935,6 +1935,14 @@ class SaveRacesRequest(BaseModel):
 class SavePresetRequest(BaseModel):
     preset: dict
 
+class RenamePresetRequest(BaseModel):
+    old_name: str
+    new_name: str
+
+class DuplicatePresetRequest(BaseModel):
+    source_name: str
+    new_name: str
+
 class DeletePresetByNameRequest(BaseModel):
     name: str
 
@@ -2171,6 +2179,51 @@ async def get_presets():
 @app.post("/api/presets")
 async def save_preset(req: SavePresetRequest):
     return {"success": True, "preset": preset_store.write(req.preset)}
+
+@app.post("/api/presets/rename")
+async def rename_preset(req: RenamePresetRequest):
+    original = preset_store.read_one(req.old_name)
+    if original is None:
+        return {"success": False, "detail": f"Preset not found: {req.old_name}"}
+
+    try:
+        renamed = preset_store.rename(req.old_name, req.new_name)
+    except PresetStoreError as exc:
+        return {"success": False, "detail": str(exc)}
+
+    if renamed["name"].casefold() == original["name"].casefold():
+        return {"success": True, "preset": renamed, "campaigns_updated": 0}
+
+    try:
+        campaigns_updated = campaign_store.rename_preset_references(
+            original["name"], renamed["name"]
+        )
+    except Exception as exc:
+        try:
+            preset_store.rename(renamed["name"], original["name"])
+        except Exception as rollback_exc:
+            return {
+                "success": False,
+                "detail": (
+                    f"Campaign cascade failed: {exc}; "
+                    f"preset rollback failed: {rollback_exc}"
+                ),
+            }
+        return {"success": False, "detail": f"Campaign cascade failed: {exc}"}
+
+    return {
+        "success": True,
+        "preset": renamed,
+        "campaigns_updated": campaigns_updated,
+    }
+
+@app.post("/api/presets/duplicate")
+async def duplicate_preset(req: DuplicatePresetRequest):
+    try:
+        duplicated = preset_store.duplicate(req.source_name, req.new_name)
+    except PresetStoreError as exc:
+        return {"success": False, "detail": str(exc)}
+    return {"success": True, "preset": duplicated}
 
 @app.post("/api/presets/delete")
 async def delete_preset(req: DeletePresetByNameRequest):

@@ -52,7 +52,7 @@ def test_frontend_exposes_unity_scenario_and_tuning_fields():
     assert 'id="unity-burst-weight"' in index_html
     assert "unity_training_weight" in app_js
     assert "spirit_burst_weight" in app_js
-    assert 'const scenarioTypes = { 1: "Ura", 2: "Unity", 4: "Mant" };' in app_js
+    assert 'const scenarioTypes = { 1: "Ura", 2: "Unity", 3: "Grand Live", 4: "Mant" };' in app_js
     assert "Number.isFinite(unityTrainingWeight)" in app_js
     assert "Number.isFinite(unityBurstWeight)" in app_js
-    assert '<script src="app.js?v=20"></script>' in index_html
+    assert '<script src="app.js?v=22"></script>' in index_html
