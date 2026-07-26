@@ -21,6 +21,16 @@ from career_bot import affinity as affinity_calc
 from career_bot import advisor
 from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
+from career_bot.independent_training.finalizer import IndependentFinalizer
+from career_bot.independent_training.models import EnqueueRuns
+from career_bot.independent_training.runner import IndependentTrainingRunner
+from career_bot.independent_training.service import IndependentTrainingService, WorkflowConflict
+from career_bot.independent_training.store import (
+    IndependentTrainingStore,
+    InvalidRunTransition,
+    RunNotFound,
+    RunVersionConflict,
+)
 from career_bot.presets import PresetStore, PresetStoreError
 from career_bot.runner import CareerRunner
 from career_bot.campaigns.factor_semantics import (
@@ -33,6 +43,7 @@ from career_bot.campaigns.planner import CampaignPlanner
 from career_bot.campaigns.runner import CampaignRunner
 from career_bot.campaigns.service import CampaignService
 from career_bot.campaigns.store import CampaignError, CampaignNotFound, CampaignStore, InvalidTransition
+from sweepy_jobs import SweepyJobStore
 from uma_api.client import UmaClient, runtime_output_root
 from career_bot.delay import (
     GateKeeper, dna_sleep, dna_uniform,
@@ -1447,6 +1458,225 @@ if race_map_path.exists():
     with open(race_map_path, 'r', encoding='utf-8') as f:
         race_map = json.load(f)
 
+
+def _independent_account():
+    return _current_campaign_account()
+
+
+def _independent_client(account):
+    _assert_campaign_account(account)
+    if active_client is None:
+        raise WorkflowConflict("Login/load account first")
+    return active_client
+
+
+def _independent_dashboard():
+    dashboard = active_dashboard_data or {}
+    account = active_account or dashboard.get("account") or {}
+    trainees = []
+    for row in dashboard.get("umas") or []:
+        if not isinstance(row, dict):
+            continue
+        card_id = int(row.get("card_id") or row.get("id") or 0)
+        if not card_id:
+            continue
+        trainees.append({
+            **dict(row),
+            "card_id": card_id,
+            "base_chara_id": _base_chara_id(card_id),
+        })
+
+    parents = []
+    for row in dashboard.get("parents") or []:
+        if not isinstance(row, dict):
+            continue
+        trained_chara_id = int(
+            row.get("trained_chara_id")
+            or row.get("instance_id")
+            or row.get("id")
+            or 0
+        )
+        card_id = int(row.get("card_id") or 0)
+        if not trained_chara_id:
+            continue
+        parents.append({
+            **dict(row),
+            "trained_chara_id": trained_chara_id,
+            "base_chara_id": _base_chara_id(card_id),
+        })
+
+    support_cards = []
+    seen_supports = set()
+    for row in dashboard.get("supports") or []:
+        if not isinstance(row, dict):
+            continue
+        support_card_id = int(
+            row.get("support_card_id")
+            or row.get("card_id")
+            or row.get("id")
+            or 0
+        )
+        if not support_card_id or support_card_id in seen_supports:
+            continue
+        seen_supports.add(support_card_id)
+        support_cards.append({
+            **dict(row),
+            "support_card_id": support_card_id,
+        })
+    selected_friend = active_selection.get("friend") or {}
+    selected_friend_card_id = int(
+        selected_friend.get("support_card_id")
+        or selected_friend.get("card_id")
+        or selected_friend.get("id")
+        or 0
+    )
+    if selected_friend_card_id and selected_friend_card_id not in seen_supports:
+        support_cards.append({
+            "support_card_id": selected_friend_card_id,
+            "name": selected_friend.get("name") or f"Support #{selected_friend_card_id}",
+            "is_friend": True,
+        })
+
+    saved_race_agendas = []
+    for preset in preset_store.read_all():
+        races = list(preset.get("extra_race_list") or [])
+        mandatory = list(preset.get("mandatory_race_list") or [])
+        if races or mandatory:
+            saved_race_agendas.append({
+                "name": preset.get("name") or "Unnamed preset",
+                "races": races,
+                "mandatory_races": mandatory,
+            })
+
+    if isinstance(account, dict):
+        account_label = account.get("name") or account.get("account")
+    else:
+        account_label = str(account or "")
+    return {
+        "account_label": account_label or _independent_account(),
+        "trainees": trainees,
+        "parents": parents,
+        "support_cards": support_cards,
+        "saved_race_agendas": saved_race_agendas,
+    }
+
+
+def _independent_pre_start():
+    if active_client is None:
+        return {}
+    response = active_client.pre_start_independent_training(3)
+    data = (response or {}).get("data") or {}
+    return {
+        "reserved_race_info": data.get("reserved_race_info") or [],
+        "last_idle_single_mode_start_info": (
+            data.get("last_idle_single_mode_start_info") or {}
+        ),
+    }
+
+
+def _independent_busy_workflow():
+    if dailies_runner.running:
+        return "dailies"
+    if career_runner.snapshot().get("running"):
+        return "career"
+    loop_thread = globals().get("backend_loop_thread")
+    if loop_thread is not None and loop_thread.is_alive():
+        return "career"
+    career = (active_account or {}).get("career") or {}
+    if career.get("active"):
+        return "career"
+    return None
+
+
+def _independent_account_state(account):
+    _assert_campaign_account(account)
+    return {
+        "tp_info": dict(
+            active_start_state.get("tp_info")
+            or getattr(active_client, "tp_info", {})
+            or {}
+        ),
+        "current_money": int(active_start_state.get("current_money") or 0),
+        "succession_rank_point": int(
+            active_start_state.get("succession_rank_point") or 0
+        ),
+    }
+
+
+def _independent_refresh_account(account):
+    _assert_campaign_account(account)
+    client = _independent_client(account)
+    response = client.call("load/index", {"adid": ""})
+    data = (response or {}).get("data") or {}
+    client.refresh_cached_account_state(data)
+    _build_dashboard_from_login_response(response)
+    return response
+
+
+def _independent_recover_tp(account):
+    _assert_campaign_account(account)
+    client = _independent_client(account)
+    response = client.recovery_tp(1)
+    tp_info = (response or {}).get("data", {}).get("tp_info")
+    if tp_info:
+        active_start_state["tp_info"] = dict(tp_info)
+    elif getattr(client, "tp_info", None):
+        active_start_state["tp_info"] = dict(client.tp_info)
+    return int(
+        (active_start_state.get("tp_info") or {}).get("current_tp") or 0
+    ) > 0
+
+
+_independent_runtime_dir = runtime_output_root()
+independent_store = IndependentTrainingStore(
+    os.environ.get("SWEEPY_INDEPENDENT_DB")
+    or _independent_runtime_dir / "independent_training.sqlite3"
+)
+workflow_job_store = SweepyJobStore(
+    os.environ.get("SWEEPY_JOBS_DB")
+    or _independent_runtime_dir / "control-plane.sqlite3"
+)
+
+
+def _independent_finalizer(account):
+    return IndependentFinalizer(
+        store=independent_store,
+        client=_independent_client(account),
+        skill_buyer=career_runner.skill_buyer,
+        factor_map=factor_map,
+    )
+
+
+independent_runner = IndependentTrainingRunner(
+    independent_store,
+    client_provider=_independent_client,
+    finalizer_provider=_independent_finalizer,
+    account_state_provider=_independent_account_state,
+    refresh_account=_independent_refresh_account,
+    recover_tp=_independent_recover_tp,
+)
+independent_service = IndependentTrainingService(
+    independent_store,
+    independent_runner,
+    workflow_job_store,
+    account_provider=_independent_account,
+    dashboard_provider=_independent_dashboard,
+    busy_workflow_provider=_independent_busy_workflow,
+    pre_start_provider=_independent_pre_start,
+)
+
+
+def _assert_independent_training_idle():
+    lease = workflow_job_store.get_workflow_lease(
+        _current_campaign_account()
+    )
+    if lease and lease.get("workflow_type") == "independent_training":
+        raise HTTPException(
+            status_code=409,
+            detail="Independent Training is active on this dashboard instance",
+        )
+
+
 def skill_entry_name(entry):
     if isinstance(entry, dict):
         return entry.get("name") or ""
@@ -2041,6 +2271,68 @@ class CampaignCancelRequest(BaseModel):
     reason: str = ""
 
 
+def _independent_api_call(method, *args, **kwargs):
+    try:
+        return method(*args, **kwargs)
+    except RunNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (
+        WorkflowConflict,
+        InvalidRunTransition,
+        RunVersionConflict,
+    ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/independent-training/bootstrap")
+async def independent_training_bootstrap():
+    return _independent_api_call(independent_service.bootstrap)
+
+
+@app.post("/api/independent-training/runs")
+async def enqueue_independent_training_runs(req: EnqueueRuns):
+    return _independent_api_call(
+        independent_service.enqueue,
+        req.setup.model_dump(mode="json"),
+        count=req.count,
+        tp_mode=req.tp_mode.value,
+    )
+
+
+@app.post("/api/independent-training/start", status_code=202)
+async def start_independent_training():
+    return _independent_api_call(independent_service.start)
+
+
+@app.get("/api/independent-training/status")
+async def independent_training_status():
+    return _independent_api_call(independent_service.status)
+
+
+@app.post("/api/independent-training/stop-after-current")
+async def stop_independent_training_after_current():
+    return _independent_api_call(
+        independent_service.stop_after_current
+    )
+
+
+@app.post("/api/independent-training/resume", status_code=202)
+async def resume_independent_training():
+    return _independent_api_call(independent_service.resume)
+
+
+@app.delete("/api/independent-training/runs/{run_id}")
+async def cancel_independent_training_run(run_id: str):
+    return _independent_api_call(independent_service.cancel, run_id)
+
+
+@app.post("/api/independent-training/reconcile", status_code=202)
+async def reconcile_independent_training():
+    return _independent_api_call(independent_service.reconcile)
+
+
 @app.post("/api/inheritance/recommend")
 async def inheritance_recommend(req: InheritanceRecommendRequest):
     if not active_dashboard_data:
@@ -2272,6 +2564,7 @@ async def get_campaign(campaign_id: str):
 
 @app.post("/api/campaigns/{campaign_id}/activate")
 async def activate_campaign(campaign_id: str):
+    _assert_independent_training_idle()
     return {"success": True, "campaign": _campaign_api_call(campaign_service.activate, campaign_id)}
 
 @app.post("/api/campaigns/{campaign_id}/pause")
@@ -2284,6 +2577,7 @@ async def resume_campaign(campaign_id: str):
 
 @app.post("/api/campaigns/{campaign_id}/advance")
 async def advance_campaign(campaign_id: str):
+    _assert_independent_training_idle()
     return {"success": True, "result": _campaign_api_call(_campaign_advance, campaign_id)}
 
 
@@ -2956,6 +3250,7 @@ async def logout():
 
 @app.post("/api/career/start")
 async def start_career(req: StartCareerRequest):
+    _assert_independent_training_idle()
     if dailies_runner.running:
         return {"success": False, "detail": "Dailies are running — stop them first"}
     try:
@@ -3188,6 +3483,7 @@ def _manage_career_loop_thread(req, preset, initial_result):
 @app.post("/api/career/run")
 async def run_career(req: RunCareerRequest):
     global active_account, backend_loop_thread
+    _assert_independent_training_idle()
     with global_lock:
         if dailies_runner.running:
             return {"success": False, "detail": "Dailies are running — stop them first"}
@@ -3369,6 +3665,7 @@ async def dailies_legend_options():
 
 @app.post("/api/dailies/run")
 async def dailies_run(req: DailiesRunRequest):
+    _assert_independent_training_idle()
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
 
