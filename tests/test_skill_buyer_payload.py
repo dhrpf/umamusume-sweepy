@@ -283,6 +283,56 @@ def test_running_style_filters_incompatible_skill_tags():
     assert [row["skill_id"] for row in candidates] == [201382]
 
 
+def test_final_purchase_accepts_independent_priority_ids():
+    class TrackingClient:
+        def __init__(self):
+            self.calls = []
+
+        def gain_skills(self, payload, turn):
+            self.calls.append(payload)
+            return {"data": {}}
+
+    buyer = SkillBuyer("/nonexistent")
+    skill_ids = [100011, 100021, 100031, 100041, 100051]
+    buyer.skill_names = {skill_id: str(skill_id) for skill_id in skill_ids}
+    buyer.skill_costs = {skill_id: 50 for skill_id in skill_ids}
+    buyer.skill_rarities = {skill_id: 1 for skill_id in skill_ids}
+    buyer.skill_grade_values = {skill_id: 100 for skill_id in skill_ids}
+    buyer.skill_id_exists = set(skill_ids)
+    buyer.group_to_skill_ids = {
+        skill_id // 10: [skill_id] for skill_id in skill_ids
+    }
+    buyer.skill_to_group_id = {
+        skill_id: skill_id // 10 for skill_id in skill_ids
+    }
+    state = {
+        "data": {
+            "chara_info": {
+                "turn": 78,
+                "skill_point": 250,
+                "skill_array": [],
+                "skill_tips_array": [
+                    {"group_id": skill_id // 10, "rarity": 1, "level": 0}
+                    for skill_id in skill_ids
+                ],
+            }
+        }
+    }
+    client = TrackingClient()
+
+    _, count = buyer.final_purchase(
+        client,
+        state,
+        priority_skill_ids=[100021, 100011],
+        running_style=1,
+    )
+
+    sent = [row["skill_id"] for call in client.calls for row in call]
+    assert sent.index(100021) < sent.index(100011)
+    assert all(len(call) <= 4 for call in client.calls)
+    assert count == 5
+
+
 def test_running_style_filter_keeps_neutral_skills():
     buyer = SkillBuyer("/nonexistent")
     buyer.skill_names = {200352: "Corner Recovery ○"}

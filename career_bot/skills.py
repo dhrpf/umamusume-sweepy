@@ -260,6 +260,26 @@ class SkillBuyer:
         current_state, total_bought = self._buy_batch(client, state, selected, turn)
         return current_state, total_bought
 
+    def final_purchase(
+        self,
+        client,
+        state,
+        *,
+        priority_skill_ids,
+        running_style,
+    ):
+        ordered = [
+            [str(int(skill_id))]
+            for skill_id in priority_skill_ids
+            if int(skill_id) > 0
+        ]
+        preset = {
+            "learn_skill_list": ordered,
+            "learn_skill_only_user_provided": False,
+            "running_style": int(running_style),
+        }
+        return self.buy(client, state, preset, force=True)
+
     def preview(self, state, preset, force=False):
         data = state.get("data") or {}
         chara = data.get("chara_info") or data.get("single_mode_chara_light") or {}
