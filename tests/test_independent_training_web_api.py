@@ -79,6 +79,13 @@ def client():
     return TestClient(main.app)
 
 
+def test_runtime_directory_binds_independent_account(monkeypatch):
+    monkeypatch.setenv("UMA_RUNTIME_DIR", "/runtime/accounts/acct-runtime")
+    monkeypatch.setattr(main, "active_account", {"name": "other-account"})
+
+    assert main._independent_account() == "acct-runtime"
+
+
 def test_enqueue_uses_bound_account_and_accepts_no_account_parameter(
     client,
     fake_service,
@@ -218,6 +225,29 @@ def test_other_workflows_are_blocked_by_independent_training_lease(
     monkeypatch.setattr(main, "active_account", {"name": "acct01"})
 
     response = client.post(route, json=body)
+
+    assert response.status_code == 409
+    assert "Independent Training" in response.json()["detail"]
+
+
+def test_runner_snapshot_blocks_other_workflow_after_lease_expiry(
+    client,
+    fake_service,
+    monkeypatch,
+):
+    class JobStore:
+        def get_workflow_lease(self, account):
+            return None
+
+    class Runner:
+        def snapshot(self):
+            return {"state": "RUNNING", "account": "acct01"}
+
+    monkeypatch.setattr(main, "workflow_job_store", JobStore())
+    monkeypatch.setattr(main, "independent_runner", Runner())
+    monkeypatch.setattr(main, "active_account", {"name": "acct01"})
+
+    response = client.post("/api/campaigns/cmp1/activate")
 
     assert response.status_code == 409
     assert "Independent Training" in response.json()["detail"]

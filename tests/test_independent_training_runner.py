@@ -307,6 +307,45 @@ def test_ambiguous_mutation_needs_attention(store, harness, phase):
     assert store.get(run["run_id"])["state"] == "NEEDS_ATTENTION"
 
 
+def test_lease_is_heartbeated_while_work_exists_and_released_when_idle(
+    store,
+    account_state,
+):
+    client = FakeClient()
+    client.status_results = [status_response()]
+    client.start_result = status_response(progress(end=3100))
+    heartbeats = []
+    releases = []
+    runner = IndependentTrainingRunner(
+        store,
+        client_provider=lambda account: client,
+        finalizer_provider=lambda account: FakeFinalizer(client),
+        account_state_provider=lambda account: account_state,
+        refresh_account=lambda account: None,
+        recover_tp=lambda account: False,
+        heartbeat_lease=lambda account: heartbeats.append(account),
+        release_lease=lambda account: releases.append(account),
+        clock=lambda: 100,
+    )
+    enqueue(store)
+
+    runner.run_once("acct01")
+
+    assert heartbeats == ["acct01"]
+    assert releases == []
+    assert runner.snapshot()["state"] == "RUNNING"
+
+    store.transition(
+        store.active_run("acct01")["run_id"],
+        "FAILED",
+        expected_version=store.active_run("acct01")["version"],
+    )
+    runner.run_once("acct01")
+
+    assert heartbeats == ["acct01", "acct01"]
+    assert releases == ["acct01"]
+
+
 def test_collection_marker_prevents_duplicate_end_after_restart(
     store,
     harness,

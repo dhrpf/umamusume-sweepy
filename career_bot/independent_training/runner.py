@@ -92,6 +92,8 @@ class IndependentTrainingRunner:
         account_state_provider,
         refresh_account,
         recover_tp,
+        heartbeat_lease=None,
+        release_lease=None,
         clock: Callable[[], float] = time.time,
         wake_wait=None,
     ) -> None:
@@ -101,6 +103,8 @@ class IndependentTrainingRunner:
         self.account_state_provider = account_state_provider
         self.refresh_account = refresh_account
         self.recover_tp = recover_tp
+        self.heartbeat_lease = heartbeat_lease
+        self.release_lease = release_lease
         self.clock = clock
         self.wake_wait = wake_wait
         self._wake_event = threading.Event()
@@ -183,17 +187,38 @@ class IndependentTrainingRunner:
         self._wake_event.wait(timeout)
         self._wake_event.clear()
 
+    def _release_lease(self, account: str) -> None:
+        if self.release_lease is None:
+            return
+        try:
+            self.release_lease(account)
+        except Exception:
+            return
+
     def run_once(self, account: str) -> dict[str, Any]:
         account = str(account)
+        if self.heartbeat_lease is not None:
+            try:
+                self.heartbeat_lease(account)
+            except Exception as exc:
+                self._set_snapshot(
+                    "NEEDS_ATTENTION",
+                    account=account,
+                    error=f"workflow lease heartbeat failed: {exc}",
+                )
+                return self.snapshot()
+
         active = self.store.active_run(account)
         control = self.store.get_control(account)
         if active is None and control.get("stop_after_current"):
             self._set_snapshot("STOPPED", account=account)
+            self._release_lease(account)
             return self.snapshot()
 
         run = active or self.store.claim_next(account)
         if run is None:
             self._set_snapshot("IDLE", account=account)
+            self._release_lease(account)
             return self.snapshot()
 
         state = RunState(run["state"])

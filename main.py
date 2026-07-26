@@ -1460,6 +1460,11 @@ if race_map_path.exists():
 
 
 def _independent_account():
+    runtime_override = os.environ.get("UMA_RUNTIME_DIR")
+    if runtime_override:
+        runtime_name = Path(runtime_override).expanduser().resolve().name
+        if runtime_name and runtime_name != "uma_runtime":
+            return runtime_name
     return _current_campaign_account()
 
 
@@ -1654,6 +1659,8 @@ independent_runner = IndependentTrainingRunner(
     account_state_provider=_independent_account_state,
     refresh_account=_independent_refresh_account,
     recover_tp=_independent_recover_tp,
+    heartbeat_lease=lambda account: independent_service.heartbeat(),
+    release_lease=lambda account: independent_service.release_lease(),
 )
 independent_service = IndependentTrainingService(
     independent_store,
@@ -1668,9 +1675,23 @@ independent_service = IndependentTrainingService(
 
 def _assert_independent_training_idle():
     lease = workflow_job_store.get_workflow_lease(
-        _current_campaign_account()
+        _independent_account()
     )
-    if lease and lease.get("workflow_type") == "independent_training":
+    runner_state = str(
+        (independent_runner.snapshot() or {}).get("state") or ""
+    )
+    active_runner_states = {
+        "STARTING",
+        "RUNNING",
+        "COLLECTING",
+        "FINALIZING",
+        "WAITING_FOR_TP",
+        "NEEDS_ATTENTION",
+    }
+    if (
+        lease
+        and lease.get("workflow_type") == "independent_training"
+    ) or runner_state in active_runner_states:
         raise HTTPException(
             status_code=409,
             detail="Independent Training is active on this dashboard instance",
