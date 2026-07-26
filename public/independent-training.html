@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        try {
+            const theme = localStorage.getItem('theme') === 'blue' ? 'blue' : 'pink';
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.classList.toggle('theme-blue', theme === 'blue');
+        } catch (error) {}
+    </script>
+    <title>Independent Training · Sweepy改二</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/independent-training.css">
+</head>
+<body>
+<div id="app">
+    <header class="navbar independent-navbar">
+        <div class="navbar-title"><h1 class="title">SWEEPY<span>改二</span></h1></div>
+        <nav class="independent-nav" aria-label="Primary navigation">
+            <a class="btn btn-sm" href="/">Dashboard</a>
+            <a class="btn btn-sm" href="/veteran">Veterans</a>
+            <a class="btn btn-sm" href="/dailies">Dailies</a>
+            <a class="btn btn-sm" href="/campaigns">Campaigns</a>
+            <a class="btn btn-sm is-active" href="/independent-training" aria-current="page">Independent</a>
+        </nav>
+    </header>
+
+    <main class="independent-main">
+        <div id="independent-message" class="independent-message" role="status" aria-live="polite"></div>
+
+        <section class="independent-hero">
+            <div>
+                <p class="eyebrow">Server-driven career</p>
+                <h2>Independent Training</h2>
+                <p class="muted">Queue immutable setups. Sweepy starts, collects, finalizes, and registers each veteran.</p>
+            </div>
+            <div class="instance-identity">
+                <span>Bound account</span>
+                <strong id="independent-account">Loading…</strong>
+                <span id="executor-state" class="state-badge">IDLE</span>
+            </div>
+        </section>
+
+        <section id="active-run" class="independent-panel active-run" aria-labelledby="active-run-title">
+            <div class="section-heading">
+                <div><p class="eyebrow">Server truth</p><h2 id="active-run-title">Active Run</h2></div>
+                <div class="button-row">
+                    <button id="reconcile-queue" class="btn btn-sm" type="button">Reconcile</button>
+                    <button id="stop-after-current" class="btn btn-sm" type="button">Stop after current</button>
+                    <button id="resume-queue" class="btn btn-sm" type="button">Resume</button>
+                    <button id="start-queue" class="btn btn-sm btn-primary" type="button">Start queue</button>
+                </div>
+            </div>
+            <div id="active-run-content" class="active-run-content">
+                <p class="empty-state">No active Independent Training run.</p>
+            </div>
+        </section>
+
+        <div class="independent-layout">
+            <section class="independent-panel setup-panel" aria-labelledby="setup-title">
+                <div class="section-heading">
+                    <div><p class="eyebrow">Immutable snapshot</p><h2 id="setup-title">Independent Setup</h2></div>
+                </div>
+
+                <form id="independent-setup-form">
+                    <fieldset>
+                        <legend>Career identity</legend>
+                        <div class="form-grid">
+                            <label>Trainee<select id="trainee-select" class="form-input" required><option value="">Select trainee</option></select></label>
+                            <label>Parent 1<select id="parent-one-select" class="form-input" required><option value="">Select parent</option></select></label>
+                            <label>Parent 2<select id="parent-two-select" class="form-input" required><option value="">Select parent</option></select></label>
+                            <label>Scenario
+                                <select id="scenario-select" class="form-input">
+                                    <option value="3">Grand Live</option>
+                                    <option value="4">Make a New Track</option>
+                                    <option value="2">Unity Cup</option>
+                                    <option value="1">URA Finale</option>
+                                </select>
+                            </label>
+                            <label>Running style
+                                <select id="running-style" class="form-input">
+                                    <option value="1">Front Runner</option>
+                                    <option value="2">Pace Chaser</option>
+                                    <option value="3">Late Surger</option>
+                                    <option value="4">End Closer</option>
+                                </select>
+                            </label>
+                            <label>Deck ID<input id="deck-id" class="form-input" type="number" min="1" value="1" required></label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Deck &amp; friend</legend>
+                        <div class="form-grid">
+                            <label class="wide-field">Five owned support IDs
+                                <input id="support-card-ids" class="form-input" placeholder="30001, 30002, 30003, 30004, 30005" required>
+                            </label>
+                            <label>Friend viewer ID
+                                <input id="friend-viewer-id" class="form-input" type="number" min="1" autocomplete="off" required>
+                            </label>
+                            <label>Friend support ID
+                                <input id="friend-card-id" class="form-input" type="number" min="1" required>
+                            </label>
+                        </div>
+                        <p class="field-note">Viewer IDs are used only for the queued private snapshot and are never stored in browser storage or returned in status.</p>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Server policy</legend>
+                        <div class="form-grid">
+                            <label>Ground type<input id="training-policy-ground-type" class="form-input" type="number" min="1" value="1" required></label>
+                            <label>Policy rate set ID<input id="training-policy-rate-set-id" class="form-input" type="number" min="1" value="1" required></label>
+                            <label>TP per run<input id="use-tp" class="form-input" type="number" min="0" value="30" required></label>
+                            <label class="wide-field">Priority skill IDs
+                                <input id="priority-skills" class="form-input" placeholder="100011, 100021">
+                            </label>
+                            <label class="wide-field">Race agenda
+                                <input id="race-agenda" class="form-input" placeholder="2:301, 3:624">
+                            </label>
+                        </div>
+                        <p class="field-note">Priority follows input order. Race entries use <code>year:program_id</code>.</p>
+                    </fieldset>
+
+                    <fieldset class="reroll-fieldset">
+                        <legend>Factor reroll</legend>
+                        <label class="check-row">
+                            <input id="factor-reroll-enabled" type="checkbox">
+                            Enable target-driven factor reroll
+                        </label>
+                        <div id="factor-targets" class="factor-targets"></div>
+                        <button id="add-factor-target" class="btn btn-sm" type="button">Add target</button>
+                        <p class="reroll-warning">May cost an additional <strong>30 TP</strong>. Roulette is attempted <strong>once per run</strong>, then Sweepy keeps the best of the original and rerolled result.</p>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Queue policy</legend>
+                        <div class="form-grid queue-policy">
+                            <label>Repeat count<input id="run-count" class="form-input" type="number" min="1" max="100" value="1" required></label>
+                            <label>When TP is low
+                                <select id="tp-mode" class="form-input">
+                                    <option value="wait">Wait for regen</option>
+                                    <option value="carat">Recover with carats</option>
+                                    <option value="stop">Stop queue</option>
+                                </select>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <button id="add-runs" class="btn btn-primary" type="submit">Add runs to queue</button>
+                </form>
+            </section>
+
+            <div class="queue-column">
+                <section class="independent-panel" aria-labelledby="queue-title">
+                    <div class="section-heading">
+                        <div><p class="eyebrow">Ordered snapshots</p><h2 id="queue-title">Queue</h2></div>
+                    </div>
+                    <div id="queue-list" class="queue-list"><p class="empty-state">Queue is empty.</p></div>
+                </section>
+
+                <section class="independent-panel" aria-labelledby="results-title">
+                    <div class="section-heading">
+                        <div><p class="eyebrow">Safe summaries</p><h2 id="results-title">Recent Results</h2></div>
+                    </div>
+                    <div id="recent-results" class="results-list"><p class="empty-state">No completed runs yet.</p></div>
+                </section>
+            </div>
+        </div>
+    </main>
+</div>
+<script src="/independent-training.js" defer></script>
+</body>
+</html>

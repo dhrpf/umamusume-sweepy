@@ -4196,6 +4196,34 @@ async def campaigns_css():
         headers={"Cache-Control": "no-cache"},
     )
 
+
+@app.get("/independent-training", response_class=HTMLResponse)
+async def independent_training_page():
+    return FileResponse(
+        base_dir / "public" / "independent-training.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/independent-training.js")
+async def independent_training_js():
+    return FileResponse(
+        base_dir / "public" / "independent-training.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/independent-training.css")
+async def independent_training_css():
+    return FileResponse(
+        base_dir / "public" / "independent-training.css",
+        media_type="text/css",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 def set_console_topmost():
     if os.name != 'nt':
         return
