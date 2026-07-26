@@ -725,8 +725,9 @@ class UmaClient:
     _SCENARIO_CORE_OPERATIONS = frozenset({
         "load", "start", "exec_command", "check_event",
         "race_entry", "race_start", "race_end", "race_out",
-        "finish", "factor_select", "continue", "change_running_style",
-        "gain_skills", "multi_item_use", "multi_item_exchange",
+        "finish", "factor_select", "factor_lottery", "continue",
+        "change_running_style", "gain_skills", "multi_item_use",
+        "multi_item_exchange",
         "minigame_end",
     })
 
@@ -1486,6 +1487,137 @@ class UmaClient:
             'friend/delete',
             'friend/remove',
         ), payload)
+
+    def pre_start_independent_training(self, scenario_id):
+        self.current_scenario_id = int(scenario_id)
+        return self.call(
+            'idle_single_mode/pre_start',
+            {'scenario_id': int(scenario_id)},
+        )
+
+    def independent_training_status(self):
+        return self.call('idle_single_mode/status', {})
+
+    def start_independent_training(
+        self,
+        *,
+        setup,
+        tp_info,
+        current_money,
+        succession_rank_point,
+    ):
+        scenario_id = int(setup['scenario_id'])
+        self.current_scenario_id = scenario_id
+        common = {
+            'start_chara': {
+                'card_id': int(setup['card_id']),
+                'support_card_ids': [
+                    int(card_id)
+                    for card_id in setup['support_card_ids']
+                ],
+                'friend_support_card_info': {
+                    'viewer_id': int(setup['friend_viewer_id']),
+                    'support_card_id': int(setup['friend_card_id']),
+                },
+                'succession_trained_chara_id_1': int(
+                    setup['parent_id_1']
+                ),
+                'succession_trained_chara_id_2': int(
+                    setup['parent_id_2']
+                ),
+                'rental_succession_trained_chara': {
+                    'viewer_id': int(
+                        setup.get('rental_viewer_id', 0)
+                    ),
+                    'trained_chara_id': int(
+                        setup.get('rental_trained_chara_id', 0)
+                    ),
+                },
+                'scenario_id': scenario_id,
+                'selected_difficulty_info': {
+                    'difficulty_id': int(
+                        setup.get('difficulty_id', 0)
+                    ),
+                    'difficulty': int(setup.get('difficulty', 0)),
+                    'is_boost': int(setup.get('is_boost', 0)),
+                },
+                'select_deck_id': int(setup.get('deck_id', 1)),
+                'boost_story_event_id': int(
+                    setup.get('boost_story_event_id', 0)
+                ),
+                'boost_factor_research_event_id': 0,
+                'training_challenge_mode': 0,
+                'running_style': int(setup['running_style']),
+            },
+            'tp_info': dict(tp_info),
+            'current_money': int(current_money),
+            'use_tp': int(setup.get('use_tp', 30)),
+            'current_succession_rank_point': int(
+                succession_rank_point
+            ),
+        }
+        return self.call(
+            'idle_single_mode/start',
+            {
+                'single_mode_start_request_common': common,
+                'start_info': {
+                    'training_policy_ground_type': int(
+                        setup['training_policy_ground_type']
+                    ),
+                    'training_policy_param_rate_set_id': int(
+                        setup['training_policy_param_rate_set_id']
+                    ),
+                    'priority_skill_array': [
+                        dict(row)
+                        for row in setup.get(
+                            'priority_skill_array', []
+                        )
+                    ],
+                    'race_array': [
+                        dict(row)
+                        for row in setup.get('race_array', [])
+                    ],
+                },
+            },
+        )
+
+    def end_independent_training(self):
+        return self.call('idle_single_mode/end', {})
+
+    def select_independent_factors(self, current_turn):
+        return self.call(
+            'single_mode_free/factor_select',
+            {'current_turn': int(current_turn)},
+        )
+
+    def reroll_independent_factors(
+        self,
+        lottery_count,
+        tp_info,
+        use_tp=30,
+    ):
+        return self.call(
+            'single_mode_free/factor_lottery',
+            {
+                'lottery_count': int(lottery_count),
+                'tp_info': dict(tp_info),
+                'use_tp': int(use_tp),
+            },
+            retry_205=0,
+        )
+
+    def finish_independent_training(
+        self,
+        current_turn,
+        factor_lottery_id,
+    ):
+        return self.call(
+            'single_mode_free/finish',
+            {
+                'factor_lottery_id': int(factor_lottery_id),
+                'current_turn': int(current_turn),
+            },
+        )
 
     def start_career(self, card_id, support_card_ids, friend_viewer_id, friend_card_id,
                      parent_id_1, parent_id_2, scenario_id, deck_id=1, use_tp=30,
