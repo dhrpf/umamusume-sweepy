@@ -6,7 +6,8 @@ Paths: `uma_api/**`, `capture_dailies.py`, `launcher.py`
 
 1. All wire payloads go through `pack()` / `unpack()` — construct the AES key per call, never reuse across SID.
 2. SID regen: `make_sid(viewer_id, udid)` for first call, `next_sid(sid)` for subsequent. Never call `regen_sid()` inside a retry except after 208.
-3. Proxy errors by code family: 205 (per-call transient), 208 (busy), 214 (res_ver stale), 217 (resource busy), 1055 (session stale). Never swallow 102/1503 — these are logic errors.
+3. Proxy errors by code family: 205 (per-call transient), 208 (busy), 214 (res_ver stale), 217 (resource busy), 201/390/394 (stale credentials), 501/1055 (session stale). Never swallow 102/1503 — these are logic errors.
+3b. `STALE_CREDENTIAL_CODES` = 201/390/394. 390/394 are NOT "busy" — the `steam_session_ticket` expired; 201 = session aged out. `UmaClient.call` handles all three via `_refresh_ticket_and_login()` + one retry; never add a caller-side retry loop for them, `tool/start_session` still answers 1 so replaying `regen_sid` + `start_session` + `load/index` loops forever.
 4. `response_code`/`result_code` live in `response.data_headers`, NOT top-level. Read via `res["data_headers"]["result_code"]`.
 5. Auth header triplet: `SID`, `Device`, `ViewerID`, `APP-VER`, `RES-VER`. Missing any = immediate 102.
 

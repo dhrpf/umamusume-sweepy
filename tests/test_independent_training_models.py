@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from career_bot.independent_training.models import (
     EnqueueRuns,
     FactorReroll,
+    IndependentTrainingPreset,
     IndependentSetup,
     RunState,
 )
@@ -35,7 +36,6 @@ def setup_payload():
             {"priority": 2, "skill_id": 100021},
         ],
         "race_array": [{"year": 2, "program_id": 301}],
-        "use_tp": 30,
         "factor_reroll": {
             "enabled": True,
             "targets": [
@@ -55,6 +55,48 @@ def test_setup_normalizes_factor_target_and_forbids_unknown_keys():
     setup = IndependentSetup.model_validate(payload)
     assert setup.factor_reroll.targets[0].category == "pink"
     assert setup.factor_reroll.targets[0].name == "dirt"
+
+
+def test_setup_accepts_only_named_independent_training_styles():
+    payload = setup_payload()
+    for style_id in (1, 2, 3):
+        payload["training_policy_param_rate_set_id"] = style_id
+        assert (
+            IndependentSetup.model_validate(payload)
+            .training_policy_param_rate_set_id
+            == style_id
+        )
+
+    for style_id in (0, 4, 99):
+        payload["training_policy_param_rate_set_id"] = style_id
+        with pytest.raises(ValidationError):
+            IndependentSetup.model_validate(payload)
+
+
+def test_setup_keeps_final_skill_purchase_separate_from_training_priority():
+    payload = setup_payload()
+    payload["final_skill_ids"] = [100031, 100041]
+
+    setup = IndependentSetup.model_validate(payload)
+
+    assert setup.priority_skill_array[0].skill_id == 100011
+    assert setup.final_skill_ids == [100031, 100041]
+
+
+def test_setup_rejects_duplicate_final_skill_ids():
+    payload = setup_payload()
+    payload["final_skill_ids"] = [100031, 100031]
+
+    with pytest.raises(ValidationError, match="final_skill_ids"):
+        IndependentSetup.model_validate(payload)
+
+
+def test_setup_rejects_client_controlled_tp_cost():
+    payload = setup_payload()
+    payload["use_tp"] = 15
+
+    with pytest.raises(ValidationError, match="use_tp"):
+        IndependentSetup.model_validate(payload)
 
 
 def test_setup_requires_exactly_five_distinct_owned_supports():
@@ -88,3 +130,34 @@ def test_model_dump_is_an_immutable_queue_snapshot():
     payload["race_array"][0]["program_id"] = 999
     assert snapshot["race_array"] == [{"year": 2, "program_id": 301}]
     assert RunState.QUEUED.value == "QUEUED"
+
+
+def test_named_preset_keeps_complete_setup_and_queue_defaults():
+    payload = setup_payload()
+    payload["final_skill_ids"] = [100031, 100041]
+
+    preset = IndependentTrainingPreset.model_validate({
+        "name": "  Dirt sprint  ",
+        "setup": payload,
+        "count": 3,
+        "tp_mode": "wait",
+    })
+
+    assert preset.name == "Dirt sprint"
+    assert preset.count == 3
+    assert preset.setup.final_skill_ids == [100031, 100041]
+    assert preset.setup.race_array[0].program_id == 301
+
+
+def test_named_preset_rejects_blank_names_and_unknown_fields():
+    with pytest.raises(ValidationError, match="preset name"):
+        IndependentTrainingPreset.model_validate({
+            "name": " ",
+            "setup": setup_payload(),
+        })
+    with pytest.raises(ValidationError, match="unexpected"):
+        IndependentTrainingPreset.model_validate({
+            "name": "Dirt sprint",
+            "setup": setup_payload(),
+            "unexpected": True,
+        })

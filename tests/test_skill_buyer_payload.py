@@ -10,7 +10,36 @@ class Client:
 
     def gain_skills(self, payload, turn):
         self.payload = payload
-        return {"data": {}}
+        # Real API responses always echo back updated chara_info (SP spent,
+        # skills now owned) — mirror that so a caller looping on leftover SP
+        # sees the purchase reflected and stops instead of resending forever.
+        return {
+            "data": {
+                "chara_info": {
+                    "turn": turn,
+                    "skill_point": 0,
+                    "skill_array": [
+                        {"skill_id": item["skill_id"], "level": item.get("level", 1)}
+                        for item in payload
+                    ],
+                }
+            }
+        }
+
+
+def test_estimate_cost_ignores_hint_level():
+    """Hint level affects which rarity tier is offered, not the SP price — a
+    level-based discount here caused preflight to under-count real spend and
+    the server rejected the batch as overspend (205)."""
+    buyer = SkillBuyer("/nonexistent")
+    buyer.skill_costs = {200132: 90}
+    buyer.skill_rarities = {200132: 1}
+
+    low_hint = buyer._estimate_cost({"skill_id": 200132, "name": "x", "hint_level": 1})
+    high_hint = buyer._estimate_cost({"skill_id": 200132, "name": "x", "hint_level": 5})
+
+    assert low_hint == 90
+    assert high_hint == 90
 
 
 def test_gold_skill_payload_includes_bundled_ids_first():
@@ -139,8 +168,8 @@ def test_skips_lower_tier_when_higher_owned():
     assert all(c["skill_id"] != 201532 for c in buyer.last_candidates)
 
 
-def test_buy_batch_skips_unaffordable_second_chunk():
-    """After chunk1, only skills that fit remaining SP may be sent (was overspend 205→501)."""
+def test_buy_batch_sends_all_affordable_candidates_in_one_call():
+    """Preflight excludes anything over budget; the rest goes out as a single gain_skills call."""
     costs = {
         201532: 99, 200582: 162, 201332: 108, 200332: 117,
         200012: 81, 200062: 81, 201112: 90,
@@ -203,11 +232,72 @@ def test_buy_batch_skips_unaffordable_second_chunk():
 
     state, bought = buyer._buy_batch(client, state, candidates, 32)
 
-    assert client.calls[0] == [201532, 200582, 201332, 200332]
-    assert 201112 not in {sid for call in client.calls for sid in call}
-    assert all(sum(costs[s] for s in call) <= 733 for call in client.calls)
-    assert bought == 6  # 4 + two 81-cost; 90 left unaffordable
+    assert len(client.calls) == 1
+    assert client.calls[0] == [201532, 200582, 201332, 200332, 200012, 200062]
+    assert 201112 not in client.calls[0]  # 90 left unaffordable after upfront preflight
+    assert bought == 6
     assert client.sp == 733 - (99 + 162 + 108 + 117 + 81 + 81)
+    assert int((state.get("data") or {}).get("chara_info", {}).get("skill_point") or 0) == client.sp
+
+
+def test_buy_mops_up_leftover_sp_in_a_second_round():
+    """Preflight cost is an estimate; if the server actually charges less than
+    estimated (e.g. a bundled companion isn't billed separately — see the
+    independent-training overspend investigation), the leftover SP should
+    unlock a second candidate in a follow-up round instead of sitting unspent."""
+
+    class SpTrackingClient:
+        def __init__(self, sp, real_costs):
+            self.sp = sp
+            self.real_costs = real_costs
+            self.owned = []
+            self.calls = []
+
+        def gain_skills(self, payload, turn):
+            self.calls.append([item["skill_id"] for item in payload])
+            spend = sum(self.real_costs[item["skill_id"]] for item in payload)
+            self.sp -= spend
+            self.owned.extend(item["skill_id"] for item in payload)
+            return {
+                "data": {
+                    "chara_info": {
+                        "turn": turn,
+                        "skill_point": self.sp,
+                        "skill_array": [{"skill_id": sid, "level": 1} for sid in self.owned],
+                    }
+                }
+            }
+
+    buyer = SkillBuyer("/nonexistent")
+    buyer.skill_names = {300011: "Test Skill A", 300021: "Test Skill B"}
+    buyer.skill_costs = {300011: 100, 300021: 150}  # preflight estimate
+    buyer.skill_rarities = {300011: 1, 300021: 1}
+    buyer.skill_id_exists = {300011, 300021}
+    buyer.group_to_skill_ids = {30001: [300011], 30002: [300021]}
+    buyer.skill_to_group_id = {300011: 30001, 300021: 30002}
+
+    # Server only actually charges 40 for A (estimate said 100) — the leftover
+    # 60 SP plus what was never spent should be enough to also afford B.
+    client = SpTrackingClient(sp=200, real_costs={300011: 40, 300021: 150})
+    state = {
+        "data": {
+            "chara_info": {
+                "turn": 78,
+                "skill_point": 200,
+                "skill_array": [],
+                "skill_tips_array": [
+                    {"group_id": 30001, "rarity": 1, "level": 1},
+                    {"group_id": 30002, "rarity": 1, "level": 1},
+                ],
+            }
+        }
+    }
+
+    state, bought = buyer.buy(client, state, {"learn_skill_threshold": 1})
+
+    assert client.calls == [[300011], [300021]]
+    assert bought == 2
+    assert client.sp == 200 - 40 - 150
     assert int((state.get("data") or {}).get("chara_info", {}).get("skill_point") or 0) == client.sp
 
 
@@ -290,7 +380,18 @@ def test_final_purchase_accepts_independent_priority_ids():
 
         def gain_skills(self, payload, turn):
             self.calls.append(payload)
-            return {"data": {}}
+            return {
+                "data": {
+                    "chara_info": {
+                        "turn": turn,
+                        "skill_point": 0,
+                        "skill_array": [
+                            {"skill_id": item["skill_id"], "level": item.get("level", 1)}
+                            for item in payload
+                        ],
+                    }
+                }
+            }
 
     buyer = SkillBuyer("/nonexistent")
     skill_ids = [100011, 100021, 100031, 100041, 100051]
@@ -329,7 +430,7 @@ def test_final_purchase_accepts_independent_priority_ids():
 
     sent = [row["skill_id"] for call in client.calls for row in call]
     assert sent.index(100021) < sent.index(100011)
-    assert all(len(call) <= 4 for call in client.calls)
+    assert len(client.calls) == 1
     assert count == 5
 
 

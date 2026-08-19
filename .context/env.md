@@ -10,6 +10,7 @@
 | `PORT` | `1616` | FastAPI bind port | `main.py` |
 | `SWEEPY_AUTH_CAPTURE_TIMEOUT_SEC` | capture/login defaults | Frida auth-capture deadline | `main.py` |
 | `FRIDA_REMOTE` | unset | Remote Frida `host:port`; unset uses local path | capture/login flow |
+| `UMA_TRAINING_EVENT` | unset | Opt independent runs into the trainer aptitude test (`is_play_training_challenge=True`, `training_challenge_mode=1`) | `UmaClient.start_independent_training` |
 
 ## Rules
 
@@ -17,6 +18,7 @@
 - `UMA_MASTER_MDB` wins over automatic Proton/Windows discovery. Confirm file mtime after game patch.
 - `FRIDA_REMOTE` is explicit. Never auto-detect a different Frida mode when it is set.
 - `SWEEPY_DEBUG` is truthy-by-presence; unset it to disable.
+- `UMA_TRAINING_EVENT` is value-checked, not presence-checked: `1`/`true`/`yes`/`on` (case-insensitive) enable it, everything else disables. It is read per start call, so it can be flipped without restarting. A `setup['is_play_training_challenge']` value always wins over the env var; `setup['training_challenge_mode']` overrides the derived mode. Only applies to `idle_single_mode/start` (independent training), not the regular career start.
 
 ## Examples
 
@@ -24,4 +26,5 @@
 UMA_MASTER_MDB="$HOME/path/to/master.mdb" python main.py
 FRIDA_REMOTE=10.0.0.5:27042 python main.py
 UMA_RUNTIME_DIR="$HOME/.local/share/sweepy-runtime" python main.py
+UMA_TRAINING_EVENT=true python main.py
 ```

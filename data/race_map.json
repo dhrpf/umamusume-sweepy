@@ -3882,6 +3882,12 @@
       "turn": 12,
       "name": "Junior Make Debut"
     },
+    "101136": {
+      "program_id": 1136,
+      "race_instance_id": 904199,
+      "turn": 12,
+      "name": "Junior Make Debut"
+    },
     "2001": {
       "program_id": 676,
       "race_instance_id": 901110,
@@ -10913,6 +10919,15 @@
       "ground": 2,
       "distance": 1800
     },
+    "1136": {
+      "race_instance_id": 904199,
+      "month": 6,
+      "half": 2,
+      "name": "Junior Make Debut",
+      "grade": 900,
+      "ground": 1,
+      "distance": 1200
+    },
     "2001": {
       "race_instance_id": 910001,
       "month": 1,
@@ -14667,6 +14682,9 @@
     ],
     "904198": [
       1135
+    ],
+    "904199": [
+      1136
     ],
     "910001": [
       2001

@@ -3,6 +3,7 @@ import random
 import time
 import hashlib
 import os
+from contextlib import contextmanager
 
 _BASE_DELAYS = {
     'load_index': (1.16, 14.69, 5.26),
@@ -57,12 +58,17 @@ for ep in _BASE_DELAYS:
     _ENDPOINT_SHIFTS[ep] = _dna_rng.uniform(0.85, 1.15)
 
 
-def simulate_delay(endpoint, client=None):
+def simulate_delay(endpoint, client=None, *, delay_range=None):
     if GLOBAL_DELAYS_DISABLED:
         print(f"Endpoint: {endpoint} | Delay: 0.000s", flush=True)
         return 0.0
 
-    if endpoint not in _BASE_DELAYS:
+    if delay_range is not None:
+        lower, upper = (float(value) for value in delay_range)
+        if upper < lower:
+            upper = lower
+        dt = _dna_rng.uniform(lower, upper)
+    elif endpoint not in _BASE_DELAYS:
         target_delay = 0.3 * _USER_SPEED_SHIFT
         mu = math.log(target_delay) - (_USER_SIGMA**2) / 2.0
         dt = _dna_rng.lognormvariate(mu, _USER_SIGMA)
@@ -77,7 +83,7 @@ def simulate_delay(endpoint, client=None):
         dt = _dna_rng.lognormvariate(mu, _USER_SIGMA)
         dt = max(shifted_min, min(shifted_max, dt))
 
-    if _dna_rng.random() < _USER_DISTRACTION_CHANCE:
+    if delay_range is None and _dna_rng.random() < _USER_DISTRACTION_CHANCE:
         dt += _dna_rng.uniform(_USER_DISTRACTION_MIN, _USER_DISTRACTION_MAX)
 
     print(f"Endpoint: {endpoint} | Delay: {dt:.3f}s", flush=True)
@@ -185,6 +191,7 @@ def decide_tp_action(use_tp, current_tp, tp_mode, stop_on_empty_tp):
 class GateKeeper:
     def __init__(self, client):
         super().__setattr__('_client', client)
+        super().__setattr__('_endpoint_delay_overrides', {})
         raw_call = getattr(client, '_gatekeeper_raw_call', None)
         if raw_call is None:
             raw_call = client.call
@@ -199,10 +206,23 @@ class GateKeeper:
         pass
 
     def __setattr__(self, name, value):
-        if name in ('_client', '_raw_call'):
+        if name in ('_client', '_raw_call', '_endpoint_delay_overrides'):
             super().__setattr__(name, value)
         else:
             setattr(self._client, name, value)
+
+    @contextmanager
+    def independent_skill_pacing(self):
+        overrides = self._endpoint_delay_overrides
+        previous = overrides.get('gain_skills')
+        overrides['gain_skills'] = (1.0, 5.0)
+        try:
+            yield
+        finally:
+            if previous is None:
+                overrides.pop('gain_skills', None)
+            else:
+                overrides['gain_skills'] = previous
 
     def _pacing_name(self, ep):
         path_map = {
@@ -236,7 +256,12 @@ class GateKeeper:
         return path_map.get(ep, ep.split('/')[-1])
 
     def _paced_call(self, ep, *args, **kwargs):
-        simulate_delay(self._pacing_name(ep), self._client)
+        pacing_name = self._pacing_name(ep)
+        simulate_delay(
+            pacing_name,
+            self._client,
+            delay_range=self._endpoint_delay_overrides.get(pacing_name),
+        )
         return self._raw_call(ep, *args, **kwargs)
 
     def __getattr__(self, name):

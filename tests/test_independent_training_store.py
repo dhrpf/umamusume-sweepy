@@ -6,6 +6,7 @@ from career_bot.independent_training.models import RunState
 from career_bot.independent_training.store import (
     IndependentTrainingStore,
     InvalidRunTransition,
+    RunNotFound,
     RunVersionConflict,
 )
 
@@ -98,3 +99,71 @@ def test_events_never_store_viewer_ids(tmp_path):
         "sid": "<redacted>",
     }
     assert os.stat(store.database_path).st_mode & 0o077 == 0
+
+
+def test_named_presets_round_trip_complete_setup_per_account(tmp_path):
+    store = IndependentTrainingStore(tmp_path / "independent.sqlite3")
+    setup = minimal_setup()
+    setup["priority_skill_array"] = [{"priority": 1, "skill_id": 100011}]
+    setup["final_skill_ids"] = [100031]
+    setup["race_array"] = [{"year": 2, "program_id": 301}]
+
+    created = store.save_preset(
+        "acct01", "Dirt sprint", setup, count=2, tp_mode="wait"
+    )
+
+    assert created["name"] == "Dirt sprint"
+    assert store.list_presets("acct02") == []
+    loaded = store.get_preset("acct01", "Dirt sprint")
+    assert loaded["setup"]["final_skill_ids"] == [100031]
+    assert loaded["setup"]["race_array"] == [{"year": 2, "program_id": 301}]
+
+
+def test_saving_a_named_preset_replaces_that_account_name_only(tmp_path):
+    store = IndependentTrainingStore(tmp_path / "independent.sqlite3")
+    store.save_preset(
+        "acct01", "Dirt sprint", minimal_setup(), count=1, tp_mode="wait"
+    )
+
+    updated = store.save_preset(
+        "acct01", "Dirt sprint", minimal_setup(), count=5, tp_mode="stop"
+    )
+
+    assert updated["count"] == 5
+    assert updated["tp_mode"] == "stop"
+    assert len(store.list_presets("acct01")) == 1
+
+
+def test_discard_forces_stuck_run_into_failed_with_reason(tmp_path):
+    store = IndependentTrainingStore(tmp_path / "independent.sqlite3")
+    store.enqueue("acct01", minimal_setup(), count=2, tp_mode="wait")
+    claimed = store.claim_next("acct01")
+    stuck = store.transition(
+        claimed["run_id"],
+        RunState.NEEDS_ATTENTION,
+        expected_version=claimed["version"],
+        error="start result is ambiguous: API error 102",
+        next_action="reconcile",
+    )
+
+    discarded = store.discard(stuck["run_id"], reason="dashboard removal")
+
+    assert discarded["state"] == RunState.FAILED.value
+    assert discarded["error"] == "dashboard removal"
+    assert discarded["next_action"] == ""
+    assert discarded["version"] == stuck["version"] + 1
+    assert store.active_run("acct01") is None
+    assert store.claim_next("acct01")["position"] == 2
+
+
+def test_discard_rejects_terminal_runs_and_unknown_ids(tmp_path):
+    store = IndependentTrainingStore(tmp_path / "independent.sqlite3")
+    run = store.enqueue(
+        "acct01", minimal_setup(), count=1, tp_mode="wait"
+    )[0]
+    store.cancel_queued(run["run_id"])
+
+    with pytest.raises(InvalidRunTransition):
+        store.discard(run["run_id"])
+    with pytest.raises(RunNotFound):
+        store.discard("missing-run")

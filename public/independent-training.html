@@ -65,12 +65,28 @@
                 </div>
 
                 <form id="independent-setup-form">
+                    <fieldset class="independent-preset-fieldset">
+                        <legend>Named setup presets</legend>
+                        <div class="independent-preset-controls">
+                            <label>Saved setup
+                                <select id="independent-preset-select" class="form-input"><option value="">Select a saved setup</option></select>
+                            </label>
+                            <label>Preset name
+                                <input id="independent-preset-name" class="form-input" type="text" maxlength="80" placeholder="Dirt sprint" autocomplete="off">
+                            </label>
+                            <div class="independent-preset-actions">
+                                <button id="save-independent-preset" class="btn btn-sm btn-primary" type="button">Save</button>
+                                <button id="load-independent-preset" class="btn btn-sm" type="button">Load</button>
+                                <button id="delete-independent-preset" class="btn btn-sm btn-danger" type="button">Delete</button>
+                            </div>
+                        </div>
+                        <p class="field-note">A named setup saves the trainee, parents, deck, friend support, both skill lists, race plan, factor targets, and queue defaults in Sweepy’s protected runtime storage.</p>
+                    </fieldset>
+
                     <fieldset>
                         <legend>Career identity</legend>
-                        <div class="form-grid">
+                        <div class="form-grid identity-grid">
                             <label>Trainee<select id="trainee-select" class="form-input" required><option value="">Select trainee</option></select></label>
-                            <label>Parent 1<select id="parent-one-select" class="form-input" required><option value="">Select parent</option></select></label>
-                            <label>Parent 2<select id="parent-two-select" class="form-input" required><option value="">Select parent</option></select></label>
                             <label>Scenario
                                 <select id="scenario-select" class="form-input">
                                     <option value="3">Grand Live</option>
@@ -87,40 +103,88 @@
                                     <option value="4">End Closer</option>
                                 </select>
                             </label>
-                            <label>Deck ID<input id="deck-id" class="form-input" type="number" min="1" value="1" required></label>
+                        </div>
+                        <div class="parent-picker-grid">
+                            <div class="parent-picker">
+                                <label>Parent 1<select id="parent-one-select" class="form-input" required><option value="">Select parent</option></select></label>
+                                <div id="parent-one-preview" class="parent-preview"><p class="empty-state">Select a veteran to inspect stats and sparks.</p></div>
+                            </div>
+                            <div class="parent-picker">
+                                <label>Parent 2<select id="parent-two-select" class="form-input" required><option value="">Select parent</option></select></label>
+                                <div id="parent-two-preview" class="parent-preview"><p class="empty-state">Select a veteran to inspect stats and sparks.</p></div>
+                            </div>
                         </div>
                     </fieldset>
 
                     <fieldset>
                         <legend>Deck &amp; friend</legend>
-                        <div class="form-grid">
-                            <label class="wide-field">Five owned support IDs
-                                <input id="support-card-ids" class="form-input" placeholder="30001, 30002, 30003, 30004, 30005" required>
+                        <div class="deck-picker-row">
+                            <label>Saved deck
+                                <select id="deck-select" class="form-input" required><option value="">Select saved deck</option></select>
                             </label>
-                            <label>Friend viewer ID
-                                <input id="friend-viewer-id" class="form-input" type="number" min="1" autocomplete="off" required>
-                            </label>
-                            <label>Friend support ID
-                                <input id="friend-card-id" class="form-input" type="number" min="1" required>
+                            <label>Friend support
+                                <select id="friend-support-select" class="form-input" required><option value="">Select friend support</option></select>
                             </label>
                         </div>
-                        <p class="field-note">Viewer IDs are used only for the queued private snapshot and are never stored in browser storage or returned in status.</p>
+                        <div id="deck-preview" class="deck-preview"><p class="empty-state">Select a saved deck to inspect its five owned support cards.</p></div>
+                        <div id="friend-support-preview" class="friend-support-preview"><p class="empty-state">Select a friend support for this setup.</p></div>
+                        <p class="field-note">Friend viewer IDs stay in page memory, then move only into protected queued snapshots or named presets. They are never stored in browser storage or returned by Independent status.</p>
                     </fieldset>
 
                     <fieldset>
                         <legend>Server policy</legend>
                         <div class="form-grid">
                             <label>Ground type<input id="training-policy-ground-type" class="form-input" type="number" min="1" value="1" required></label>
-                            <label>Policy rate set ID<input id="training-policy-rate-set-id" class="form-input" type="number" min="1" value="1" required></label>
-                            <label>TP per run<input id="use-tp" class="form-input" type="number" min="0" value="30" required></label>
-                            <label class="wide-field">Priority skill IDs
-                                <input id="priority-skills" class="form-input" placeholder="100011, 100021">
+                            <label>Training style
+                                <select id="training-policy-rate-set-id" class="form-input" required>
+                                    <option value="1">Balanced</option>
+                                    <option value="2">Stamina</option>
+                                    <option value="3">Sprint</option>
+                                </select>
                             </label>
-                            <label class="wide-field">Race agenda
-                                <input id="race-agenda" class="form-input" placeholder="2:301, 3:624">
-                            </label>
+                            <label>Detected TP cost<output id="detected-tp-cost" class="form-input">Unavailable</output></label>
                         </div>
-                        <p class="field-note">Priority follows input order. Race entries use <code>year:program_id</code>.</p>
+
+                        <div class="skill-policy-grid">
+                            <section id="priority-skill-picker" class="skill-picker-panel">
+                                <div class="skill-picker-heading">
+                                    <div><h3>Independent Training Priority Skills</h3><p>Sent to the server to guide the 50-minute training. First selected = highest priority.</p></div>
+                                </div>
+                                <input id="priority-skill-search" class="form-input" type="search" placeholder="Search skill name…" autocomplete="off">
+                                <div id="priority-skill-filters" class="skill-filter-bar" role="group" aria-label="Priority skill filters"></div>
+                                <div id="priority-skill-selection" class="skill-selection"><span class="muted">No training priorities selected.</span></div>
+                                <div id="priority-skill-results" class="skill-search-results"></div>
+                            </section>
+                            <section id="final-skill-picker" class="skill-picker-panel">
+                                <div class="skill-picker-heading">
+                                    <div><h3>Final Skills to Buy</h3><p>Optional purchase priority after training finishes. This does not influence Independent Training.</p></div>
+                                </div>
+                                <input id="final-skill-search" class="form-input" type="search" placeholder="Search skill name…" autocomplete="off">
+                                <div id="final-skill-filters" class="skill-filter-bar" role="group" aria-label="Final skill filters"></div>
+                                <div id="final-skill-selection" class="skill-selection"><span class="muted">No final purchase priorities selected.</span></div>
+                                <div id="final-skill-results" class="skill-search-results"></div>
+                            </section>
+                        </div>
+
+                        <section class="race-planner-panel">
+                            <div class="race-planner-toolbar">
+                                <label>Load Dashboard race schedule
+                                    <select id="race-schedule-select" class="form-input"><option value="">Start empty</option></select>
+                                </label>
+                                <span id="race-selection-count" class="state-badge">0 races</span>
+                            </div>
+                            <p class="field-note">This is the same visual race schedule used on Dashboard. Choose races by name; technical IDs stay inside the payload.</p>
+                            <div id="independent-race-popup-overlay" class="race-slot-popup-overlay" style="display:none">
+                                <div class="race-slot-popup">
+                                    <div class="race-slot-popup-header">
+                                        <div id="independent-race-popup-title" class="race-slot-popup-title">Select Race</div>
+                                        <button id="independent-race-popup-close" class="race-slot-popup-close" type="button">&times;</button>
+                                    </div>
+                                    <div id="independent-race-popup-body" class="race-slot-popup-body"></div>
+                                </div>
+                            </div>
+                            <div id="independent-race-options" class="race-options-content"></div>
+                        </section>
                     </fieldset>
 
                     <fieldset class="reroll-fieldset">

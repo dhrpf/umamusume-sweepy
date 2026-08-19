@@ -55,7 +55,6 @@ class SkillBuyer:
         self.skill_costs = {}
         self.skill_grade_values = {}
         self.skill_tags = {}
-        self.skill_disabled_singlemode = set()
         self.skill_id_exists = set()
         self.group_to_skill_ids = {}
         self.skill_to_group_id = {}
@@ -80,7 +79,6 @@ class SkillBuyer:
             self.skill_costs = {}
             self.skill_grade_values = {}
             self.skill_tags = {}
-            self.skill_disabled_singlemode = set()
             self.skill_to_group_id = {}
             for raw_id, raw_info in data.items():
                 skill_id = int(raw_id)
@@ -93,8 +91,6 @@ class SkillBuyer:
                         int(tag) for tag in (raw_info.get("tags") or [])
                         if int(tag or 0)
                     }
-                    if int(raw_info.get("disable_singlemode") or 0):
-                        self.skill_disabled_singlemode.add(skill_id)
                     group_id = int(raw_info.get("group_id") or 0)
                     if group_id:
                         self.skill_to_group_id[skill_id] = group_id
@@ -223,41 +219,62 @@ class SkillBuyer:
             self.last_result = {"skip": "manual_purchase_at_end"}
             return state, 0
 
-        candidates = self._candidates(chara, preset)
-        if force and not candidates:
-            candidates = self._candidates(chara, {**preset, "learn_skill_only_user_provided": False})
+        # Keep spending while SP remains and something new still fits — a single
+        # round's preflight is conservative (cost estimates can undercount what
+        # the server actually charges), so leftover SP can unlock more candidates
+        # once the round's real spend comes back in the response.
+        current_state = state
+        current_chara = chara
+        current_points = points
+        total_bought = 0
+        max_rounds = 10
 
-        self.last_candidates = [dict(item) for item in candidates]
-        if not candidates:
-            self.last_selected = []
-            self.last_attempt = []
-            self.last_result = {"skip": "no_candidates", "points": points}
-            return state, 0
+        for _round in range(max_rounds):
+            candidates = self._candidates(current_chara, preset)
+            if force and not candidates:
+                candidates = self._candidates(current_chara, {**preset, "learn_skill_only_user_provided": False})
 
-        # Clear owned × first alone — re-buy red skill_id removes debuff.
-        clear_red = [c for c in candidates if c.get("clears_red")]
-        pool = clear_red or candidates
-
-        selected = []
-        spent = 0
-        for candidate in pool:
-            cost = int(candidate.get("cost") or self._estimate_cost(candidate))
-            if spent + cost > points:
-                continue
-            selected.append(candidate)
-            spent += cost
-            if candidate.get("clears_red"):
+            self.last_candidates = [dict(item) for item in candidates]
+            if not candidates:
+                if total_bought == 0:
+                    self.last_selected = []
+                    self.last_attempt = []
+                    self.last_result = {"skip": "no_candidates", "points": current_points}
                 break
 
-        if not selected:
-            self.last_selected = []
-            self.last_attempt = []
-            self.last_result = {"skip": "not_enough_points", "points": points}
-            return state, 0
+            # Clear owned × first alone — re-buy red skill_id removes debuff.
+            clear_red = [c for c in candidates if c.get("clears_red")]
+            pool = clear_red or candidates
 
-        self.last_selected = [dict(item) for item in selected]
+            selected = []
+            spent = 0
+            for candidate in pool:
+                cost = int(candidate.get("cost") or self._estimate_cost(candidate))
+                if spent + cost > current_points:
+                    continue
+                selected.append(candidate)
+                spent += cost
+                if candidate.get("clears_red"):
+                    break
 
-        current_state, total_bought = self._buy_batch(client, state, selected, turn)
+            if not selected:
+                if total_bought == 0:
+                    self.last_selected = []
+                    self.last_attempt = []
+                    self.last_result = {"skip": "not_enough_points", "points": current_points}
+                break
+
+            self.last_selected = [dict(item) for item in selected]
+
+            current_state, round_bought = self._buy_batch(client, current_state, selected, turn)
+            total_bought += round_bought
+            if round_bought == 0:
+                break
+
+            data = current_state.get("data") or {}
+            current_chara = data.get("chara_info") or data.get("single_mode_chara_light") or {}
+            current_points = int(current_chara.get("skill_point") or 0)
+
         return current_state, total_bought
 
     def final_purchase(
@@ -447,7 +464,7 @@ class SkillBuyer:
                 sid for sid in self.group_to_skill_ids.get(group_id, [])
                 if sid not in owned_skill_ids
             ]
-        
+
         row = {
             "group_id": group_id,
             "tip_rarity": tip_rarity,
@@ -590,10 +607,8 @@ class SkillBuyer:
             self.last_result = {"skip": "preflight_failed", "turn": turn, "points": points}
             return state, 0
 
-        # ponytail: expose in SkillBuyerConfig when per-scenario tuning needed
-        MAX_BATCH = 4  # >4 skills in one gain_skills call → API 217 (resource busy)
         # One gain_skills entry per candidate (main skill_id). Bundled whites prepended.
-        # Chunk by candidates so total_cost stays aligned with remaining SP after each res.
+        # Single call, all candidates — gain_skills is atomic per request either way.
         self.last_attempt = [dict(item) for item in valid_candidates]
         event = {
             "turn": turn,
@@ -604,76 +619,43 @@ class SkillBuyer:
         }
         self.attempt_events.append(event)
 
-        remaining = points
-        remaining_candidates = list(valid_candidates)
-        sent_payload = []
+        payload = []
+        payload_ids = set()
+        for item in valid_candidates:
+            for skill_id in [*(item.get("bundled_skill_ids") or []), item["skill_id"]]:
+                skill_id = int(skill_id or 0)
+                if skill_id > 0 and skill_id not in payload_ids:
+                    payload.append({"skill_id": skill_id, "level": 1})
+                    payload_ids.add(skill_id)
+
+        event["payload"] = payload
+        merged = state
         bought_ids = set()
         failed_ids = set()
-        merged = state
 
-        while remaining_candidates:
-            chunk_items = []
-            chunk_cost = 0
-            for item in remaining_candidates:
-                cost = int(item.get("total_cost") or item.get("cost") or 0)
-                if cost <= 0:
-                    continue
-                if chunk_cost + cost > remaining:
-                    continue
-                if len(chunk_items) >= MAX_BATCH:
-                    break
-                chunk_items.append(item)
-                chunk_cost += cost
-            if not chunk_items:
-                break
-
-            chunk_payload = []
-            chunk_ids = set()
-            for item in chunk_items:
-                for skill_id in [*(item.get("bundled_skill_ids") or []), item["skill_id"]]:
-                    skill_id = int(skill_id or 0)
-                    if skill_id > 0 and skill_id not in chunk_ids:
-                        chunk_payload.append({"skill_id": skill_id, "level": 1})
-                        chunk_ids.add(skill_id)
-            sent_payload.extend(chunk_payload)
-
-            try:
-                res = client.gain_skills(chunk_payload, turn)
-            except Exception as exc:
-                print(f"Skill Purchase Error at turn {turn}: {exc}")
-                if "session fully invalidated" in str(exc) or "no uma_password_hash" in str(exc):
-                    raise
-                if any(code in str(exc) for code in ("201", "205", "208")):
-                    self.recover_after_error = True
-                failed_ids.update(int(item["skill_id"]) for item in chunk_items)
-                # Permanent fail for this chunk — don't re-send same skills.
-                chunk_mains = {int(item["skill_id"]) for item in chunk_items}
-                remaining_candidates = [
-                    item for item in remaining_candidates if int(item["skill_id"]) not in chunk_mains
-                ]
-                continue
-
+        try:
+            res = client.gain_skills(payload, turn)
+        except Exception as exc:
+            print(f"Skill Purchase Error at turn {turn}: {exc}")
+            if "session fully invalidated" in str(exc) or "no uma_password_hash" in str(exc):
+                raise
+            if any(code in str(exc) for code in ("201", "205", "208")):
+                self.recover_after_error = True
+            failed_ids.update(int(item["skill_id"]) for item in valid_candidates)
+        else:
             if res and isinstance(res, dict) and "data" in res:
                 merged = self._merge_state(merged, res)
-                chara = (merged.get("data") or {}).get("chara_info") or {}
-                remaining = int(chara.get("skill_point") or max(0, remaining - chunk_cost))
-            else:
-                remaining = max(0, remaining - chunk_cost)
+            bought_ids.update(int(item["skill_id"]) for item in valid_candidates)
 
-            bought_ids.update(int(item["skill_id"]) for item in chunk_items)
-            chunk_mains = {int(item["skill_id"]) for item in chunk_items}
-            remaining_candidates = [
-                item for item in remaining_candidates if int(item["skill_id"]) not in chunk_mains
-            ]
-
-        event["payload"] = sent_payload
         bought_count = len(bought_ids)
         if bought_count > 0:
+            chara = (merged.get("data") or {}).get("chara_info") or {}
+            remaining = int(chara.get("skill_point") or max(0, points - selected_total_cost))
             self.last_result = {
                 "result": "ok",
                 "turn": turn,
                 "count": bought_count,
-                "payload": sent_payload,
+                "payload": payload,
                 "remaining_sp": remaining,
             }
             event["result"] = self.last_result
@@ -685,18 +667,18 @@ class SkillBuyer:
             self.last_result = {
                 "result": "failed",
                 "turn": turn,
-                "error": "all chunks failed",
-                "payload": sent_payload,
+                "error": "gain_skills call failed",
+                "payload": payload,
             }
         else:
             self.last_result = {
                 "skip": "unaffordable_after_chunk",
                 "turn": turn,
-                "points": remaining,
-                "payload": sent_payload,
+                "points": points,
+                "payload": payload,
             }
         event["result"] = self.last_result
-        return merged if sent_payload else state, 0
+        return merged if payload else state, 0
 
     def _merge_state(self, state, res):
         if res and isinstance(res, dict) and "data" in res:
@@ -718,10 +700,9 @@ class SkillBuyer:
     def _estimate_cost(self, candidate):
         name = candidate.get("name") or ""
         skill_id = candidate.get("skill_id") or 0
-        level = candidate.get("hint_level") or 0
-        
+
         is_circle = any(m in name for m in [MARK_WHITE_CIRCLE, MARK_LARGE_CIRCLE, MOJI_WHITE_CIRCLE, MOJI_LARGE_CIRCLE])
-        
+
         base = self.skill_costs.get(skill_id)
         if not base:
             if is_circle:
@@ -730,4 +711,4 @@ class SkillBuyer:
                 base = 200
             else:
                 base = 200 if self.skill_rarities.get(skill_id, 0) >= 2 else 160
-        return max(1, int(base * (100 - min(level, 5) * 10) / 100))
+        return max(1, int(base))

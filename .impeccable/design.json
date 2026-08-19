@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-06T00:00:00.000Z",
+  "title": "Design System: Sweepy改二",
+  "extensions": {
+    "colorMeta": {
+      "accent-primary": {
+        "role": "primary",
+        "displayName": "Signal Magenta",
+        "canonical": "#ff2da3",
+        "tonalRamp": ["#2b0018", "#4d0029", "#75003f", "#a30057", "#cc1a7c", "#ff2da3", "#ff5cc6", "#ffb3e2"]
+      },
+      "accent-secondary": {
+        "role": "primary",
+        "displayName": "Signal Magenta Bright",
+        "canonical": "#ff5cc6",
+        "tonalRamp": ["#33001f", "#570035", "#7d004d", "#a61a6c", "#d13d94", "#ff5cc6", "#ff8bd8", "#ffc9ec"]
+      },
+      "accent-primary-blue": {
+        "role": "primary",
+        "displayName": "Signal Cyan",
+        "canonical": "#00f2ff",
+        "tonalRamp": ["#00272b", "#004148", "#005e68", "#007e8c", "#00a5b8", "#00cfe3", "#00f2ff", "#a8f9ff"]
+      },
+      "accent-secondary-blue": {
+        "role": "primary",
+        "displayName": "Signal Cyan Bright",
+        "canonical": "#00d4ff",
+        "tonalRamp": ["#00222b", "#003a48", "#005468", "#00718c", "#0095b8", "#00b6e3", "#00d4ff", "#a3edff"]
+      },
+      "bg-start": {
+        "role": "neutral",
+        "displayName": "Pit Black",
+        "canonical": "#0a0012",
+        "tonalRamp": ["#050009", "#0a0012", "#150018", "#231029", "#3a2142", "#584060", "#8b7a91", "#c9c2cd"]
+      },
+      "bg-end": {
+        "role": "neutral",
+        "displayName": "Pit Black Deep Violet",
+        "canonical": "#150018",
+        "tonalRamp": ["#08000a", "#150018", "#24022a", "#3a0d42", "#552260", "#7c4a86", "#ab86b2", "#dccfe0"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Console Slab",
+        "canonical": "#1a1420",
+        "tonalRamp": ["#0d0a10", "#1a1420", "#261e2e", "#372c42", "#4e4159", "#6d5f79", "#9b90a4", "#d2ccd8"]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Recessed Slab",
+        "canonical": "#140f18",
+        "tonalRamp": ["#0a070c", "#140f18", "#1f1826", "#2e2437", "#43364d", "#5f506a", "#8d8097", "#cbc5d0"]
+      },
+      "bg-start-blue": {
+        "role": "neutral",
+        "displayName": "Pit Black (Cyan Identity)",
+        "canonical": "#000814",
+        "tonalRamp": ["#00040a", "#000814", "#001220", "#0a2036", "#1b3550", "#375374", "#6e86a5", "#bcc9dd"]
+      },
+      "bg-end-blue": {
+        "role": "neutral",
+        "displayName": "Pit Navy (Cyan Identity)",
+        "canonical": "#001220",
+        "tonalRamp": ["#000a13", "#001220", "#001e34", "#0a3050", "#1c4870", "#3a6a96", "#7196bb", "#c0d3e4"]
+      },
+      "surface-blue": {
+        "role": "neutral",
+        "displayName": "Console Slab (Cyan Identity)",
+        "canonical": "#0a192f",
+        "tonalRamp": ["#050d18", "#0a192f", "#0d2339", "#153352", "#254970", "#3c6a9a", "#7595bd", "#c2d3e6"]
+      },
+      "surface-2-blue": {
+        "role": "neutral",
+        "displayName": "Recessed Slab (Cyan Identity)",
+        "canonical": "#0d2339",
+        "tonalRamp": ["#06121e", "#0d2339", "#123350", "#1a4468", "#2a6091", "#4784b8", "#7fa9cf", "#c6dbeb"]
+      },
+      "text-main": {
+        "role": "neutral",
+        "displayName": "Instrument White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#26262b", "#3d3d44", "#57575f", "#75757d", "#96969d", "#bcbcc1", "#e0e0e3", "#ffffff"]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Instrument White Dimmed",
+        "canonical": "rgba(255, 255, 255, 0.7)",
+        "tonalRamp": ["rgba(255,255,255,0.12)", "rgba(255,255,255,0.2)", "rgba(255,255,255,0.32)", "rgba(255,255,255,0.45)", "rgba(255,255,255,0.58)", "rgba(255,255,255,0.7)", "rgba(255,255,255,0.85)", "rgba(255,255,255,1)"]
+      },
+      "border-soft": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "rgba(255, 255, 255, 0.1)",
+        "tonalRamp": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.1)", "rgba(255,255,255,0.16)", "rgba(255,255,255,0.24)", "rgba(255,255,255,0.36)", "rgba(255,255,255,0.52)", "rgba(255,255,255,0.72)"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Danger Coral",
+        "canonical": "#ff6b6b",
+        "tonalRamp": ["#2e0808", "#4d0f0f", "#701919", "#992727", "#c94040", "#ff6b6b", "#ff9c9c", "#ffd2d2"]
+      },
+      "alarm": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "#ff4d4d",
+        "tonalRamp": ["#2b0505", "#4a0b0b", "#6d1414", "#961f1f", "#c73333", "#ff4d4d", "#ff8a8a", "#ffcaca"]
+      },
+      "affirm": {
+        "role": "secondary",
+        "displayName": "Affirm Green",
+        "canonical": "#00ff7f",
+        "tonalRamp": ["#00280f", "#00441c", "#00622b", "#00843c", "#00ad51", "#00d668", "#00ff7f", "#a8ffcf"]
+      },
+      "stat-tp": {
+        "role": "tertiary",
+        "displayName": "TP Cyan",
+        "canonical": "#00f2ff",
+        "tonalRamp": ["#00272b", "#004148", "#005e68", "#007e8c", "#00a5b8", "#00cfe3", "#00f2ff", "#a8f9ff"]
+      },
+      "stat-carrots": {
+        "role": "tertiary",
+        "displayName": "Carrot Orange",
+        "canonical": "#ffab40",
+        "tonalRamp": ["#301c02", "#4f2f06", "#71460c", "#9a6115", "#c88022", "#f5a134", "#ffab40", "#ffd9a5"]
+      },
+      "stat-gold": {
+        "role": "tertiary",
+        "displayName": "Gold",
+        "canonical": "#ffd700",
+        "tonalRamp": ["#2e2500", "#4d3e00", "#6f5a00", "#977a00", "#c4a000", "#eec300", "#ffd700", "#ffeb8f"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The SWEEPY改二 wordmark only. Also the theme toggle and hidden dev gate." },
+      "headline": { "displayName": "Headline", "purpose": "Section titles, always preceded by a 0.28rem accent left rule." },
+      "title": { "displayName": "Panel Title", "purpose": "Split-pane panel headers. Smaller than body; tracking carries it." },
+      "body": { "displayName": "Body", "purpose": "Descriptions, helper text, table cells. Sentence case." },
+      "label": { "displayName": "Micro Label", "purpose": "1-2 word uppercase labels above readouts in pills and stat blocks." },
+      "readout": { "displayName": "Readout", "purpose": "Every live server-sourced number: TP, carrots, gold, stats, turn counts, IDs." }
+    },
+    "shadows": [
+      { "name": "accent-bloom", "value": "0 0.5rem 2rem rgba(255, 45, 163, 0.15)", "purpose": "Primary buttons at rest. The button is lit, not raised." },
+      { "name": "focus-bloom", "value": "0 0 1rem rgba(255, 45, 163, 0.15)", "purpose": "The only focus treatment on text inputs, paired with an accent border." },
+      { "name": "container-seat", "value": "0 1rem 3rem rgba(0, 0, 0, 0.25)", "purpose": "Seats panels against the body gradient. Not a lift." },
+      { "name": "chrome-seat", "value": "0 4px 30px rgba(0, 0, 0, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.05)", "purpose": "The navbar, alongside backdrop-filter: blur(20px)." },
+      { "name": "readout-halo", "value": "0 0 10px rgba(0, 242, 255, 0.3)", "purpose": "Text-shadow on resource pill values, tinted to that resource's own color." }
+    ],
+    "motion": [
+      { "name": "transition-speed", "value": "0.2s", "purpose": "The global default duration for all state transitions (--transition-speed)." },
+      { "name": "chrome-snap", "value": "0.1s ease", "purpose": "Faster transition on split-pane chrome (collapse handles) so layout changes feel instant." },
+      { "name": "hover-lift", "value": "translateY(-0.1rem)", "purpose": "The only positional hover change in the system, on primary buttons and pills." },
+      { "name": "idle-float", "value": "2.2s ease-in-out infinite", "purpose": "Loading-screen broom levitation and aura pulse. The one piece of ambient motion." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "520px" },
+      { "name": "narrow", "value": "640px" },
+      { "name": "tablet", "value": "780px" },
+      { "name": "wide", "value": "980px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The workhorse control: transparent fill, accent border, accent text. Used for nearly every action that isn't the one committing action on a surface.",
+      "html": "<button class=\"ds-btn\">CONFIGURE SKILLS</button>",
+      "css": ".ds-btn { border: 0.1rem solid var(--accent-primary, #ff2da3); border-radius: 0.5rem; height: 4rem; padding: 0 2rem; display: inline-flex; align-items: center; justify-content: center; font-family: Inter, system-ui, sans-serif; font-weight: 800; font-size: 1.25rem; text-transform: uppercase; background: transparent; color: var(--accent-primary, #ff2da3); cursor: pointer; transition: all 0.2s; } .ds-btn:hover { background: rgba(255, 45, 163, 0.08); } .ds-btn:focus-visible { outline: 2px solid var(--accent-primary, #ff2da3); outline-offset: -0.2rem; }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single committing action on a surface (LOGIN, RUN CAREER, SAVE DECK). Accent gradient with a resting accent bloom.",
+      "html": "<button class=\"ds-btn-primary\">RUN CAREER</button>",
+      "css": ".ds-btn-primary { border: none; border-radius: 0.5rem; height: 4rem; padding: 0 2rem; display: inline-flex; align-items: center; justify-content: center; font-family: Inter, system-ui, sans-serif; font-weight: 800; font-size: 1.25rem; text-transform: uppercase; background: linear-gradient(135deg, var(--accent-primary, #ff2da3), var(--accent-secondary, #ff5cc6)); color: #fff; box-shadow: 0 0.5rem 2rem rgba(255, 45, 163, 0.15); cursor: pointer; transition: all 0.2s; } .ds-btn-primary:hover { filter: brightness(1.1); transform: translateY(-0.1rem); } .ds-btn-primary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Small Button",
+      "kind": "button",
+      "refersTo": "button-sm",
+      "description": "Compact outline variant for in-panel and navbar actions. Auto width, 2.2rem tall.",
+      "html": "<button class=\"ds-btn-sm\">REFRESH</button>",
+      "css": ".ds-btn-sm { border: 0.1rem solid var(--accent-primary, #ff2da3); border-radius: 0.5rem; height: 2.2rem; padding: 0 1.25rem; display: inline-flex; align-items: center; justify-content: center; font-family: Inter, system-ui, sans-serif; font-weight: 800; font-size: 0.85rem; text-transform: uppercase; background: transparent; color: var(--accent-primary, #ff2da3); cursor: pointer; transition: all 0.2s; } .ds-btn-sm:hover { background: rgba(255, 45, 163, 0.08); } .ds-btn-sm:focus-visible { outline: 2px solid var(--accent-primary, #ff2da3); outline-offset: -0.2rem; }"
+    },
+    {
+      "name": "Soft Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger-soft",
+      "description": "Reversible destructive action (CLEAR, REMOVE VISIBLE). Coral tint at 12% alpha with coral text. The harder .btn-danger gradient is reserved for irreversible commits.",
+      "html": "<button class=\"ds-btn-danger-soft\">CLEAR BLACKLIST</button>",
+      "css": ".ds-btn-danger-soft { border: 0.1rem solid rgba(255, 107, 107, 0.72); border-radius: 0.5rem; height: 2.2rem; padding: 0 1.25rem; display: inline-flex; align-items: center; justify-content: center; font-family: Inter, system-ui, sans-serif; font-weight: 800; font-size: 0.85rem; text-transform: uppercase; background: rgba(255, 107, 107, 0.12); color: #ff6b6b; cursor: pointer; transition: all 0.2s; } .ds-btn-danger-soft:hover { background: rgba(255, 107, 107, 0.2); border-color: #ff6b6b; } .ds-btn-danger-soft:focus-visible { outline: 2px solid #ff6b6b; outline-offset: -0.2rem; }"
+    },
+    {
+      "name": "Form Field",
+      "kind": "input",
+      "refersTo": "form-input",
+      "description": "Primary text field. Accent uppercase label above, recessed dark well below. Focus turns the border accent and adds a bloom.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-f1\">VIEWER ID</label><input class=\"ds-field-input\" id=\"ds-f1\" type=\"text\" placeholder=\"000000000\" /></div>",
+      "css": ".ds-field { display: block; font-family: Inter, system-ui, sans-serif; } .ds-field-label { display: block; font-size: 0.85rem; font-weight: 800; color: var(--accent-primary, #ff2da3); margin-bottom: 0.6rem; letter-spacing: 0.1rem; text-transform: uppercase; } .ds-field-input { background: var(--surface-2, #140f18); color: #fff; border: 0.1rem solid rgba(255, 255, 255, 0.1); border-radius: 0.5rem; width: 100%; padding: 1rem 1.25rem; font-size: 1.1rem; font-family: inherit; outline: none; transition: border-color 0.2s, box-shadow 0.2s; } .ds-field-input::placeholder { color: rgba(255, 255, 255, 0.35); } .ds-field-input:focus { border-color: var(--accent-primary, #ff2da3); box-shadow: 0 0 1rem rgba(255, 45, 163, 0.15); }"
+    },
+    {
+      "name": "Filter Input",
+      "kind": "input",
+      "refersTo": "filter-input",
+      "description": "Compact in-panel filter control at 0.8rem. Same focus behavior as the form field but with no bloom.",
+      "html": "<input class=\"ds-input-filter\" type=\"text\" placeholder=\"Filter skills…\" />",
+      "css": ".ds-input-filter { background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.35rem; color: #fff; padding: 0.35rem 0.5rem; font-size: 0.8rem; font-family: Inter, system-ui, sans-serif; outline: none; transition: border-color 0.2s; } .ds-input-filter::placeholder { color: rgba(255, 255, 255, 0.42); } .ds-input-filter:focus { border-color: var(--accent-primary, #ff2da3); }"
+    },
+    {
+      "name": "Section Title",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The system's signature: a heavy uppercase headline marked by a 0.28rem accent left rule. The rule is part of the type, not the container.",
+      "html": "<h2 class=\"ds-section-title\">PRESET CONFIGURATION</h2>",
+      "css": ".ds-section-title { border-left: 0.28rem solid var(--accent-primary, #ff2da3); padding-left: 0.8rem; margin: 0 0 1rem; font-family: Inter, system-ui, sans-serif; font-size: 1.25rem; text-transform: uppercase; font-weight: 900; line-height: 1; color: #fff; }"
+    },
+    {
+      "name": "Account Pill",
+      "kind": "custom",
+      "refersTo": "account-pill",
+      "description": "The live resource readout in the navbar. Colored 3px left border, micro uppercase label, mono 900 value in the resource's own color with a matching halo. The system's thesis in one component.",
+      "html": "<div class=\"ds-pill ds-pill-tp\"><span class=\"ds-pill-label\">TP</span><strong>148</strong></div>",
+      "css": ".ds-pill { display: inline-flex; flex-direction: column; justify-content: center; height: 3rem; padding: 0 1rem; background: rgba(255, 255, 255, 0.03); border-left: 3px solid rgba(255, 255, 255, 0.1); position: relative; font-family: Inter, system-ui, sans-serif; transition: all 0.2s; } .ds-pill::after { content: \"\"; position: absolute; bottom: 0; left: 0; width: 100%; height: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), transparent); } .ds-pill:hover { background: rgba(255, 255, 255, 0.05); transform: translateY(-1px); } .ds-pill-label { font-size: 0.55rem; font-weight: 900; color: rgba(255, 255, 255, 0.7); letter-spacing: 0.1rem; text-transform: uppercase; margin-bottom: 0.1rem; } .ds-pill strong { font-size: 1.1rem; font-weight: 900; font-family: \"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1; } .ds-pill-tp { border-left-color: #00f2ff; text-shadow: 0 0 10px rgba(0, 242, 255, 0.3); } .ds-pill-tp strong { color: #00f2ff; }"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "The container on secondary surfaces. Accent eyebrow naming what kind of truth the panel shows, then an h2. Flat, hairline-bordered, seated by shadow rather than lifted.",
+      "html": "<section class=\"ds-panel\"><p class=\"ds-eyebrow\">Server truth</p><h2 class=\"ds-panel-h\">Active Run</h2><p class=\"ds-panel-body\">No run in progress.</p></section>",
+      "css": ".ds-panel { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; background: rgba(26, 20, 32, 0.9); box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.25); padding: 1.5rem; font-family: Inter, system-ui, sans-serif; color: #fff; } .ds-eyebrow { margin: 0 0 0.25rem; color: var(--accent-primary, #ff2da3); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; } .ds-panel-h { margin: 0 0 0.75rem; font-size: 1.25rem; font-weight: 900; } .ds-panel-body { margin: 0; color: rgba(255, 255, 255, 0.7); font-size: 0.95rem; line-height: 1.5; }"
+    },
+    {
+      "name": "Navbar",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Fixed 4.8rem chrome bar: wordmark left, state-revealed uppercase route buttons right, blurred backdrop, accent-at-20% bottom border.",
+      "html": "<header class=\"ds-navbar\"><h1 class=\"ds-title\">SWEEPY<span>改二</span></h1><nav class=\"ds-nav-actions\"><button class=\"ds-btn-sm\">DASHBOARD</button><button class=\"ds-btn-sm\">DAILIES</button></nav></header>",
+      "css": ".ds-navbar { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 4.8rem; padding: 0 2rem; border-bottom: 2px solid rgba(255, 45, 163, 0.2); background: linear-gradient(90deg, rgba(10, 0, 20, 0.9) 0%, rgba(20, 0, 30, 0.8) 50%, rgba(10, 0, 20, 0.9) 100%); backdrop-filter: blur(20px); box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.05); font-family: Inter, system-ui, sans-serif; } .ds-title { font-size: 1.5rem; letter-spacing: 0.4rem; color: var(--accent-primary, #ff2da3); font-weight: 900; text-transform: uppercase; user-select: none; cursor: pointer; margin: 0; transition: filter 0.2s; } .ds-title:hover { filter: brightness(1.12); } .ds-title span { display: inline-block; color: #fff; opacity: 0.9; margin-left: 0.5rem; } .ds-nav-actions { display: flex; gap: 0.45rem; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Neon Pit Wall",
+    "overview": "Sweepy looks like the telemetry desk of a race team working in a dark garage. The room is nearly black with a violet cast; everything that matters is a lit readout on that black. Hot magenta is the instrument light — it draws every border that carries meaning, every section marker, every field label — and the numbers themselves are set in mono at heavy weight so they hold their shape from across the desk. Nothing here is trying to be calm. It is trying to be legible while glowing.\n\nThe system serves two viewing distances at once, and that tension explains most of its choices. Up close, during configuration, the interface is unapologetically dense: multi-column grids, tiny 0.55rem uppercase labels, collapsible sections stacked deep. At two meters, during a run, only the lit things survive — the accent-bordered section rules, the mono stat readouts in their color-coded pills, the state badges. Density and glow are not decoration fighting each other; the glow is the triage layer that makes density survivable at distance.\n\nType is uppercase and heavy nearly everywhere structural (900 weight, wide tracking), which reads less as branding than as instrument panel: labels are stamped, not written. Depth never comes from realistic shadow. Surfaces are flat planes separated by hairline white borders at 10% opacity, and where something needs to sit forward it emits rather than lifts. The palette exists in two peer identities: magenta (default) and cyan (.theme-blue, toggled from the title). They are not light/dark modes — structure, type, spacing, and depth are identical; only the accent and background variables swap.",
+    "keyCharacteristics": [
+      "Near-black violet ground (#0a0012 → #150018), never a neutral gray",
+      "One hot accent doing all structural signalling; hairline white borders doing all separation",
+      "Uppercase 900-weight Inter for structure, JetBrains Mono for every number",
+      "Depth as luminosity: accent-tinted glow, never neutral drop shadow",
+      "Domain colors (TP cyan, carrots orange, gold) that are semantic, not decorative",
+      "Two peer accent identities behind one unchanged structure"
+    ],
+    "rules": [
+      { "name": "The Instrument Light Rule", "body": "The accent is a structural marker, not an emphasis tool. It draws borders, rules, and labels. It never fills a large surface — the only accent fills in the system are the primary button gradient and sub-15% alpha tints.", "section": "colors" },
+      { "name": "The Fixed Economy Rule", "body": "TP cyan, carrot orange, and gold are game-economy identities and stay literal in both themes. They are the one place hardcoded hex is correct. (Known collision: under .theme-blue the accent equals TP cyan exactly — the account strip loses its distinction. Live with it or shift TP; do not fix it by theming the resource colors.)", "section": "colors" },
+      { "name": "The Never-Color-Alone Rule", "body": "Status is read from two meters away by someone who may be looking at a second monitor. Every green/red state carries a word, glyph, or position as well as its hue.", "section": "colors" },
+      { "name": "The Mono-Means-Live Rule", "body": "If it's monospace, it came from the server and can change without you touching anything. Never set static copy in mono; never set a live value in Inter.", "section": "typography" },
+      { "name": "The Stamped Label Rule", "body": "Structural labels are uppercase, 800–900 weight, and tracked out. Sentence-case appears only in body copy and helper text. A sentence-case section title is a bug.", "section": "typography" },
+      { "name": "The Glow-Not-Lift Rule", "body": "Interactive depth is emitted, never cast. Hover and focus add accent luminosity (filter: brightness(1.1), translateY(-0.1rem), accent box-shadow); they do not add a neutral shadow. A gray drop shadow on an interactive element is foreign to this system.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do put every live, server-sourced number in JetBrains Mono at 900. The Mono-Means-Live Rule is how the operator distinguishes data from chrome at a glance.",
+      "Do mark structure with the accent left rule (border-left: 0.28rem solid var(--accent-primary) on section titles, 3px colored on pills). It is the system's signature.",
+      "Do define elements by edge and glow rather than fill. Hairline border-soft for separation, accent border for meaning.",
+      "Do reach for .btn outline by default and reserve .btn-primary for the single committing action on a surface.",
+      "Do keep structural labels uppercase, 800–900, and tracked out.",
+      "Do pair every status color with a word or glyph — the second monitor is two meters away.",
+      "Do route new colors through --accent-* / --surface-* variables so .theme-blue keeps working. Both themes are peers."
+    ],
+    "donts": [
+      "Don't add neutral gray drop shadows to interactive elements. Depth is emitted here, not cast.",
+      "Don't theme the resource colors (TP cyan, carrot orange, gold). They are game-economy identities and stay literal in both palettes.",
+      "Don't fill large surfaces with the accent. Above roughly 15% alpha, magenta belongs only in the primary button gradient.",
+      "Don't introduce a third text tier. text-main and text-muted, then opacity.",
+      "Don't use a flat neutral gray or pure #000 ground — the violet cast in #0a0012 is what keeps the magenta from vibrating.",
+      "Don't set a section title in sentence case, or a live stat in Inter. Both read as broken instrumentation.",
+      "Don't add a build step to keep a style working. The system is hand-authored CSS with no bundler by construction."
+    ]
+  }
+}

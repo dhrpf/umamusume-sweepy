@@ -415,6 +415,170 @@ class TestUmaLogin(unittest.TestCase):
     @patch('uma_api.client.pack', return_value=b'body')
     @patch('uma_api.client.requests.Session')
     @patch('uma_api.client.unpack')
+    def test_call_refreshes_steam_ticket_on_394(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        """394/390 = the steam_session_ticket in common() expired.
+
+        tool/start_session never validates the ticket, so replaying
+        regen_sid + start_session + load/index loops forever. Only a fresh
+        get_ticket() clears it — same escalation as 501.
+        """
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 394}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 111}, "data": {}},
+        ]
+
+        res = client.call("load/index", {"adid": ""})
+
+        self.assertEqual(res["data_headers"]["result_code"], 1)
+        client._refresh_ticket_and_login.assert_called_once_with()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_refreshes_steam_ticket_on_390(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 390}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 111}, "data": {}},
+        ]
+
+        res = client.call("load/index", {"adid": ""})
+
+        self.assertEqual(res["data_headers"]["result_code"], 1)
+        client._refresh_ticket_and_login.assert_called_once_with()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_relogins_on_201_session_expired(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        """201 fires when the session aged out — independent training idles for
+        hours between runs. Callers used to bubble it up as a plain error and
+        retry the same endpoint forever without ever re-authenticating."""
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 201}, "data": {}},
+            {"data_headers": {"result_code": 1, "viewer_id": 111}, "data": {}},
+        ]
+
+        res = client.call("pre_single_mode/index", {})
+
+        self.assertEqual(res["data_headers"]["result_code"], 1)
+        client._refresh_ticket_and_login.assert_called_once_with()
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_201_gives_up_after_one_relogin(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        from uma_api.client import StateRecoveryError
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 201}, "data": {}},
+            {"data_headers": {"result_code": 201}, "data": {}},
+        ]
+
+        with self.assertRaises(StateRecoveryError) as ctx:
+            client.call("pre_single_mode/index", {})
+
+        self.assertIn("201", str(ctx.exception))
+        self.assertEqual(client._refresh_ticket_and_login.call_count, 1)
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.get_ticket', return_value=(76561198141605647, 'fresh-ticket'))
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_ticket_refresh_does_not_recurse_when_relogin_also_fails(
+        self, mock_unpack_func, mock_session_cls, _mock_get_ticket, _mock_pack,
+    ):
+        """The relogin inside _refresh_ticket_and_login issues load/index itself.
+        If that also answers 394 the handler must not refresh the ticket again —
+        otherwise every failure mints a Steam ticket one stack frame deeper."""
+        import json as _json
+        from uma_api.client import StateRecoveryError
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        mock_unpack_func.return_value = {"data_headers": {"result_code": 394}, "data": {}}
+
+        with TemporaryDirectory() as tmp_dir:
+            cache = Path(tmp_dir) / "auth_cache.json"
+            cache.write_text(
+                _json.dumps({
+                    "viewer_id": 111,
+                    "steam_username": "test_user",
+                    "steam_password_seed": "seed",
+                }),
+                encoding="utf-8",
+            )
+            with patch("uma_api.client.runtime_output_root", return_value=Path(tmp_dir)):
+                with patch.object(UmaClient, "read_info", lambda _self: None):
+                    with self.assertRaises(StateRecoveryError):
+                        client.call("load/index", {"adid": ""})
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
+    def test_call_394_gives_up_after_one_ticket_refresh(self, mock_unpack_func, mock_session_cls, _mock_pack):
+        """A fresh ticket that still 394s is not recoverable — surface it as
+        StateRecoveryError instead of minting tickets in a loop."""
+        from uma_api.client import StateRecoveryError
+
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+        mock_response = MagicMock(status_code=200, text="dummy_response_text")
+        mock_session.post = MagicMock(return_value=mock_response)
+
+        self.cfg.update({"viewer_id": 111, "auth_key": "66616b655f617574685f6b6579"})
+        client = UmaClient(self.cfg, trace_enabled=False)
+        client._refresh_ticket_and_login = MagicMock()
+        mock_unpack_func.side_effect = [
+            {"data_headers": {"result_code": 394}, "data": {}},
+            {"data_headers": {"result_code": 394}, "data": {}},
+        ]
+
+        with self.assertRaises(StateRecoveryError) as ctx:
+            client.call("load/index", {"adid": ""})
+
+        self.assertIn("394", str(ctx.exception))
+        self.assertEqual(client._refresh_ticket_and_login.call_count, 1)
+
+    @patch('uma_api.client.pack', return_value=b'body')
+    @patch('uma_api.client.requests.Session')
+    @patch('uma_api.client.unpack')
     def test_login_fails_fast_when_start_session_501_has_no_transition_hash(self, mock_unpack_func, mock_session_cls, _mock_pack):
         mock_session = MagicMock()
         mock_session_cls.return_value = mock_session
@@ -645,6 +809,35 @@ class TestUmaLogin(unittest.TestCase):
         assert main.refresh_index_state(client) == {"data": {"tp_info": {"current_tp": 30}}}
         assert [call[0] for call in client.calls] == ["regen_sid", "tool/start_session", "load/index"]
         assert client.refreshed == {"tp_info": {"current_tp": 30}}
+
+    def test_refresh_index_state_surfaces_394_without_replaying_the_sequence(self):
+        """394 means the steam ticket expired, not that the server is busy.
+
+        start_session keeps answering result_code 1 while load/index bounces, so
+        replaying regen_sid + start_session + load/index here can never clear it —
+        UmaClient.call already regenerated the ticket and retried before raising.
+        """
+        import main
+
+        class Client:
+            def __init__(self):
+                self.calls = []
+
+            def regen_sid(self):
+                self.calls.append("regen_sid")
+
+            def call(self, endpoint, payload):
+                self.calls.append(endpoint)
+                if endpoint == "load/index":
+                    raise Exception("API error 394 on load/index: steam ticket stale")
+                return {"data": {}}
+
+        client = Client()
+        with self.assertRaises(Exception) as ctx:
+            main.refresh_index_state(client, max_retries=3)
+
+        assert "394" in str(ctx.exception)
+        assert client.calls == ["regen_sid", "tool/start_session", "load/index"]
 
     def test_client_proxy_applied(self):
         self.cfg["proxy_url"] = "socks5://127.0.0.1:1080"

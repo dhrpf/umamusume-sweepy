@@ -174,6 +174,31 @@ class CareerObjectiveResolver:
             }
         return routes
 
+    def specific_race_objectives(self, chara_id):
+        routes = [
+            route for route in self.routes.values()
+            if int(route.get("scenario_id") or 0) == 0
+            and int(route.get("chara_id") or 0) == int(chara_id or 0)
+        ]
+        if not routes:
+            return []
+        route = min(
+            routes,
+            key=lambda row: (
+                -int(row.get("priority") or 0),
+                int(row.get("route_id") or 0),
+            ),
+        )
+        return sorted(
+            (
+                ObjectiveDefinition.from_dict(row)
+                for row in (route.get("objectives") or [])
+                if int(row.get("target_type") or 0) == 1
+                and int(row.get("condition_type") or 0) == 1
+            ),
+            key=lambda item: (item.sort_id, item.objective_id),
+        )
+
     def route_objectives(self, state):
         data = (state or {}).get("data") or {}
         chara = data.get("chara_info") or {}

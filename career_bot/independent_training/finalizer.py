@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 
 from .factors import choose_factor_candidate, normalize_factor_candidates
@@ -70,18 +71,37 @@ class IndependentFinalizer:
         current_turn = int(chara.get("turn") or 0)
 
         if not progress.get("skills_completed"):
-            priority_rows = sorted(
-                setup.get("priority_skill_array") or [],
-                key=lambda row: int(row.get("priority") or 0),
-            )
-            state, bought = self.skill_buyer.final_purchase(
-                self.client,
-                {"data": {"chara_info": chara}},
-                priority_skill_ids=[
-                    int(row.get("skill_id") or 0) for row in priority_rows
-                ],
-                running_style=int(setup.get("running_style") or 0),
-            )
+            result_response = self.client.independent_training_result()
+            fresh_chara = (
+                ((result_response or {}).get("data") or {}).get("end_info") or {}
+            ).get("chara_info") or {}
+            if fresh_chara:
+                chara = _minimal_chara(fresh_chara)
+                current_turn = int(chara.get("turn") or current_turn)
+                current = self.store.update_finalization(
+                    current["run_id"],
+                    current["version"],
+                    {"chara_info": chara},
+                )
+                progress = current.get("finalization") or {}
+
+            pacing = getattr(self.client, "independent_skill_pacing", None)
+            with (pacing() if callable(pacing) else nullcontext()):
+                state, bought = self.skill_buyer.final_purchase(
+                    self.client,
+                    {"data": {"chara_info": chara}},
+                    priority_skill_ids=[
+                        int(skill_id)
+                        for skill_id in setup.get("final_skill_ids") or []
+                    ],
+                    running_style=int(setup.get("running_style") or 0),
+                )
+            if bought == 0 and self.skill_buyer.last_result.get("result") == "failed":
+                raise RuntimeError(
+                    "skill purchase attempt failed: "
+                    f"{self.skill_buyer.last_result.get('error')}"
+                )
+
             updated_chara = (
                 (state.get("data") or {}).get("chara_info")
                 or chara

@@ -1,0 +1,112 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="http://127.0.0.1:8971/styles.css">
+<style>body{padding:0;margin:0}</style></head>
+<body class="dashboard-mode"><div id="app">
+<div id="dailies-view" class="dailies-page" >
+                <div class="dailies-shell">
+                    <header class="dailies-header">
+                        <div class="dailies-headline">
+                            <h2 class="dashboard-section-title">DAILIES</h2>
+                            <p class="dailies-sub">Run routine account content without opening each game screen.</p>
+                        </div>
+                        <div class="dailies-actions">
+                            <span id="dailies-live" class="dailies-live paused"><span class="dailies-live-dot"></span><span id="dailies-live-text">Idle</span></span>
+                            <button id="dailies-run" class="btn btn-primary" type="button">RUN DAILIES</button>
+                            <button id="dailies-stop" class="btn btn-sm btn-danger" type="button" >STOP</button>
+                        </div>
+                    </header>
+
+                    <div class="dailies-body">
+                        <section class="dailies-routine" aria-label="Run order">
+                            <h3 class="dailies-panel-title">RUN ORDER</h3>
+                            <ol class="daily-steps">
+                                <li class="daily-step">
+                                    <label class="daily-step-head">
+                                        <input id="daily-team-trials" type="checkbox" checked>
+                                        <span class="daily-step-name">TEAM TRIALS</span>
+                                    </label>
+                                    <p class="daily-step-note">Race until RP is spent, skipping all five rounds.</p>
+                                    <select id="daily-opponent" class="filter-select daily-step-field" aria-label="Team Trials opponent">
+                                        <option value="1">Strongest opponent</option>
+                                        <option value="2">Middle opponent</option>
+                                        <option value="3">Weakest opponent</option>
+                                    </select>
+                                </li>
+                                <li class="daily-step">
+                                    <label class="daily-step-head">
+                                        <input id="daily-daily-races" type="checkbox">
+                                        <span class="daily-step-name">DAILY RACES</span>
+                                    </label>
+                                    <p class="daily-step-note">Run today's available race up to the daily cap. Needs a racer.</p>
+                                </li>
+                                <li class="daily-step">
+                                    <label class="daily-step-head">
+                                        <input id="daily-legend-races" type="checkbox">
+                                        <span class="daily-step-name">LEGEND RACE</span>
+                                    </label>
+                                    <p class="daily-step-note">Run one Daily Legend Race boss. Needs a racer.</p>
+                                    <select id="daily-legend-id" class="filter-select daily-step-field" aria-label="Legend Race boss">
+                                        <option value="0">Loading available bosses…</option>
+                                    </select>
+                                </li>
+                                <li class="daily-step">
+                                    <label class="daily-step-head">
+                                        <input id="daily-shop" type="checkbox">
+                                        <span class="daily-step-name">DAILY SHOP</span>
+                                    </label>
+                                    <p class="daily-step-note">Buy daily-reset goods with gold only, cheapest first.</p>
+                                </li>
+                            </ol>
+                        </section>
+
+                        <section id="dailies-racer" class="dailies-racer" aria-label="Racer for daily and legend races">
+                            <div class="dailies-racer-head">
+                                <h3 class="dailies-panel-title">RACER</h3>
+                                <input id="daily-racer-search" class="filter-input daily-racer-search" type="search" placeholder="Filter by name or skill" aria-label="Filter racers">
+                            </div>
+                            <p id="daily-racer-hint" class="daily-racer-hint">Daily and Legend races are off — no racer needed.</p>
+                            <div id="daily-racer-pick" class="daily-racer-pick" role="radiogroup" aria-label="Racer">
+                                <div class="console-empty">Loading veterans…</div>
+                            </div>
+                            <input id="daily-veteran" type="hidden" value="0">
+                        </section>
+                    </div>
+
+                    <section class="dailies-console" aria-label="Dailies log">
+                        <div class="dailies-console-head">
+                            <h3 class="dailies-panel-title">LOG</h3>
+                            <span id="dailies-task" class="dailies-task"></span>
+                        </div>
+                        <div id="dailies-log" class="dailies-log">
+                            <div class="console-empty">Select tasks above and press Run Dailies.</div>
+                        </div>
+                    </section>
+                </div>
+            </div></div>
+<script>
+const A={1:'G',2:'F',3:'E',4:'D',5:'C',6:'B',7:'A',8:'S'};
+function cell(l,g){const v=+g||0,t=v>=7?'top':v>=5?'mid':'low';return `<span class="apt-cell t-${t}"><b>${l}</b><i>${A[v]||'–'}</i></span>`}
+const vets=[
+ {n:'Racer Alpha',r:'A+',s:18420,st:[1180,742,905,613,701],ap:{turf:8,dirt:3,sprint:5,mile:7,medium:8,long:6},sty:['PACE','A']},
+ {n:'Racer Beta With A Very Long Name',r:'B',s:14903,st:[980,1020,655,720,588],ap:{turf:6,dirt:7,sprint:2,mile:4,medium:7,long:8},sty:['END','S']},
+ {n:'Racer Gamma',r:'C+',s:9120,st:[705,540,802,470,655],ap:{turf:7,dirt:2,sprint:8,mile:6,medium:3,long:1},sty:['FRONT','B']},
+ {n:'Racer Delta',r:'S',s:22011,st:[1240,1105,988,840,912],ap:{turf:8,dirt:5,sprint:4,mile:8,medium:8,long:7},sty:['LATE','A']},
+];
+const SU=[['turf','TURF'],['dirt','DIRT']],DI=[['sprint','SPR'],['mile','MILE'],['medium','MED'],['long','LONG']];
+document.getElementById('daily-racer-pick').innerHTML=vets.map((v,ix)=>`
+<button type="button" role="radio" aria-checked="${ix===0}" class="racer-card${ix===0?' selected':''}" data-racer-id="${ix}">
+<img class="racer-art" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23331b3d'/%3E%3C/svg%3E" alt="">
+<span class="racer-id"><span class="racer-name">${v.n}</span>
+<span class="racer-meta"><em class="racer-rank">${v.r}</em><i>${v.s.toLocaleString()}</i></span></span>
+<span class="racer-style"><b>WILL RACE</b><i>${v.sty[0]} ${v.sty[1]}</i></span>
+<span class="racer-stats">${['SPD','STA','PWR','GUT','WIT'].map((l,k)=>`<span class="racer-stat"><b>${l}</b><i>${v.st[k]}</i></span>`).join('')}</span>
+<span class="racer-apt"><span class="apt-run">${SU.map(([k,l])=>cell(l,v.ap[k])).join('')}</span><span class="apt-run">${DI.map(([k,l])=>cell(l,v.ap[k])).join('')}</span></span>
+</button>`).join('');
+document.getElementById('daily-racer-hint').textContent='Sweepy races the style with this uma’s highest aptitude — shown on each card.';
+document.getElementById('daily-daily-races').checked=true;
+document.getElementById('dailies-log').innerHTML=[['12:04:01','Team Trials: round 3/5 cleared','info'],['12:04:22','Daily race entry rejected, retrying','warning'],['12:05:10','Legend boss defeated','info'],['12:05:44','Shop: gold insufficient for slot 4','error']].map(([t,m,l])=>`<div class="daily-log-line lvl-${l}"><span class="daily-log-time">${t}</span><span>${m}</span></div>`).join('');
+document.getElementById('dailies-task').textContent='TEAM TRIALS';
+document.getElementById('dailies-live').className='dailies-live';
+document.getElementById('dailies-live-text').textContent='Running';
+document.getElementById('dailies-legend-id').innerHTML='<option>Boss — Legend Tier 3</option>';
+</script></body></html>

@@ -58,7 +58,7 @@ Countdowns in the UI are derived from the server-provided end time. They are dis
 
 The dashboard does not offer an account selector. It resolves the account from the existing active dashboard session and displays the account name read-only.
 
-The Independent Training executor acquires the existing durable per-account workflow lease using workflow type `independent_training`. Career, Campaign, Dailies, and Independent Training therefore cannot mutate the same account concurrently. A conflict returns HTTP 409 with the workflow currently holding the lease.
+The Independent Training executor acquires the existing durable per-account workflow lease using workflow type `independent_training`. Normal Career and Campaign execution cannot overlap with Independent Training and return HTTP 409 on conflict. Dailies may run while the server processes an Independent Training run because they do not mutate career state. Both workers share the bound `UmaClient`, whose complete `call()` transaction is serialized so SID regeneration and cached session state cannot race across threads.
 
 The service may have many queued snapshots but at most one active server run. Queue approval occurs once when the user starts the queue; subsequent snapshots start automatically without per-run approval.
 
@@ -80,17 +80,19 @@ Each queued run stores a complete immutable snapshot with these fields:
 - `difficulty_id`, `difficulty`, and `is_boost`
 - `boost_story_event_id`
 - `training_policy_ground_type`
-- `training_policy_param_rate_set_id`
-- ordered `priority_skill_array`
-- ordered `race_array` entries containing `year` and `program_id`
-- `use_tp`, defaulting to the server-supported Independent Training cost
+- `training_policy_param_rate_set_id`, restricted to `1` (Balanced), `2` (Stamina), or `3` (Sprint)
+- ordered `priority_skill_array`, chosen by skill name and sent only to the Independent Training server policy
+- ordered `final_skill_ids`, chosen separately by skill name for optional final purchase
+- ordered `race_array` entries containing `year` and `program_id`, derived from the Dashboard visual race planner rather than entered as raw IDs
 - `factor_reroll`, containing:
   - `enabled`, default `false`
   - ordered `targets`, each containing normalized spark `category`, `name`, and `minimum_stars`
 
 When factor reroll is enabled, at least one valid target is required. Targets describe only the newly trained veteran's own generated factors, not inherited parent or full-lineage totals. For example, an Aptitude target of `Dirt >= 2` matches only when the candidate factor result contains a Dirt spark worth at least two stars.
 
-Selection validation reuses the existing Career start constraints where applicable: distinct support cards, a valid friend support, valid parent pairing, and no trainee/parent identity conflict. Independent-only fields are additionally range-checked and unknown keys are rejected.
+Selection validation reuses the existing Career start constraints where applicable: distinct support cards, a valid friend support from the current private Dashboard session, valid parent pairing, and no trainee/parent identity conflict. Independent-only fields are additionally range-checked and unknown keys are rejected. Friend viewer IDs remain in page memory and the protected queue snapshot only; the browser never persists them.
+
+The normal Independent Training TP cost is runtime state, not part of the immutable setup. Immediately before each start, Sweepy reads the base cost from the latest `load/index` response at `common_define.single_mode_trainer_point_use_value`, reads authoritative time from the latest response `data_headers.servertime`, and queries configured `master.mdb.campaign_data` for an active row with `target_type = 1` and `effect_type_1 = 4`. An active row's `effect_value_1` replaces the base cost; otherwise the base cost is used. A missing base cost, missing/inaccessible campaign table, invalid campaign value, or missing authoritative server time blocks the start before TP recovery or the mutating request. The resolved cost is recalculated for every queued run and passed as `use_tp`, so a queue remains correct across campaign start/end boundaries. The dashboard displays the latest detected value read-only; it does not offer a manual TP-cost field.
 
 Changing the form after runs are queued affects only future queue additions. Existing snapshots remain unchanged.
 
@@ -155,7 +157,7 @@ On process recovery:
 
 ## Finalization policy
 
-Independent Training's priority skills guide server training and are also placed first during final skill purchase. Remaining affordable skills are selected by the existing safe skill-buying rules, without loading a Career Preset. Invalid or overspending skill payloads are not blindly retried.
+Independent Training's ordered `priority_skill_array` guides only the server-run 50-minute training. It is not a purchase list. The separate ordered `final_skill_ids` controls optional final skill purchase through the existing safe skill-buying rules, without loading a Career Preset. An empty final list skips explicit purchase priorities, and invalid or overspending skill payloads are not blindly retried.
 
 Factor finalization follows the captured scenario-specific sequence:
 
@@ -211,7 +213,7 @@ The page follows the existing Sweepy navigation and vanilla-JS conventions.
 ### Main sections
 
 1. **Active run** — trainee, scenario, server start/end time, countdown, state, and next action.
-2. **Independent Setup** — trainee, lineage, deck/friend, scenario/running style, training policy, priority skills, race agenda, and a Factor reroll subsection. The subsection has an off-by-default toggle, target rows such as `Aptitude / Dirt / >= 2 stars`, and a warning that a reroll may consume 30 additional TP but can occur only once per run.
+2. **Independent Setup** — trainee, lineage, saved deck, selectable friend support from the Dashboard session, scenario/running style, training policy, named Independent priority skills, separately named final-purchase skills, the Dashboard's visual race planner and saved schedules, and a Factor reroll subsection. Technical friend, skill, and race IDs stay out of the user-facing controls. The subsection has an off-by-default toggle, target rows such as `Aptitude / Dirt / >= 2 stars`, and a warning that a reroll may consume 30 additional TP but can occur only once per run.
 3. **Add runs** — repeat count and TP mode; previews how many snapshots will be appended.
 4. **Queue** — ordered snapshots with compact setup summary and removal for queued items.
 5. **Recent results** — completion time, veteran identity, grade/rank score when available, final stats, SP, and failure summary.
@@ -222,10 +224,22 @@ The UI polls the local status endpoint no faster than every five seconds. It nev
 
 - A permanent validation or pre-start error marks only the affected run `FAILED` and stops automatic progression.
 - A network/transient API failure follows existing `UmaClient.call()` recovery. If the result of a mutating operation is ambiguous, the run becomes `NEEDS_ATTENTION`.
-- An active normal Career or Campaign blocks queue start without modifying either workflow.
-- Insufficient TP follows the selected queue policy.
+- An active normal Career or Campaign blocks queue start without modifying either workflow; Dailies may overlap safely through serialized client calls.
+- Insufficient TP follows the selected queue policy using the runtime-resolved per-run cost.
 - Runtime/server mismatch never force-deletes the server career.
 - Browser refresh and duplicate button presses are idempotent through state/version checks.
+
+## Parent and deck selection UX
+
+The setup form uses current dashboard data as the source of truth. Technical IDs remain part of the immutable queue snapshot, but the user selects identifiable records rather than typing database keys.
+
+- Each parent option includes the character name, veteran ID, rank, and compact own-spark summary.
+- Selecting a parent renders a preview with final stats, aptitudes, and the complete spark list from `tree.self.factors`, grouped as Blue, Red, Green, and White.
+- The two parent pickers reject the same veteran and exclude the trainee's base character through the existing enqueue validation.
+- Saved support decks are exposed by bootstrap with deck name and five card records.
+- Selecting a saved deck sets `deck_id` and derives the five owned `support_card_ids`; those raw values are read-only implementation details rather than editable form fields.
+- Each deck preview shows support-card name, type, rarity, and limit-break count.
+- A previously saved deck or parent ID is restored only when it still exists in the current bootstrap response. Stale local storage never silently invents a setup.
 
 ## Testing
 
@@ -233,7 +247,8 @@ The UI polls the local status endpoint no faster than every five seconds. It nev
 
 - Setup validation and snapshot immutability.
 - Store transitions, optimistic concurrency, event history, and queued-only cancellation.
-- TP policy decisions.
+- TP-cost resolution for base cost, active half-cost campaign, no campaign, missing master data, and invalid/stale inputs.
+- TP policy decisions using the resolved runtime cost.
 - Lease conflict and owner-safe release.
 - Recovery matching and mismatch behavior.
 - Client wrapper payloads and scenario-specific finalization order.
@@ -254,8 +269,8 @@ The UI polls the local status endpoint no faster than every five seconds. It nev
 
 - Bound-account behavior and absence of an account selector/parameter.
 - HTTP 202 for asynchronous start/resume/reconcile.
-- HTTP 409 for career/workflow conflicts.
-- Static page routes and essential UI controls.
+- HTTP 409 for Career/Campaign conflicts while allowing Dailies to overlap Independent Training.
+- Static page routes, named training-style options, detected TP-cost display, and essential UI controls.
 - Frontend uses relative URLs and five-second-or-slower polling.
 
 ## Acceptance criteria
@@ -272,3 +287,5 @@ The UI polls the local status endpoint no faster than every five seconds. It nev
 10. Factor reroll is disabled by default; when enabled, an initial target miss can trigger no more than one `factor_lottery` call per run, including across process recovery.
 11. The factor target is evaluated against the new veteran's own generated factors, and finalization selects the best available original or rerolled candidate before registration.
 12. Focused backend/frontend tests and the existing affected regression suite pass.
+13. Parent options are distinguishable by veteran ID and show the selected veteran's complete own-spark list.
+14. A saved deck can be selected by name/composition and deterministically supplies exactly five owned support IDs to the queued snapshot.

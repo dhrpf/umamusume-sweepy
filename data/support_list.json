@@ -389,6 +389,16 @@
     "rarity": "R",
     "type": "Wisdom"
   },
+  "10079": {
+    "name": "Daiichi Ruby",
+    "rarity": "R",
+    "type": "Power"
+  },
+  "10080": {
+    "name": "K.S.Miracle",
+    "rarity": "R",
+    "type": "Guts"
+  },
   "10081": {
     "name": "Tsurumaru Tsuyoshi",
     "rarity": "R",
@@ -643,6 +653,11 @@
     "name": "Seiun Sky",
     "rarity": "SR",
     "type": "Wisdom"
+  },
+  "20051": {
+    "name": "K.S.Miracle",
+    "rarity": "SR",
+    "type": "Guts"
   },
   "30001": {
     "name": "Special Week",
@@ -1168,6 +1183,41 @@
     "name": "Manhattan Cafe",
     "rarity": "SSR",
     "type": "Stamina"
+  },
+  "30111": {
+    "name": "Tokai Teio",
+    "rarity": "SSR",
+    "type": "Wisdom"
+  },
+  "30112": {
+    "name": "Twin Turbo",
+    "rarity": "SSR",
+    "type": "Guts"
+  },
+  "30113": {
+    "name": "Biwa Hayahide",
+    "rarity": "SSR",
+    "type": "Stamina"
+  },
+  "30114": {
+    "name": "Daiichi Ruby",
+    "rarity": "SSR",
+    "type": "Power"
+  },
+  "30115": {
+    "name": "Mejiro Palmer",
+    "rarity": "SSR",
+    "type": "Stamina"
+  },
+  "30116": {
+    "name": "Daitaku Helios",
+    "rarity": "SSR",
+    "type": "Speed"
+  },
+  "30117": {
+    "name": "Shinko Windy",
+    "rarity": "SSR",
+    "type": "Guts"
   },
   "30121": {
     "name": "Mihono Bourbon",

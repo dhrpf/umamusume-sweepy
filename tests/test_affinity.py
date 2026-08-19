@@ -81,14 +81,26 @@ def test_direct_relation_score_exposes_pair_base_compatibility(monkeypatch):
 
 def test_race_compat_counts_three_points_per_shared_g1():
     result = affinity.race_compat(
-        [1, 2, 9],
-        [[1, 2, 9], [2, 3]],
-        [2, 3, 4, 9],
+        [1, 2],
+        [[1, 2], [2, 3]],
+        [2, 3, 4],
         [[3, 4], [1, 4]],
         {1, 2, 3, 4},
     )
 
     assert result == 21
+
+
+def test_race_compat_counts_three_points_for_direct_parent_non_g1():
+    result = affinity.race_compat(
+        [1, 2, 9],
+        [[1, 9]],
+        [2, 9],
+        [[2, 9]],
+        {1, 2},
+    )
+
+    assert result == 14
 
 
 def test_load_g1_saddle_program_map_resolves_race_instances_to_programs(tmp_path):

@@ -49,6 +49,10 @@ const els = {
     dailyLegendRaces: document.getElementById('daily-legend-races'),
     dailyShop: document.getElementById('daily-shop'),
     dailyVeteran: document.getElementById('daily-veteran'),
+    dailiesRacer: document.getElementById('dailies-racer'),
+    dailyRacerPick: document.getElementById('daily-racer-pick'),
+    dailyRacerSearch: document.getElementById('daily-racer-search'),
+    dailyRacerHint: document.getElementById('daily-racer-hint'),
     dailyOpponent: document.getElementById('daily-opponent'),
     dailyLegendId: document.getElementById('daily-legend-id'),
     veteranView: document.getElementById('veteran-view'),
@@ -241,11 +245,19 @@ const els = {
             const navbarHeight = navbar ? navbar.getBoundingClientRect().height : 0;
             const availableHeight = Math.max(360, Math.floor(window.innerHeight - navbarHeight));
             document.documentElement.style.setProperty('--dashboard-height', `${availableHeight}px`);
+            document.documentElement.style.setProperty('--navbar-height', `${Math.round(navbarHeight)}px`);
             syncDashboardCollapseState(false);
         }
         window.addEventListener('resize', syncDashboardHeight);
         window.addEventListener('orientationchange', syncDashboardHeight);
         syncDashboardHeight();
+        // The navbar wraps to a second row on narrower desktops and changes height
+        // when pills appear (career state, TP refill, dev gate). Watch it directly so
+        // --dashboard-height and --navbar-height never go stale without a resize.
+        if (window.ResizeObserver) {
+            const navbarEl = document.querySelector('.navbar');
+            if (navbarEl) new ResizeObserver(syncDashboardHeight).observe(navbarEl);
+        }
         const panelToggleSyncers = [];
         const dashboardMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
         let dashboardLayoutAnimation = 0;
@@ -3528,25 +3540,110 @@ const els = {
         let dailiesPoll = null;
         let dailiesVetsLoaded = false;
 
-        function loadDailyVeterans() {
-            if (!els.dailyVeteran || !dashData) return;
-            const previous = els.dailyVeteran.value;
-            const veterans = (dashData.parents || [])
-                .filter(v => Number(v.instance_id || 0) > 0)
+        const APT_GRADES = { 1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S' };
+        // Order matches career_bot/dailies.py:_STYLE_APT_KEYS, whose max() picks the racing style.
+        const RUN_STYLES = [
+            ['front', 'FRONT'],
+            ['pace', 'PACE'],
+            ['late', 'LATE'],
+            ['end', 'END'],
+        ];
+        const APT_SURFACE = [['turf', 'TURF'], ['dirt', 'DIRT']];
+        const APT_DISTANCE = [['sprint', 'SPR'], ['mile', 'MILE'], ['medium', 'MED'], ['long', 'LONG']];
+
+        function aptGradeCell(label, grade) {
+            const value = Number(grade || 0);
+            const text = APT_GRADES[value] || '–';
+            const tier = value >= 7 ? 'top' : value >= 5 ? 'mid' : 'low';
+            return `<span class="apt-cell t-${tier}"><b>${label}</b><i>${text}</i></span>`;
+        }
+
+        function dailyRacerStyle(vet) {
+            const styles = vet.style_aptitudes || {};
+            let best = RUN_STYLES[0];
+            let bestValue = -1;
+            RUN_STYLES.forEach(entry => {
+                const value = Number(styles[entry[0]] || 0);
+                if (value > bestValue) { bestValue = value; best = entry; }
+            });
+            return { label: best[1], grade: APT_GRADES[bestValue] || '–' };
+        }
+
+        function dailyRacerCard(vet, selectedId) {
+            const id = Number(vet.instance_id || 0);
+            const name = vet.name || vet.chara_name || `Veteran #${id}`;
+            const imgId = vet.card_id || '100101';
+            const rank = rankMap[vet.rank] || '';
+            const score = Number(vet.rank_score || 0).toLocaleString();
+            const stats = vet.stats || {};
+            const apt = vet.aptitudes || {};
+            const style = dailyRacerStyle(vet);
+            const isOn = id === selectedId;
+            const statCells = [['SPD', stats.speed], ['STA', stats.stamina], ['PWR', stats.power], ['GUT', stats.guts], ['WIT', stats.wit]]
+                .map(([label, value]) => `<span class="racer-stat"><b>${label}</b><i>${Number(value || 0)}</i></span>`).join('');
+            return `<button type="button" role="radio" aria-checked="${isOn}" class="racer-card${isOn ? ' selected' : ''}" data-racer-id="${id}">
+                <img class="racer-art" src="/api/images/${imgId}.png" alt="" onerror="hideBrokenImage(this)">
+                <span class="racer-id">
+                    <span class="racer-name">${escapeHtml(name)}</span>
+                    <span class="racer-meta">${rank ? `<em class="racer-rank">${escapeHtml(rank)}</em>` : ''}<i>${score}</i></span>
+                </span>
+                <span class="racer-style" title="Style Sweepy will race: highest running-style aptitude">
+                    <b>WILL RACE</b><i>${style.label} ${style.grade}</i>
+                </span>
+                <span class="racer-stats">${statCells}</span>
+                <span class="racer-apt">
+                    <span class="apt-run">${APT_SURFACE.map(([key, label]) => aptGradeCell(label, apt[key])).join('')}</span>
+                    <span class="apt-run">${APT_DISTANCE.map(([key, label]) => aptGradeCell(label, apt[key])).join('')}</span>
+                </span>
+            </button>`;
+        }
+
+        function dailyRacersNeeded() {
+            return !!(els.dailyDailyRaces?.checked || els.dailyLegendRaces?.checked);
+        }
+
+        function renderDailyRacers() {
+            const host = els.dailyRacerPick;
+            if (!host || !dashData) return;
+            const needed = dailyRacersNeeded();
+            if (els.dailiesRacer) els.dailiesRacer.classList.toggle('idle', !needed);
+            if (els.dailyRacerHint) {
+                els.dailyRacerHint.textContent = needed
+                    ? 'Sweepy races the style with this uma’s highest aptitude — shown on each card.'
+                    : 'Daily and Legend races are off — no racer needed.';
+            }
+            const query = (els.dailyRacerSearch?.value || '').trim().toLowerCase();
+            const all = (dashData.parents || []).filter(v => Number(v.instance_id || 0) > 0);
+            const veterans = all
+                .filter(v => !query || String(v.name || '').toLowerCase().includes(query)
+                    || (v.skills || []).some(skill => String(skill.name || skill).toLowerCase().includes(query)))
                 .slice()
                 .sort((a, b) => Number(b.rank_score || 0) - Number(a.rank_score || 0));
-            els.dailyVeteran.innerHTML = veterans.length
-                ? veterans.map(v => {
-                    const id = Number(v.instance_id || 0);
-                    const name = v.name || v.chara_name || `Veteran #${id}`;
-                    const score = Number(v.rank_score || 0).toLocaleString();
-                    return `<option value="${id}">${escapeHtml(name)} — ${score}</option>`;
-                }).join('')
-                : '<option value="0">No veterans available</option>';
-            if (previous && veterans.some(v => String(v.instance_id) === previous)) {
-                els.dailyVeteran.value = previous;
+            if (!all.length) {
+                host.innerHTML = '<div class="console-empty">No veterans on this account yet. Finish a career to unlock daily racing.</div>';
+                if (els.dailyVeteran) els.dailyVeteran.value = '0';
+                dailiesVetsLoaded = true;
+                return;
             }
+            let selectedId = Number(els.dailyVeteran?.value || 0);
+            if (!veterans.some(v => Number(v.instance_id) === selectedId)) {
+                selectedId = Number(veterans[0]?.instance_id || 0);
+                if (els.dailyVeteran) els.dailyVeteran.value = String(selectedId);
+            }
+            host.innerHTML = veterans.length
+                ? veterans.map(v => dailyRacerCard(v, selectedId)).join('')
+                : `<div class="console-empty">No veteran matches “${escapeHtml(query)}”.</div>`;
             dailiesVetsLoaded = true;
+        }
+
+        function selectDailyRacer(id) {
+            if (!els.dailyVeteran) return;
+            els.dailyVeteran.value = String(id);
+            els.dailyRacerPick?.querySelectorAll('.racer-card').forEach(card => {
+                const on = Number(card.dataset.racerId) === Number(id);
+                card.classList.toggle('selected', on);
+                card.setAttribute('aria-checked', String(on));
+            });
         }
 
         function renderDailies(status) {
@@ -3615,7 +3712,7 @@ const els = {
         }
 
         async function initDailies() {
-            if (!dailiesVetsLoaded) loadDailyVeterans();
+            if (!dailiesVetsLoaded) renderDailyRacers();
             await Promise.all([loadLegendOptions(), pollDailies()]);
         }
 
@@ -3957,6 +4054,14 @@ const els = {
         els.dashboardNavBtn?.addEventListener('click', navigateDashboardPage);
         els.dailiesRun?.addEventListener('click', runDailies);
         els.dailiesStop?.addEventListener('click', stopDailies);
+        els.dailyRacerSearch?.addEventListener('input', renderDailyRacers);
+        els.dailyRacerPick?.addEventListener('click', event => {
+            const card = event.target.closest('.racer-card');
+            if (card) selectDailyRacer(card.dataset.racerId);
+        });
+        [els.dailyDailyRaces, els.dailyLegendRaces].forEach(box => {
+            box?.addEventListener('change', renderDailyRacers);
+        });
         els.veteranPageSearch?.addEventListener('input', () => {
             state.veteranPageQuery = els.veteranPageSearch.value || '';
             renderVeteranPage();

@@ -407,6 +407,18 @@
     "late": 7,
     "end": 6
   },
+  "101902": {
+    "turf": 7,
+    "dirt": 7,
+    "short": 2,
+    "mile": 7,
+    "medium": 7,
+    "long": 1,
+    "front": 1,
+    "pace": 7,
+    "late": 7,
+    "end": 6
+  },
   "102001": {
     "turf": 7,
     "dirt": 1,
@@ -575,6 +587,18 @@
     "late": 5,
     "end": 1
   },
+  "102901": {
+    "turf": 7,
+    "dirt": 6,
+    "short": 4,
+    "mile": 7,
+    "medium": 7,
+    "long": 3,
+    "front": 5,
+    "pace": 7,
+    "late": 2,
+    "end": 1
+  },
   "103001": {
     "turf": 7,
     "dirt": 1,
@@ -648,6 +672,18 @@
     "end": 7
   },
   "103501": {
+    "turf": 7,
+    "dirt": 1,
+    "short": 1,
+    "mile": 2,
+    "medium": 7,
+    "long": 6,
+    "front": 1,
+    "pace": 6,
+    "late": 7,
+    "end": 1
+  },
+  "103502": {
     "turf": 7,
     "dirt": 1,
     "short": 1,
@@ -767,6 +803,18 @@
     "late": 2,
     "end": 1
   },
+  "104201": {
+    "turf": 7,
+    "dirt": 2,
+    "short": 7,
+    "mile": 7,
+    "medium": 3,
+    "long": 1,
+    "front": 5,
+    "pace": 7,
+    "late": 7,
+    "end": 6
+  },
   "104401": {
     "turf": 7,
     "dirt": 1,
@@ -851,6 +899,18 @@
     "late": 6,
     "end": 7
   },
+  "105002": {
+    "turf": 7,
+    "dirt": 1,
+    "short": 2,
+    "mile": 4,
+    "medium": 7,
+    "long": 7,
+    "front": 1,
+    "pace": 2,
+    "late": 6,
+    "end": 7
+  },
   "105101": {
     "turf": 7,
     "dirt": 2,
@@ -924,6 +984,18 @@
     "end": 2
   },
   "105801": {
+    "turf": 7,
+    "dirt": 3,
+    "short": 1,
+    "mile": 2,
+    "medium": 7,
+    "long": 7,
+    "front": 2,
+    "pace": 7,
+    "late": 6,
+    "end": 3
+  },
+  "105802": {
     "turf": 7,
     "dirt": 3,
     "short": 1,

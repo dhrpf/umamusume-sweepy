@@ -185,3 +185,58 @@ def test_scenario_final_targets_are_not_character_objectives(tmp_path):
     ids = [row.objective_id for row in resolver.route_objectives(_state(53))]
 
     assert ids == [15, 16, 17]
+
+
+def test_specific_race_objectives_use_highest_priority_shared_route(tmp_path):
+    _write_objectives(tmp_path)
+    resolver = CareerObjectiveResolver(tmp_path, _programs())
+    resolver.routes[3] = {
+        "route_id": 3,
+        "scenario_id": 0,
+        "chara_id": 1006,
+        "priority": 2,
+        "objectives": [
+            {
+                "id": 30,
+                "target_type": 1,
+                "sort_id": 2,
+                "turn": 22,
+                "condition_type": 1,
+                "condition_id": 73,
+            },
+            {
+                "id": 31,
+                "target_type": 1,
+                "sort_id": 3,
+                "turn": 24,
+                "condition_type": 2,
+                "condition_id": 100,
+            },
+            {
+                "id": 32,
+                "target_type": 3,
+                "sort_id": 4,
+                "turn": 26,
+                "condition_type": 1,
+                "condition_id": 81,
+            },
+        ],
+    }
+    resolver.routes[4] = {
+        **resolver.routes[3],
+        "route_id": 4,
+        "objectives": [{
+            "id": 40,
+            "target_type": 1,
+            "sort_id": 1,
+            "turn": 20,
+            "condition_type": 1,
+            "condition_id": 81,
+        }],
+    }
+
+    objectives = resolver.specific_race_objectives(1006)
+
+    assert [(row.objective_id, row.deadline_turn, row.condition_id) for row in objectives] == [
+        (30, 22, 73),
+    ]

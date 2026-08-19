@@ -68,3 +68,31 @@ def test_decide_wait_mode():
 def test_decide_carat_default():
     assert delay.decide_tp_action(30, 0, "carat", False) == "carat"
     assert delay.decide_tp_action(30, 0, "bogus", False) == "carat"
+
+
+def test_independent_skill_pacing_only_overrides_gain_skills(monkeypatch):
+    class Client:
+        def call(self, endpoint, *_args, **_kwargs):
+            return {"endpoint": endpoint}
+
+    calls = []
+    monkeypatch.setattr(
+        delay,
+        "simulate_delay",
+        lambda endpoint, client=None, *, delay_range=None: calls.append(
+            (endpoint, delay_range)
+        ) or 0,
+    )
+    client = Client()
+    gatekeeper = delay.GateKeeper(client)
+
+    with gatekeeper.independent_skill_pacing():
+        client.call("single_mode_free/gain_skills")
+        client.call("single_mode_free/finish")
+    client.call("single_mode_free/gain_skills")
+
+    assert calls == [
+        ("gain_skills", (1.0, 5.0)),
+        ("finish_career", None),
+        ("gain_skills", None),
+    ]

@@ -22,15 +22,26 @@ from career_bot import advisor
 from career_bot import aptitude
 from career_bot.dailies import DailiesRunner
 from career_bot.independent_training.finalizer import IndependentFinalizer
-from career_bot.independent_training.models import EnqueueRuns
+from career_bot.independent_training.models import (
+    EnqueueRuns,
+    IndependentTrainingPreset,
+)
+from career_bot.independent_training.races import (
+    canonicalize_start_race_array,
+)
 from career_bot.independent_training.runner import IndependentTrainingRunner
 from career_bot.independent_training.service import IndependentTrainingService, WorkflowConflict
 from career_bot.independent_training.store import (
     IndependentTrainingStore,
     InvalidRunTransition,
+    PresetNotFound,
     RunNotFound,
     RunVersionConflict,
 )
+from career_bot.independent_training.tp_cost import (
+    resolve_independent_training_tp_cost,
+)
+from career_bot.objectives import CareerObjectiveResolver
 from career_bot.presets import PresetStore, PresetStoreError
 from career_bot.runner import CareerRunner
 from career_bot.campaigns.factor_semantics import (
@@ -269,6 +280,14 @@ class _CampaignPresetStore:
     def save(self, preset):
         return preset_store.write(preset)
 
+def _runtime_account_name():
+    runtime_override = os.environ.get("UMA_RUNTIME_DIR")
+    if not runtime_override:
+        return ""
+    runtime_name = Path(runtime_override).expanduser().resolve().name
+    return runtime_name if runtime_name != "uma_runtime" else ""
+
+
 def _current_campaign_account():
     dashboard = active_dashboard_data or {}
     account = active_account or dashboard.get("account") or {}
@@ -281,6 +300,7 @@ def _current_campaign_account():
         or dashboard.get("accountName")
         or account.get("name")
         or account.get("account")
+        or _runtime_account_name()
         or "local"
     )
 
@@ -1090,6 +1110,34 @@ def normalize_friend_cards(data):
     return friends, exclude_viewer_ids, source
 
 
+def _refresh_dashboard_friend_supports():
+    """Fetch one current friend-support snapshot without blocking the UI on failure."""
+    global active_dashboard_data
+    dashboard = active_dashboard_data or {}
+    cached_friends = list(dashboard.get("friends") or [])
+    if active_client is None:
+        return cached_friends
+    career = (active_account or {}).get("career") or {}
+    if career.get("active"):
+        return cached_friends
+    try:
+        result = active_client.pre_single_mode()
+        data = result.get("data", {}) if isinstance(result, dict) else {}
+        update_start_state(data)
+        friends, exclude_viewer_ids, _source = normalize_friend_cards(data)
+        veterans, veterans_source = normalize_friend_veterans(data)
+        if active_dashboard_data is not None:
+            active_dashboard_data["friends"] = friends
+            active_dashboard_data["friendExcludeIds"] = exclude_viewer_ids
+            active_dashboard_data["friendsLoaded"] = True
+            active_dashboard_data["friendVeterans"] = veterans
+            active_dashboard_data["friendVeteransSource"] = veterans_source
+            active_dashboard_data["lastPreSingleModeRaw"] = data
+        return friends
+    except Exception:
+        return cached_friends
+
+
 def normalize_card_name(name):
     return re.sub(r'[^a-z0-9]+', '', re.sub(r'\([^)]*\)', '', str(name or '').lower()))
 
@@ -1460,12 +1508,7 @@ if race_map_path.exists():
 
 
 def _independent_account():
-    runtime_override = os.environ.get("UMA_RUNTIME_DIR")
-    if runtime_override:
-        runtime_name = Path(runtime_override).expanduser().resolve().name
-        if runtime_name and runtime_name != "uma_runtime":
-            return runtime_name
-    return _current_campaign_account()
+    return _runtime_account_name() or _current_campaign_account()
 
 
 def _independent_client(account):
@@ -1476,6 +1519,10 @@ def _independent_client(account):
 
 
 def _independent_dashboard():
+    if active_dashboard_data is not None and not active_dashboard_data.get(
+        "friendsLoaded"
+    ):
+        _refresh_dashboard_friend_supports()
     dashboard = active_dashboard_data or {}
     account = active_account or dashboard.get("account") or {}
     trainees = []
@@ -1562,26 +1609,46 @@ def _independent_dashboard():
         "trainees": trainees,
         "parents": parents,
         "support_cards": support_cards,
+        "friend_supports": [
+            dict(row) for row in dashboard.get("friends") or []
+            if isinstance(row, dict)
+        ],
+        "decks": [dict(row) for row in dashboard.get("decks") or []],
         "saved_race_agendas": saved_race_agendas,
     }
 
 
 def _independent_pre_start():
+    """Return bootstrap metadata without consuming the start handshake.
+
+    ``idle_single_mode/pre_start`` belongs immediately before
+    ``idle_single_mode/start``.  Calling it while rendering the Independent
+    page leaves a stale pre-start handshake behind before reconciliation can
+    refresh account state.  The runner owns that mutating call instead.
+    """
     if active_client is None:
         return {}
-    response = active_client.pre_start_independent_training(3)
-    data = (response or {}).get("data") or {}
+    cost_info = {
+        "detected_tp_cost": None,
+        "tp_cost_source": "",
+        "tp_cost_error": "",
+    }
+    try:
+        resolution = _independent_tp_cost(_independent_account())
+        cost_info.update({
+            "detected_tp_cost": resolution.cost,
+            "tp_cost_source": resolution.source,
+        })
+    except Exception as exc:
+        cost_info["tp_cost_error"] = str(exc)
     return {
-        "reserved_race_info": data.get("reserved_race_info") or [],
-        "last_idle_single_mode_start_info": (
-            data.get("last_idle_single_mode_start_info") or {}
-        ),
+        "reserved_race_info": [],
+        "last_idle_single_mode_start_info": {},
+        **cost_info,
     }
 
 
 def _independent_busy_workflow():
-    if dailies_runner.running:
-        return "dailies"
     if career_runner.snapshot().get("running"):
         return "career"
     loop_thread = globals().get("backend_loop_thread")
@@ -1608,6 +1675,24 @@ def _independent_account_state(account):
     }
 
 
+def _independent_succession_rank_point(account, setup):
+    _assert_campaign_account(account)
+    parent_1 = active_parent_full.get(int(setup.get("parent_id_1") or 0))
+    parent_2 = active_parent_full.get(int(setup.get("parent_id_2") or 0))
+    if not parent_1 or not parent_2:
+        raise ValueError("selected parents are unavailable for affinity")
+    mdb_path = master_data.configured_master_mdb_path(base_dir)
+    if not mdb_path or not Path(mdb_path).exists():
+        raise ValueError("master.mdb is unavailable for affinity")
+    affinity = affinity_calc.calculate_affinity(
+        str(mdb_path),
+        int(setup.get("card_id") or 0),
+        parent_1,
+        parent_2,
+    )
+    return int(affinity.get("total") or 0)
+
+
 def _independent_refresh_account(account):
     _assert_campaign_account(account)
     client = _independent_client(account)
@@ -1616,6 +1701,21 @@ def _independent_refresh_account(account):
     client.refresh_cached_account_state(data)
     _build_dashboard_from_login_response(response)
     return response
+
+
+def _independent_load_progress(account):
+    _assert_campaign_account(account)
+    client = _independent_client(account)
+    progress = (client.cached_load_data or {}).get(
+        "idle_single_mode_load_info"
+    ) or {}
+    return dict(progress) if isinstance(progress, dict) else {}
+
+
+def _independent_reauthenticate(account):
+    _assert_campaign_account(account)
+    print("[independent] session expired (201); re-authenticating...", flush=True)
+    return auto_login_from_cache()
 
 
 def _independent_recover_tp(account):
@@ -1630,6 +1730,25 @@ def _independent_recover_tp(account):
     return int(
         (active_start_state.get("tp_info") or {}).get("current_tp") or 0
     ) > 0
+
+
+def _independent_tp_cost(account):
+    _assert_campaign_account(account)
+    client = _independent_client(account)
+    common_define = (
+        (client.cached_load_data or {}).get("common_define") or {}
+    )
+    return resolve_independent_training_tp_cost(
+        master_data.configured_master_mdb_path(base_dir),
+        base_cost=int(
+            common_define.get("single_mode_trainer_point_use_value") or 0
+        ),
+        server_time=int(getattr(client, "last_server_time", 0) or 0),
+    )
+
+
+def _independent_race_array(setup):
+    return canonicalize_start_race_array(base_dir, setup)
 
 
 _independent_runtime_dir = runtime_output_root()
@@ -1659,6 +1778,11 @@ independent_runner = IndependentTrainingRunner(
     account_state_provider=_independent_account_state,
     refresh_account=_independent_refresh_account,
     recover_tp=_independent_recover_tp,
+    tp_cost_provider=_independent_tp_cost,
+    race_array_provider=_independent_race_array,
+    succession_rank_point_provider=_independent_succession_rank_point,
+    load_progress_provider=_independent_load_progress,
+    auth_recovery=_independent_reauthenticate,
     heartbeat_lease=lambda account: independent_service.heartbeat(),
     release_lease=lambda account: independent_service.release_lease(),
 )
@@ -1869,6 +1993,16 @@ def get_trained_aptitudes(chara):
         'mile': int(chara.get('proper_distance_mile') or 0),
         'medium': int(chara.get('proper_distance_middle') or 0),
         'long': int(chara.get('proper_distance_long') or 0),
+    }
+
+
+def get_trained_style_aptitudes(chara):
+    """Running-style aptitudes, in the order career_bot.dailies.best_running_style ranks them."""
+    return {
+        'front': int(chara.get('proper_running_style_nige') or 0),
+        'pace': int(chara.get('proper_running_style_senko') or 0),
+        'late': int(chara.get('proper_running_style_sashi') or 0),
+        'end': int(chara.get('proper_running_style_oikomi') or 0),
     }
 
 
@@ -2295,7 +2429,7 @@ class CampaignCancelRequest(BaseModel):
 def _independent_api_call(method, *args, **kwargs):
     try:
         return method(*args, **kwargs)
-    except RunNotFound as exc:
+    except (RunNotFound, PresetNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (
         WorkflowConflict,
@@ -2312,6 +2446,66 @@ async def independent_training_bootstrap():
     return _independent_api_call(independent_service.bootstrap)
 
 
+@app.get("/api/independent-training/presets")
+async def list_independent_training_presets():
+    return {"presets": _independent_api_call(independent_service.list_presets)}
+
+
+@app.post("/api/independent-training/presets")
+async def save_independent_training_preset(req: IndependentTrainingPreset):
+    return _independent_api_call(
+        independent_service.save_preset,
+        req.name,
+        req.setup.model_dump(mode="json"),
+        count=req.count,
+        tp_mode=req.tp_mode.value,
+    )
+
+
+@app.get("/api/independent-training/presets/{name}")
+async def get_independent_training_preset(name: str):
+    return _independent_api_call(independent_service.get_preset, name)
+
+
+@app.delete("/api/independent-training/presets/{name}")
+async def delete_independent_training_preset(name: str):
+    return _independent_api_call(independent_service.delete_preset, name)
+
+
+@app.get("/api/independent-training/trainees/{card_id}/objective-races")
+async def independent_training_objective_races(card_id: int):
+    dashboard = _independent_dashboard()
+    if card_id not in {
+        int(row.get("card_id") or 0)
+        for row in dashboard.get("trainees") or []
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown trainee card {card_id}",
+        )
+    programs = {
+        int(program_id): dict(row)
+        for program_id, row in (race_map.get("program") or {}).items()
+    }
+    objectives = CareerObjectiveResolver(
+        base_dir,
+        programs,
+    ).specific_race_objectives(_base_chara_id(card_id))
+    return {
+        "card_id": card_id,
+        "objective_races": [
+            {
+                "turn": objective.deadline_turn,
+                "program_id": objective.condition_id,
+                "name": programs[objective.condition_id].get("name") or "",
+            }
+            for objective in objectives
+            if objective.deadline_turn > 0
+            and objective.condition_id in programs
+        ],
+    }
+
+
 @app.post("/api/independent-training/runs")
 async def enqueue_independent_training_runs(req: EnqueueRuns):
     return _independent_api_call(
@@ -2324,7 +2518,7 @@ async def enqueue_independent_training_runs(req: EnqueueRuns):
 
 @app.post("/api/independent-training/start", status_code=202)
 async def start_independent_training():
-    return _independent_api_call(independent_service.start)
+    return _independent_api_call(independent_service.start, clear_stop=True)
 
 
 @app.get("/api/independent-training/status")
@@ -2347,6 +2541,20 @@ async def resume_independent_training():
 @app.delete("/api/independent-training/runs/{run_id}")
 async def cancel_independent_training_run(run_id: str):
     return _independent_api_call(independent_service.cancel, run_id)
+
+
+@app.post("/api/independent-training/adopt-server-run", status_code=202)
+async def adopt_independent_training_server_run():
+    return _independent_api_call(independent_service.adopt_server_run)
+
+
+@app.post("/api/independent-training/runs/{run_id}/discard")
+async def discard_independent_training_run(run_id: str):
+    return _independent_api_call(
+        independent_service.discard,
+        run_id,
+        reason="discarded from dashboard",
+    )
 
 
 @app.post("/api/independent-training/reconcile", status_code=202)
@@ -2966,6 +3174,7 @@ def _build_dashboard_from_login_response(res):
             'acquired_at': chara.get('create_time') or chara.get('created_at') or chara.get('register_time') or chara.get('trained_chara_register_time') or chara.get('complete_time') or chara.get('end_time') or chara.get('updated_at') or 0,
             'stats': stats,
             'aptitudes': get_trained_aptitudes(chara),
+            'style_aptitudes': get_trained_style_aptitudes(chara),
             'skills': skills,
             'factors': tree['self']['factors'],
             'wins': tree['self']['wins'],
@@ -3051,7 +3260,9 @@ async def login(req: LoginRequest):
         if c.auth_key_hex and c.auth_key_hex != 'YOUR_AUTH_KEY_HERE':
             cfg['auth_key'] = c.auth_key_hex
         save_auth_cache(cfg)
-        return _build_dashboard_from_login_response(res)
+        dashboard = _build_dashboard_from_login_response(res)
+        _refresh_dashboard_friend_supports()
+        return active_dashboard_data or dashboard
     except Exception as e:
         msg = str(e)
         if "STEAM_GUARD_REQUIRED" in msg:
@@ -3686,7 +3897,6 @@ async def dailies_legend_options():
 
 @app.post("/api/dailies/run")
 async def dailies_run(req: DailiesRunRequest):
-    _assert_independent_training_idle()
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
 
@@ -3757,9 +3967,8 @@ async def account_refresh():
     if not active_client:
         return {"success": False, "detail": "Not logged in"}
     try:
-        res = active_client.call('load/index', {'adid': ''})
+        res = refresh_index_state(active_client)
         data = res.get('data', {})
-        active_client.refresh_cached_account_state(data)
         update_start_state(data)
         dashboard = _build_dashboard_from_login_response(res)
         return {"success": True, "account": active_account, "parents": dashboard.get("parents", [])}
@@ -4479,8 +4688,9 @@ def refresh_auth_before_serving(timeout_sec=None):
     return False
 
 
-def refresh_index_state(client, max_retries=1):
-    for attempt in range(max_retries + 1):
+def refresh_index_state(client, max_retries=3):
+    attempt = 0
+    while True:
         try:
             client.regen_sid()
             client.call('tool/start_session', {'attestation_type': 0, 'device_token': None})
@@ -4488,8 +4698,16 @@ def refresh_index_state(client, max_retries=1):
             client.refresh_cached_account_state(res.get('data') or {})
             return res
         except Exception as exc:
-            if '202' in str(exc) and attempt < max_retries:
+            err = str(exc)
+            if '202' in err and attempt < max_retries:
+                attempt += 1
                 continue
+            # 390/394 mean the steam_session_ticket expired, not that the server
+            # is busy: start_session keeps returning result_code 1 while every
+            # account-scoped endpoint bounces, so retrying this exact sequence
+            # loops forever. UmaClient.call regenerates the ticket and retries
+            # on its own (STEAM_TICKET_STALE_CODES); if it still fails the
+            # session is genuinely unrecoverable, so surface it.
             raise
 
 
@@ -4526,6 +4744,7 @@ def auto_login_from_cache():
             cfg['auth_key'] = c.auth_key_hex
         save_auth_cache(cfg)
         _build_dashboard_from_login_response(res)
+        _refresh_dashboard_friend_supports()
         raw_load_index_response = None
         active_selection = {"deck": None, "friend": None, "trainee": None, "veterans": []}
         print('[auto-login] Done.', flush=True)
@@ -4549,6 +4768,8 @@ if __name__ == "__main__":
             career_runner.stop()
         if dailies_runner:
             dailies_runner.stop()
+        if independent_runner:
+            independent_runner.stop()
         # uvicorn will handle its own cleanup after this
 
     signal.signal(signal.SIGINT, _shutdown_handler)

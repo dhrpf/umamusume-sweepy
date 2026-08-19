@@ -8,6 +8,7 @@ import hashlib
 import random
 import re
 import struct
+import threading
 import msgpack
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
@@ -26,6 +27,15 @@ BASE_URL = 'https://api.games.umamusume.com/umamusume/'
 DIR = str(Path(__file__).resolve().parent.parent)
 LAST_TICKET_GEN_RESULT = None
 LAST_SAVED_CONFIG = None
+
+TRAINING_EVENT_ENV = 'UMA_TRAINING_EVENT'
+_TRUTHY_ENV_VALUES = {'1', 'true', 'yes', 'on'}
+
+
+def training_event_enabled():
+    """True when UMA_TRAINING_EVENT opts runs into the trainer aptitude test."""
+    raw = os.environ.get(TRAINING_EVENT_ENV) or ''
+    return raw.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def _cache_successful_load_index(data):
@@ -170,6 +180,16 @@ client.on("loggedOn", () => {
 SALT = b'co!=Y;(UQCGxJ_n82'
 HEAD = bytes.fromhex('6b20e2ab6c311330f761d737ce3f3025750850665eea58b6372f8d2f57501eb344bdb7270a9067f5b63cd61f152cfb986cbfbf7a')
 SENSITIVE_ERROR_KEYS = {"auth_key", "steam_session_ticket", "sid", "udid", "device_id"}
+# Credentials the server no longer accepts — retrying the same request never
+# clears them, only a fresh Steam ticket + login() does.
+#   390/394: the steam_session_ticket ridden in common() expired. Only
+#            account-scoped endpoints validate it (load/index,
+#            pre_single_mode/index, idle_single_mode/*, team_stadium/index, ...)
+#            — tool/start_session does not, which is why a plain regen_sid +
+#            start_session + load/index relogin loops on these forever.
+#   201:     session aged out. Independent training idles for hours between
+#            runs, so the first call of the next run lands on a dead session.
+STALE_CREDENTIAL_CODES = {201, 390, 394}
 
 
 def redact_for_console(value, key=""):
@@ -337,6 +357,8 @@ def unpack_request(text, udid, _debug=False):
     if _debug: print(f"[unpack_request] cipher={len(cipher)} key={len(key)} cipher%16={len(cipher)%16}")
     if not cipher or len(cipher) % 16 != 0:
         return None
+    if header_len >= len(HEAD) + 32:
+        udid = raw[4 + len(HEAD) + 16:4 + len(HEAD) + 32].hex()
     p = unpad(AES.new(key, AES.MODE_CBC, get_iv(udid)).decrypt(cipher), 16)
     return msgpack.unpackb(p[4:4+struct.unpack('<I', p[:4])[0]], raw=False, strict_map_key=False)
 
@@ -539,6 +561,8 @@ class UmaClient:
              pass
 
         self.sid = bytes(16)
+        self._call_lock = threading.RLock()
+        self.last_server_time = 0
         self.cached_load_data = {}
         self.tp_info = {}
         self.coin_info = {}
@@ -740,7 +764,14 @@ class UmaClient:
             return f"{prefix}/{operation}"
         return ep
 
-    def call(self, ep, args=None, retry_208=6, retry_205=3, retry_501=1, anonymous=False):
+    def call(self, *args, **kwargs):
+        lock = getattr(self, '_call_lock', None)
+        if lock is None:
+            lock = self._call_lock = threading.RLock()
+        with lock:
+            return self._call_unlocked(*args, **kwargs)
+
+    def _call_unlocked(self, ep, args=None, retry_208=6, retry_205=3, retry_501=1, anonymous=False):
         ep = self._scenario_endpoint(ep)
         if not hasattr(self, '_last_raw_call_ts'):
             self._last_raw_call_ts = 0
@@ -755,12 +786,15 @@ class UmaClient:
         payload = args or {}
         payload.update(self.common())
 
-        if ep in {
-            'single_mode_free/start',
-            'single_mode_team/start',
-            'single_mode_live/start',
-            'single_mode/start',
-        }:
+        start_button_log_types = {
+            'single_mode_free/start': 6,
+            'single_mode_team/start': 6,
+            'single_mode_live/start': 6,
+            'single_mode/start': 6,
+            'idle_single_mode/start': 7,
+        }
+        start_button_log_type = start_button_log_types.get(ep)
+        if start_button_log_type is not None:
             button_info = {
                 'ViewerId': self.viewer_id,
                 'DeviceId': 4,
@@ -768,7 +802,7 @@ class UmaClient:
                 'ClickPosX': 9401648 + dna_randint(-100, 100),
                 'ClickPosY': 1397585 + dna_randint(-100, 100),
                 'ClickServerTime': int(time.time()),
-                'LogType': 6,
+                'LogType': start_button_log_type,
             }
             payload['button_info'] = json.dumps(button_info, separators=(',', ':'))
 
@@ -872,21 +906,29 @@ class UmaClient:
             
         res = unpack(resp.text.strip(), self.udid_str)
         dh = res.get('data_headers', {})
+        server_time = dh.get('servertime')
+        if server_time is not None:
+            try:
+                self.last_server_time = int(server_time)
+            except (TypeError, ValueError):
+                pass
         rc = dh.get('result_code', 0)
         
         self.api_log("RES", ep, res, req_id)
         
         data = res.get('data', {})
-        new_vid = dh.get('viewer_id') or data.get('viewer_id')
-        if new_vid and int(new_vid) != int(self.viewer_id or 0):
-            self.viewer_id = int(new_vid)
+        if rc == 1:
+            new_vid = dh.get('viewer_id') or data.get('viewer_id')
+            if new_vid and int(new_vid) != int(self.viewer_id or 0):
+                self.viewer_id = int(new_vid)
         if isinstance(data, dict):
             if data.get('tp_info'):
                 self.tp_info = data['tp_info']
             if data.get('coin_info'):
                 self.coin_info = data['coin_info']
-            if data.get('chara_info') and data['chara_info'].get('scenario_id'):
-                self.current_scenario_id = data['chara_info']['scenario_id']
+            nested_chara = data.get('chara_info') or (data.get('end_info') or {}).get('chara_info')
+            if isinstance(nested_chara, dict) and nested_chara.get('scenario_id'):
+                self.current_scenario_id = nested_chara['scenario_id']
             item_list = data.get('user_item') or data.get('user_item_array')
             if isinstance(item_list, list):
                 for item in item_list:
@@ -908,11 +950,7 @@ class UmaClient:
             print(f"  data={json.dumps(res.get('data', {}), ensure_ascii=False)[:500]}")
             raise Exception(f'1055 on {ep}')
         if rc == 501:
-            if retry_501 <= 0:
-                raise StateRecoveryError(f'API error 501 on {ep}: session fully invalidated')
             # Prefer live viewer_id from the 501 response — cache can lag.
-            # Note: self.viewer_id may already be updated above from data_headers;
-            # still force-sync _cfg so recovery/login persist uses the live id.
             live_vid = dh.get('viewer_id') or (data.get('viewer_id') if isinstance(data, dict) else None)
             if live_vid:
                 try:
@@ -925,7 +963,17 @@ class UmaClient:
                             self._cfg['viewer_id'] = live_vid
                 except (TypeError, ValueError):
                     pass
+            if retry_501 <= 0:
+                raise StateRecoveryError(f'API error 501 on {ep}: session fully invalidated')
             print(f"[501] {ep} session invalid — relogin via UmaClient.login then retry {ep}")
+            self._refresh_ticket_and_login()
+            return self.call(ep, args, retry_208=retry_208, retry_205=retry_205, retry_501=retry_501 - 1)
+        if rc in STALE_CREDENTIAL_CODES:
+            if retry_501 <= 0:
+                raise StateRecoveryError(
+                    f'API error {rc} on {ep}: rejected again after a fresh steam ticket'
+                )
+            print(f"[{rc}] {ep} credentials stale — regenerating ticket then retrying {ep}", flush=True)
             self._refresh_ticket_and_login()
             return self.call(ep, args, retry_208=retry_208, retry_205=retry_205, retry_501=retry_501 - 1)
         if rc != 1:
@@ -976,6 +1024,11 @@ class UmaClient:
             err_msg = f'API error {rc} on {ep}: {err_detail}'
             if not (rc == 102 and ep in {"single_mode_free/race_end", "single_mode_free/race_out"}):
                 print(err_msg)
+            # Server never echoes a fresh sid on error (dh['sid'] empty), so chain
+            # forward from our own last-sent sid — otherwise the next call replays
+            # this rejected sid and the server keeps bouncing it as stale (217).
+            if not anonymous:
+                self.sid = next_sid(pack_sid.hex())
             raise Exception(err_msg)
         if dh.get('sid') and isinstance(dh['sid'], str) and dh['sid'].strip():
             self.sid = next_sid(dh['sid'])
@@ -1060,9 +1113,9 @@ class UmaClient:
         try:
             cfg = json.loads(cache_path.read_text(encoding='utf-8'))
         except Exception as e:
-            raise StateRecoveryError(f'501 recovery cannot load auth cache: {e}') from e
+            raise StateRecoveryError(f'ticket refresh cannot load auth cache: {e}') from e
         if not isinstance(cfg, dict):
-            raise StateRecoveryError('501 recovery auth cache is invalid')
+            raise StateRecoveryError('ticket refresh auth cache is invalid')
 
         if not isinstance(self._cfg, dict):
             self._cfg = {}
@@ -1083,25 +1136,34 @@ class UmaClient:
         return cfg
 
     def _refresh_ticket_and_login(self):
-        self.session.close()
-        cfg = self._reload_cached_auth()
-        username = cfg.get('steam_username', '')
-        password = cfg.get('steam_password_seed', '')
-        if not username or not password:
-            raise StateRecoveryError('501 recovery requires cached Steam credentials')
+        # login() below issues its own start_session + load/index. Those calls
+        # can answer with a stale-credential code too, and their handler lands
+        # right back here — mint one ticket per recovery, not one per frame.
+        if getattr(self, '_ticket_refresh_active', False):
+            raise StateRecoveryError('ticket refresh already in progress')
+        self._ticket_refresh_active = True
         try:
-            print(f"[501-refresh] Regenerating steam ticket for {username}...")
-            new_sid, new_tkt = get_ticket(username, password)
-        except Exception as e:
-            raise StateRecoveryError(f'501 recovery ticket refresh failed: {e}') from e
+            self.session.close()
+            cfg = self._reload_cached_auth()
+            username = cfg.get('steam_username', '')
+            password = cfg.get('steam_password_seed', '')
+            if not username or not password:
+                raise StateRecoveryError('ticket refresh requires cached Steam credentials')
+            try:
+                print(f"[ticket-refresh] Regenerating steam ticket for {username}...")
+                new_sid, new_tkt = get_ticket(username, password)
+            except Exception as e:
+                raise StateRecoveryError(f'ticket refresh failed: {e}') from e
 
-        self.steam_id = str(new_sid)
-        self.steam_ticket = new_tkt
-        cfg['steam_id'] = new_sid
-        cfg['steam_session_ticket'] = new_tkt
-        self.save_config()
-        print(f"[501-refresh] Ticket regenerated ({len(new_tkt)} hex chars)")
-        self.login()
+            self.steam_id = str(new_sid)
+            self.steam_ticket = new_tkt
+            cfg['steam_id'] = new_sid
+            cfg['steam_session_ticket'] = new_tkt
+            self.save_config()
+            print(f"[ticket-refresh] Ticket regenerated ({len(new_tkt)} hex chars)")
+            self.login()
+        finally:
+            self._ticket_refresh_active = False
 
     def _bootstrap_session(self, anonymous=False):
         """start_session + load/index. anonymous=True => ViewerID=0, empty auth (game reauth)."""
@@ -1490,10 +1552,19 @@ class UmaClient:
 
     def pre_start_independent_training(self, scenario_id):
         self.current_scenario_id = int(scenario_id)
-        return self.call(
+        response = self.call(
             'idle_single_mode/pre_start',
             {'scenario_id': int(scenario_id)},
         )
+        data = response.get('data') or {}
+        last_start_info = data.get('last_idle_single_mode_start_info') or {}
+        priority_skill_array = last_start_info.get('priority_skill_array')
+        self._idle_start_priority_skill_array = (
+            [dict(row) for row in priority_skill_array]
+            if isinstance(priority_skill_array, list)
+            else None
+        )
+        return response
 
     def independent_training_status(self):
         return self.call('idle_single_mode/status', {})
@@ -1505,9 +1576,20 @@ class UmaClient:
         tp_info,
         current_money,
         succession_rank_point,
+        prepared=False,
     ):
         scenario_id = int(setup['scenario_id'])
         self.current_scenario_id = scenario_id
+        play_training_challenge = setup.get('is_play_training_challenge')
+        if play_training_challenge is None:
+            play_training_challenge = training_event_enabled()
+        play_training_challenge = bool(play_training_challenge)
+        training_challenge_mode = int(
+            setup.get(
+                'training_challenge_mode',
+                1 if play_training_challenge else 0,
+            )
+        )
         common = {
             'start_chara': {
                 'card_id': int(setup['card_id']),
@@ -1532,6 +1614,8 @@ class UmaClient:
                     'trained_chara_id': int(
                         setup.get('rental_trained_chara_id', 0)
                     ),
+                    'is_circle_member': False,
+                    'is_event_rental': False,
                 },
                 'scenario_id': scenario_id,
                 'selected_difficulty_info': {
@@ -1546,7 +1630,8 @@ class UmaClient:
                     setup.get('boost_story_event_id', 0)
                 ),
                 'boost_factor_research_event_id': 0,
-                'training_challenge_mode': 0,
+                'is_play_training_challenge': play_training_challenge,
+                'training_challenge_mode': training_challenge_mode,
                 'running_style': int(setup['running_style']),
             },
             'tp_info': dict(tp_info),
@@ -1556,33 +1641,74 @@ class UmaClient:
                 succession_rank_point
             ),
         }
-        return self.call(
-            'idle_single_mode/start',
-            {
-                'single_mode_start_request_common': common,
-                'start_info': {
-                    'training_policy_ground_type': int(
-                        setup['training_policy_ground_type']
-                    ),
-                    'training_policy_param_rate_set_id': int(
-                        setup['training_policy_param_rate_set_id']
-                    ),
-                    'priority_skill_array': [
-                        dict(row)
-                        for row in setup.get(
-                            'priority_skill_array', []
-                        )
-                    ],
-                    'race_array': [
-                        dict(row)
-                        for row in setup.get('race_array', [])
-                    ],
-                },
+        payload = {
+            'single_mode_start_request_common': common,
+            'start_info': {
+                'training_policy_ground_type': int(
+                    setup['training_policy_ground_type']
+                ),
+                'training_policy_param_rate_set_id': int(
+                    setup['training_policy_param_rate_set_id']
+                ),
+                'priority_skill_array': [
+                    dict(row)
+                    for row in setup.get('priority_skill_array', [])
+                ],
+                'race_array': [
+                    dict(row)
+                    for row in setup.get('race_array', [])
+                ],
             },
-        )
+        }
+        for attempt in range(4):
+            if attempt:
+                self.pre_start_independent_training(scenario_id)
+            elif not prepared:
+                self.pre_start_independent_training(scenario_id)
+            server_priority_skill_array = getattr(
+                self,
+                '_idle_start_priority_skill_array',
+                None,
+            )
+            if server_priority_skill_array is not None:
+                payload['start_info']['priority_skill_array'] = [
+                    dict(row)
+                    for row in server_priority_skill_array
+                ]
+            try:
+                return self.call(
+                    'idle_single_mode/start',
+                    payload,
+                    retry_205=0,
+                    retry_208=0,
+                    retry_501=0,
+                )
+            except StateRecoveryError as exc:
+                if '501' not in str(exc) or attempt >= 3:
+                    raise
+                self._refresh_ticket_and_login()
+                self.pre_single_mode()
+            except Exception as exc:
+                error_text = str(exc)
+                if (
+                    attempt >= 3
+                    or ('205' not in error_text and '208' not in error_text)
+                ):
+                    raise
+                if '208' in error_text:
+                    dna_sleep(0.6, 1.4, 1.0, 0.1)
+                else:
+                    dna_sleep(0.14, 0.19, 0.166, 0.0083)
+        raise RuntimeError('independent training start retry loop exhausted')
 
     def end_independent_training(self):
         return self.call('idle_single_mode/end', {})
+
+    def independent_training_result(self):
+        return self.call('idle_single_mode/result', {})
+
+    def check_independent_training_progress_log(self):
+        return self.call('idle_single_mode/check_progress_log', {})
 
     def select_independent_factors(self, current_turn):
         return self.call(
@@ -1616,6 +1742,7 @@ class UmaClient:
             {
                 'factor_lottery_id': int(factor_lottery_id),
                 'current_turn': int(current_turn),
+                'is_force_delete': False,
             },
         )
 

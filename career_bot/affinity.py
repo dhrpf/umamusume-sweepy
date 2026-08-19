@@ -8,10 +8,10 @@ real client computes locally and the server validates. It equals the gametora
 
 chara_compat: gametora's relation-group algorithm over master.mdb
     succession_relation / succession_relation_member.
-race_compat: shared G1 win-saddle trophies between each parent and its own two
-    grandparents, PLUS between the two parents. Each shared G1 trophy
-    (single_mode_wins_saddle.win_saddle_type = 3) counts +3; non-G1 trophies
-    are ignored. Triple Crown etc. are their own saddle ids.
+race_compat: shared win-saddle trophies between each parent and its own two
+grandparents, PLUS between the two parents. Shared G1 trophies count +3;
+non-G1 trophies count +1 against a grandparent and +3 between the two direct
+parents. Triple Crown etc. are their own saddle ids.
 
 Verified: chara 97 + race 51 = 148 (parents 1210+264, trainee 100601).
 """
@@ -83,11 +83,17 @@ def chara_compat(mdb_path, trainee, p1, p2, p1_gp, p2_gp):
 def race_compat(p1_saddles, p1_gp_saddles, p2_saddles, p2_gp_saddles, g1_saddle_ids):
     """Shared win-saddle trophies between parents and grandparents + parent↔parent.
 
-    Each shared G1 trophy (win_saddle_type=3) counts +3; non-G1 is ignored.
+    Each shared G1 trophy (win_saddle_type=3) counts +3. Other shared
+    trophies count +1 against a grandparent; the direct parent pair counts
+    every shared trophy as +3.
     g1_saddle_ids: set of saddle ids flagged as G1 in master.mdb.
     """
-    def subtotal(parent, other):
-        return len(set(parent or []) & set(other or []) & set(g1_saddle_ids or [])) * 3
+    def subtotal(parent, other, *, direct_parents=False):
+        shared = set(parent or []) & set(other or [])
+        if direct_parents:
+            return len(shared) * 3
+        g1_count = len(shared & set(g1_saddle_ids or []))
+        return g1_count * 3 + (len(shared) - g1_count)
 
     p1 = p1_saddles or []
     p2 = p2_saddles or []
@@ -96,7 +102,7 @@ def race_compat(p1_saddles, p1_gp_saddles, p2_saddles, p2_gp_saddles, g1_saddle_
         score += subtotal(p1, gp)
     for gp in (p2_gp_saddles or []):
         score += subtotal(p2, gp)
-    score += subtotal(p1, p2)
+    score += subtotal(p1, p2, direct_parents=True)
     return score
 
 

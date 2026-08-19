@@ -1,4 +1,5 @@
 import copy
+from contextlib import contextmanager
 
 import pytest
 
@@ -61,6 +62,7 @@ def collected_run(*, reroll=True, targets=None, current_tp=60):
             "priority_skill_array": [
                 {"priority": 1, "skill_id": 100011},
             ],
+            "final_skill_ids": [100021, 100031],
             "factor_reroll": {
                 "enabled": reroll,
                 "targets": targets
@@ -151,6 +153,8 @@ class FakeStore:
 class FakeBuyer:
     def __init__(self):
         self.calls = []
+        self.seen_chara = []
+        self.last_result = {"skip": "no_candidates"}
 
     def final_purchase(
         self,
@@ -161,6 +165,7 @@ class FakeBuyer:
         running_style,
     ):
         self.calls.append((priority_skill_ids, running_style))
+        self.seen_chara.append((state.get("data") or {}).get("chara_info"))
         return state, 0
 
 
@@ -176,6 +181,29 @@ class FakeClient:
         self.finish_calls = []
         self.raise_lottery = False
         self.raise_finish = False
+        self.pacing_calls = []
+        self.result_response = {
+            "data": {
+                "end_info": {
+                    "chara_info": dict(
+                        store.run["finalization"]["chara_info"]
+                    )
+                }
+            }
+        }
+        self.result_calls = 0
+
+    def independent_training_result(self):
+        self.result_calls += 1
+        return self.result_response
+
+    @contextmanager
+    def independent_skill_pacing(self):
+        self.pacing_calls.append("enter")
+        try:
+            yield
+        finally:
+            self.pacing_calls.append("exit")
 
     def select_independent_factors(self, current_turn):
         return self.factor_select_result
@@ -193,6 +221,62 @@ class FakeClient:
         if self.raise_finish:
             raise RuntimeError("connection lost after finish")
         return self.finish_result
+
+
+def test_final_purchase_uses_final_skill_list_not_independent_training_priority():
+    run = collected_run(reroll=False)
+    finalizer, _, _, buyer = build_finalizer(run)
+
+    finalizer.run(run)
+
+    assert buyer.calls == [([100021, 100031], 1)]
+
+
+def test_skill_purchase_uses_fresh_chara_from_result_endpoint():
+    run = collected_run(reroll=False)
+    finalizer, store, client, buyer = build_finalizer(run)
+    client.result_response["data"]["end_info"]["chara_info"]["skill_point"] = 999
+
+    finalizer.run(run)
+
+    assert client.result_calls == 1
+    assert buyer.seen_chara[0]["skill_point"] == 999
+    assert store.run["finalization"]["chara_info"]["skill_point"] == 999
+
+
+def test_failed_skill_purchase_raises_instead_of_marking_completed():
+    """A genuine gain_skills failure (e.g. overspend/stale-sid 205/217) must not
+    be recorded as skills_completed — otherwise retry silently skips straight
+    to factor_select and the skill points are never spent."""
+    run = collected_run(reroll=False)
+    finalizer, store, _, buyer = build_finalizer(run)
+    buyer.last_result = {"result": "failed", "error": "gain_skills call failed"}
+
+    with pytest.raises(RuntimeError, match="skill purchase attempt failed"):
+        finalizer.run(run)
+
+    assert store.run["finalization"].get("skills_completed") is not True
+
+
+def test_result_refresh_skipped_once_skills_completed():
+    run = collected_run(reroll=False)
+    run["finalization"]["skills_completed"] = True
+    run["finalization"]["skills_bought"] = 0
+    finalizer, _, client, buyer = build_finalizer(run)
+
+    finalizer.run(run)
+
+    assert client.result_calls == 0
+    assert buyer.calls == []
+
+
+def test_final_purchase_uses_independent_skill_pacing_scope():
+    run = collected_run(reroll=False)
+    finalizer, _, client, _ = build_finalizer(run)
+
+    finalizer.run(run)
+
+    assert client.pacing_calls == ["enter", "exit"]
 
 
 def build_finalizer(run):

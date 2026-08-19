@@ -25,6 +25,10 @@ class RunVersionConflict(RuntimeError):
     pass
 
 
+class PresetNotFound(LookupError):
+    pass
+
+
 _TERMINAL_STATES = {
     RunState.COMPLETED,
     RunState.FAILED,
@@ -224,6 +228,19 @@ class IndependentTrainingStore:
                 );
                 CREATE INDEX IF NOT EXISTS independent_events_account_created
                 ON independent_events(account, created_at DESC, event_id DESC);
+
+                CREATE TABLE IF NOT EXISTS independent_training_presets (
+                    account TEXT NOT NULL,
+                    name TEXT NOT NULL COLLATE NOCASE,
+                    setup_json TEXT NOT NULL,
+                    count INTEGER NOT NULL,
+                    tp_mode TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (account, name)
+                );
+                CREATE INDEX IF NOT EXISTS independent_training_presets_account_updated
+                ON independent_training_presets(account, updated_at DESC, name ASC);
                 """
             )
         finally:
@@ -283,10 +300,31 @@ class IndependentTrainingStore:
         }
 
     @staticmethod
+    def _preset_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "account": row["account"],
+            "name": row["name"],
+            "setup": _load_json(row["setup_json"], {}),
+            "count": int(row["count"]),
+            "tp_mode": row["tp_mode"],
+            "created_at": float(row["created_at"]),
+            "updated_at": float(row["updated_at"]),
+        }
+
+    @staticmethod
     def _normalize_account(account: str) -> str:
         normalized = str(account or "").strip()
         if not normalized:
             raise ValueError("account is required")
+        return normalized
+
+    @staticmethod
+    def _normalize_preset_name(name: str) -> str:
+        normalized = str(name or "").strip()
+        if not normalized:
+            raise ValueError("preset name is required")
+        if len(normalized) > 80:
+            raise ValueError("preset name must be at most 80 characters")
         return normalized
 
     @staticmethod
@@ -347,6 +385,166 @@ class IndependentTrainingStore:
             connection.close()
         return [self.get(run_id) for run_id in run_ids]
 
+    def adopt_server_run(
+        self,
+        account: str,
+        setup: dict[str, Any],
+        *,
+        server_start_time: float,
+        server_end_time: float,
+        tp_mode: str | TpMode = TpMode.WAIT,
+    ) -> dict[str, Any]:
+        """Record a server-side run Sweepy never enqueued locally.
+
+        The game only allows one idle single mode career at a time, so an
+        orphan left over from a crashed session blocks every queued run with
+        an error 102 on ``idle_single_mode/start``.  Adopting it inserts an
+        already-RUNNING record whose setup mirrors the server, letting the
+        normal collect/finalize path drain it.
+        """
+        account = self._normalize_account(account)
+        resolved_tp_mode = TpMode(tp_mode).value
+        now = float(self.clock())
+        run_id = str(uuid.uuid4())
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            placeholders = ",".join("?" for _ in _ACTIVE_STATES)
+            active = connection.execute(
+                f"SELECT run_id FROM independent_runs WHERE account=? "
+                f"AND state IN ({placeholders}) LIMIT 1",
+                (account, *(state.value for state in _ACTIVE_STATES)),
+            ).fetchone()
+            if active is not None:
+                raise InvalidRunTransition(
+                    "Account already tracks an active Independent Training run"
+                )
+            row = connection.execute(
+                "SELECT COALESCE(MAX(position), 0) AS position "
+                "FROM independent_runs WHERE account=?",
+                (account,),
+            ).fetchone()
+            connection.execute(
+                "INSERT INTO independent_runs "
+                "(run_id, account, position, state, version, setup_json, "
+                "tp_mode, created_at, updated_at, server_start_time, "
+                "server_end_time, start_attempted) "
+                "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1)",
+                (
+                    run_id,
+                    account,
+                    int(row["position"]) + 1,
+                    RunState.RUNNING.value,
+                    _private_json(setup),
+                    resolved_tp_mode,
+                    now,
+                    now,
+                    float(server_start_time),
+                    float(server_end_time),
+                ),
+            )
+            connection.execute("COMMIT")
+        except Exception:
+            self._rollback(connection)
+            raise
+        finally:
+            connection.close()
+        return self.get(run_id)
+
+    def save_preset(
+        self,
+        account: str,
+        name: str,
+        setup: dict[str, Any],
+        *,
+        count: int,
+        tp_mode: str | TpMode,
+    ) -> dict[str, Any]:
+        account = self._normalize_account(account)
+        name = self._normalize_preset_name(name)
+        resolved_count = int(count)
+        if resolved_count < 1 or resolved_count > 100:
+            raise ValueError("count must be between 1 and 100")
+        resolved_tp_mode = TpMode(tp_mode).value
+        now = float(self.clock())
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "INSERT INTO independent_training_presets "
+                "(account, name, setup_json, count, tp_mode, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(account, name) DO UPDATE SET "
+                "name=excluded.name, setup_json=excluded.setup_json, "
+                "count=excluded.count, tp_mode=excluded.tp_mode, "
+                "updated_at=excluded.updated_at",
+                (
+                    account,
+                    name,
+                    _private_json(setup),
+                    resolved_count,
+                    resolved_tp_mode,
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM independent_training_presets "
+                "WHERE account=? AND name=?",
+                (account, name),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return self._preset_from_row(row)
+        except Exception:
+            self._rollback(connection)
+            raise
+        finally:
+            connection.close()
+
+    def get_preset(self, account: str, name: str) -> dict[str, Any]:
+        account = self._normalize_account(account)
+        name = self._normalize_preset_name(name)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT * FROM independent_training_presets "
+                "WHERE account=? AND name=?",
+                (account, name),
+            ).fetchone()
+            if row is None:
+                raise PresetNotFound(
+                    f"Independent Training preset not found: {name}"
+                )
+            return self._preset_from_row(row)
+        finally:
+            connection.close()
+
+    def list_presets(self, account: str) -> list[dict[str, Any]]:
+        account = self._normalize_account(account)
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "SELECT * FROM independent_training_presets WHERE account=? "
+                "ORDER BY updated_at DESC, name ASC",
+                (account,),
+            ).fetchall()
+            return [self._preset_from_row(row) for row in rows]
+        finally:
+            connection.close()
+
+    def delete_preset(self, account: str, name: str) -> bool:
+        account = self._normalize_account(account)
+        name = self._normalize_preset_name(name)
+        connection = self._connect()
+        try:
+            result = connection.execute(
+                "DELETE FROM independent_training_presets WHERE account=? AND name=?",
+                (account, name),
+            )
+            return result.rowcount > 0
+        finally:
+            connection.close()
+
     def get(self, run_id: str) -> dict[str, Any]:
         connection = self._connect()
         try:
@@ -387,6 +585,40 @@ class IndependentTrainingStore:
         finally:
             connection.close()
 
+    def list_status_runs(
+        self,
+        account: str,
+        *,
+        completed_limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        account = self._normalize_account(account)
+        resolved_completed_limit = max(0, min(int(completed_limit), 100))
+        terminal_states = tuple(state.value for state in _TERMINAL_STATES)
+        terminal_placeholders = ",".join("?" for _ in terminal_states)
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "WITH recent_completed AS ("
+                "SELECT run_id FROM independent_runs "
+                "WHERE account=? AND state=? "
+                "ORDER BY position DESC LIMIT ?"
+                ") "
+                "SELECT * FROM independent_runs WHERE account=? AND ("
+                f"state NOT IN ({terminal_placeholders}) "
+                "OR run_id IN (SELECT run_id FROM recent_completed)"
+                ") ORDER BY position ASC",
+                (
+                    account,
+                    RunState.COMPLETED.value,
+                    resolved_completed_limit,
+                    account,
+                    *terminal_states,
+                ),
+            ).fetchall()
+            return [self._run_from_row(row) for row in rows]
+        finally:
+            connection.close()
+
     def active_run(self, account: str) -> dict[str, Any] | None:
         account = self._normalize_account(account)
         placeholders = ",".join("?" for _ in _ACTIVE_STATES)
@@ -398,6 +630,44 @@ class IndependentTrainingStore:
                 (account, *(state.value for state in _ACTIVE_STATES)),
             ).fetchone()
             return self._run_from_row(row) if row is not None else None
+        finally:
+            connection.close()
+
+    def mark_stale_unconfirmed_starts(
+        self,
+        account: str,
+        *,
+        stale_after_seconds: float = 60,
+    ) -> int:
+        """Stop presenting abandoned local starts as active server runs."""
+        account = self._normalize_account(account)
+        cutoff = float(self.clock()) - max(0.0, float(stale_after_seconds))
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            result = connection.execute(
+                "UPDATE independent_runs SET state=?, error_text=?, "
+                "next_action=?, "
+                "version=version+1, updated_at=? WHERE account=? "
+                "AND state=? AND start_attempted=1 "
+                "AND (server_start_time IS NULL OR server_start_time<=0) "
+                "AND (server_end_time IS NULL OR server_end_time<=0) "
+                "AND updated_at<=?",
+                (
+                    RunState.NEEDS_ATTENTION.value,
+                    "unconfirmed start was abandoned; idle status was not queried",
+                    "reconcile",
+                    float(self.clock()),
+                    account,
+                    RunState.STARTING.value,
+                    cutoff,
+                ),
+            )
+            connection.execute("COMMIT")
+            return int(result.rowcount)
+        except Exception:
+            self._rollback(connection)
+            raise
         finally:
             connection.close()
 
@@ -687,6 +957,53 @@ class IndependentTrainingStore:
                 "updated_at=? WHERE run_id=?",
                 (
                     RunState.CANCELLED.value,
+                    float(self.clock()),
+                    str(run_id),
+                ),
+            )
+            updated = connection.execute(
+                "SELECT * FROM independent_runs WHERE run_id=?",
+                (str(run_id),),
+            ).fetchone()
+            connection.execute("COMMIT")
+            return self._run_from_row(updated)
+        except Exception:
+            self._rollback(connection)
+            raise
+        finally:
+            connection.close()
+
+    def discard(self, run_id: str, *, reason: str = "") -> dict[str, Any]:
+        """Force a stuck run into FAILED so the queue can move on.
+
+        Reconciliation cannot always resolve an ambiguous server state (an
+        error 102 on ``idle_single_mode/start`` leaves the run parked in
+        NEEDS_ATTENTION forever).  Discarding drops only the local record;
+        the server side, if any, is untouched.
+        """
+        message = str(reason).strip() or "discarded from dashboard"
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM independent_runs WHERE run_id=?",
+                (str(run_id),),
+            ).fetchone()
+            if row is None:
+                raise RunNotFound(f"Independent run not found: {run_id}")
+            if row["state"] in {state.value for state in _TERMINAL_STATES}:
+                raise InvalidRunTransition(
+                    "Independent run already reached a terminal state: "
+                    f"{row['state']}"
+                )
+            connection.execute(
+                "UPDATE independent_runs SET state=?, error_text=?, "
+                "next_action=?, version=version+1, updated_at=? "
+                "WHERE run_id=?",
+                (
+                    RunState.FAILED.value,
+                    message,
+                    "",
                     float(self.clock()),
                     str(run_id),
                 ),

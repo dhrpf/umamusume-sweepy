@@ -597,6 +597,19 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "100291": {
+    "name": "Snow Bright, Snow Flight",
+    "rarity": 5,
+    "group_id": 10029,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "100301": {
     "name": "Blue Rose Closer",
     "rarity": 5,
@@ -1248,6 +1261,19 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "110191": {
+    "name": "THE MOE AAAA Thanks for My Life",
+    "rarity": 5,
+    "group_id": 11019,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "110201": {
     "name": "Break It Down!",
     "rarity": 5,
@@ -1332,6 +1358,19 @@
     "icon_id": 20023,
     "skill_category": 5
   },
+  "110351": {
+    "name": "Ticket to Your Dreams!",
+    "rarity": 5,
+    "group_id": 11035,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "110371": {
     "name": "Guten Appetit ♪",
     "rarity": 5,
@@ -1401,6 +1440,19 @@
     "icon_id": 20013,
     "skill_category": 5
   },
+  "110501": {
+    "name": "Hephaestus",
+    "rarity": 5,
+    "group_id": 11050,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
   "110521": {
     "name": "114th Time's the Charm",
     "rarity": 5,
@@ -1423,6 +1475,20 @@
     "disable_singlemode": 1,
     "tags": [
       401
+    ],
+    "icon_id": 20013,
+    "skill_category": 5
+  },
+  "110581": {
+    "name": "Spooky, Scary, Happy",
+    "rarity": 5,
+    "group_id": 11058,
+    "grade_value": 340,
+    "need_skill_point": 0,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      406
     ],
     "icon_id": 20013,
     "skill_category": 5
@@ -7672,8 +7738,38 @@
     "icon_id": 20011,
     "skill_category": 2
   },
+  "202391": {
+    "name": "Givin' It 1000%",
+    "rarity": 2,
+    "group_id": 20239,
+    "grade_value": 508,
+    "need_skill_point": 180,
+    "disable_singlemode": 1,
+    "tags": [
+      101,
+      302,
+      401
+    ],
+    "icon_id": 20012,
+    "skill_category": 2
+  },
+  "202392": {
+    "name": "Mad Dash",
+    "rarity": 1,
+    "group_id": 20239,
+    "grade_value": 217,
+    "need_skill_point": 180,
+    "disable_singlemode": 0,
+    "tags": [
+      101,
+      302,
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 2
+  },
   "202401": {
-    "name": "Flash Forward",
+    "name": "Lightning Surge",
     "rarity": 2,
     "group_id": 20240,
     "grade_value": 508,
@@ -8858,6 +8954,19 @@
     "icon_id": 20011,
     "skill_category": 5
   },
+  "900291": {
+    "name": "Snow Bright, Snow Flight",
+    "rarity": 1,
+    "group_id": 90029,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "900301": {
     "name": "Blue Rose Closer",
     "rarity": 1,
@@ -9008,6 +9117,19 @@
     "name": "Genius x Bakushin = Victory",
     "rarity": 1,
     "group_id": 90041,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
+  "900421": {
+    "name": "I'm Possible!",
+    "rarity": 1,
+    "group_id": 90042,
     "grade_value": 180,
     "need_skill_point": 200,
     "disable_singlemode": 1,
@@ -9481,6 +9603,19 @@
     "icon_id": 20011,
     "skill_category": 5
   },
+  "910191": {
+    "name": "THE MOE AAAA Thanks for My Life",
+    "rarity": 1,
+    "group_id": 91019,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "910201": {
     "name": "Break It Down!",
     "rarity": 1,
@@ -9496,7 +9631,7 @@
     "skill_category": 5
   },
   "910221": {
-    "name": "Best day ever",
+    "name": "Best Day Ever",
     "rarity": 1,
     "group_id": 91022,
     "grade_value": 180,
@@ -9563,6 +9698,19 @@
       406
     ],
     "icon_id": 20021,
+    "skill_category": 5
+  },
+  "910351": {
+    "name": "Ticket to Your Dreams!",
+    "rarity": 1,
+    "group_id": 91035,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
     "skill_category": 5
   },
   "910371": {
@@ -9634,6 +9782,19 @@
     "icon_id": 20011,
     "skill_category": 5
   },
+  "910501": {
+    "name": "Hephaestus",
+    "rarity": 1,
+    "group_id": 91050,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
   "910521": {
     "name": "114th Time's the Charm",
     "rarity": 1,
@@ -9656,6 +9817,20 @@
     "disable_singlemode": 1,
     "tags": [
       401
+    ],
+    "icon_id": 20011,
+    "skill_category": 5
+  },
+  "910581": {
+    "name": "Spooky, Scary, Happy",
+    "rarity": 1,
+    "group_id": 91058,
+    "grade_value": 180,
+    "need_skill_point": 200,
+    "disable_singlemode": 1,
+    "tags": [
+      401,
+      406
     ],
     "icon_id": 20011,
     "skill_category": 5

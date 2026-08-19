@@ -90,10 +90,10 @@ class IndependentSetup(StrictModel):
     is_boost: int = Field(default=0, ge=0)
     boost_story_event_id: int = Field(default=0, ge=0)
     training_policy_ground_type: int = Field(gt=0)
-    training_policy_param_rate_set_id: int = Field(gt=0)
+    training_policy_param_rate_set_id: Literal[1, 2, 3]
     priority_skill_array: list[PrioritySkill] = Field(default_factory=list)
+    final_skill_ids: list[int] = Field(default_factory=list)
     race_array: list[RaceEntry] = Field(default_factory=list)
-    use_tp: int = Field(default=30, ge=0)
     factor_reroll: FactorReroll = Field(default_factory=FactorReroll)
 
     @field_validator("support_card_ids")
@@ -105,11 +105,36 @@ class IndependentSetup(StrictModel):
             )
         return value
 
+    @field_validator("final_skill_ids")
+    @classmethod
+    def distinct_final_skills(cls, value):
+        normalized = [int(skill_id) for skill_id in value]
+        if any(skill_id <= 0 for skill_id in normalized):
+            raise ValueError("final_skill_ids must contain positive IDs")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("final_skill_ids must be distinct")
+        return normalized
+
     @model_validator(mode="after")
     def distinct_parents(self):
         if self.parent_id_1 == self.parent_id_2:
             raise ValueError("parent selections must be distinct")
         return self
+
+
+class IndependentTrainingPreset(StrictModel):
+    name: str = Field(min_length=1, max_length=80)
+    setup: IndependentSetup
+    count: int = Field(default=1, ge=1, le=100)
+    tp_mode: TpMode = TpMode.WAIT
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value):
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("preset name is required")
+        return normalized
 
 
 class EnqueueRuns(StrictModel):
