@@ -550,6 +550,15 @@ class DailiesRunner:
             return {"bought": [], "detail": "already cleared"}
 
         plan.sort(key=lambda row: (row["cost"], row["exchange_id"]))
+        # Race rewards (add_item_list) don't update item_map, so the cached gold
+        # is stale by the time the shop runs. The server validates the declared
+        # balance in use_item_info_array and rejects a mismatch with 213.
+        try:
+            refresh = client.call("load/index", {"adid": ""})
+            refresh_state = refresh.get("data", {}) if isinstance(refresh, dict) else {}
+            client.refresh_cached_account_state(refresh_state)
+        except Exception as exc:
+            self._log(f"Daily Shop: gold refresh failed ({_error_code(exc) or exc}).", "warning")
         starting_gold = int(getattr(client, "item_map", {}).get(GOLD_ITEM_ID, 0) or 0)
         remaining = starting_gold
         selected_rows: list[dict[str, Any]] = []

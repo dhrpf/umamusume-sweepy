@@ -415,7 +415,22 @@ class IndependentTrainingService:
                 ttl_seconds=self.lease_ttl_seconds,
             )
         except LeaseConflict as exc:
-            raise WorkflowConflict(str(exc)) from exc
+            # The executor loop can sleep far longer than the lease TTL
+            # (e.g. waiting hours for TP regen). If the lease merely lapsed
+            # while we still own the workflow, re-acquire it instead of
+            # parking the active run in NEEDS_ATTENTION forever.
+            if self.store.active_run(account) is None:
+                raise WorkflowConflict(str(exc)) from exc
+            try:
+                return self.job_store.acquire_workflow_lease(
+                    account,
+                    owner=self._owner(account),
+                    workflow_type="independent_training",
+                    ttl_seconds=self.lease_ttl_seconds,
+                    metadata={"source": "heartbeat-reacquire"},
+                )
+            except LeaseConflict as reacquire_exc:
+                raise WorkflowConflict(str(reacquire_exc)) from reacquire_exc
 
     def release_lease(self) -> bool:
         account = self._account()
@@ -528,9 +543,10 @@ class IndependentTrainingService:
             )
             for row in dashboard.get("support_cards") or []
         }
+        # friend_card_id is a rental, never in owned supports; it is
+        # validated separately against friend_supports below.
         selected_supports = {
-            *[int(value) for value in setup["support_card_ids"]],
-            int(setup["friend_card_id"]),
+            int(value) for value in setup["support_card_ids"]
         }
         if available_supports and not selected_supports.issubset(
             available_supports

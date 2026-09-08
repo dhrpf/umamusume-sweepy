@@ -117,6 +117,8 @@ class FakeClient:
             raise RuntimeError("connection lost after end")
         if self.raise_at == "end_1503":
             raise RuntimeError("API error 1503 on idle_single_mode/end")
+        if self.raise_at == "end_217":
+            raise RuntimeError("API error 217 on idle_single_mode/end")
         return self.end_result
 
     def independent_training_result(self):
@@ -427,6 +429,38 @@ def test_reconcile_retries_only_completed_status_mismatch(store, harness):
     assert resumed["error"] == ""
 
 
+def test_reconcile_collects_after_idle_status_217(store, harness):
+    runner, _, _, _ = harness
+    run = enqueue(store)[0]
+    starting = store.claim_next("acct01")
+    started = store.mark_start_attempted(run["run_id"], starting["version"])
+    running = store.transition(
+        run["run_id"],
+        "RUNNING",
+        expected_version=started["version"],
+        server_start_time=10,
+        server_end_time=90,
+    )
+    store.transition(
+        run["run_id"],
+        "NEEDS_ATTENTION",
+        expected_version=running["version"],
+        error=(
+            "idle status probe failed: API error 217 on "
+            "idle_single_mode/status"
+        ),
+        next_action="reconcile",
+    )
+
+    assert runner.retry_completed_reconciliation("acct01") is True
+
+    resumed = store.get(run["run_id"])
+    assert resumed["state"] == "COLLECTING"
+    assert resumed["collection_attempted"] is False
+    assert resumed["error"] == ""
+    assert runner.snapshot()["state"] == "COLLECTING"
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -719,6 +753,86 @@ def test_end_1503_reconciles_post_run_result_instead_of_parking(
         "finalize",
     ]
     assert client.start_calls == 1
+
+
+def test_end_217_replays_tail_and_recovers_result(store, harness):
+    runner, client, _, _ = harness
+    run = enqueue(store)[0]
+    client.status_results = [status_response(progress())]
+    client.raise_at = "end_217"
+
+    runner.run_once("acct01")
+
+    assert store.get(run["run_id"])["state"] == "COMPLETED"
+    assert client.calls == [
+        "pre_start",
+        "start",
+        "status",
+        "end",
+        "result",
+        "finalize",
+    ]
+
+
+def test_collection_reconciliation_fails_run_when_server_has_no_session(
+    store,
+    harness,
+):
+    runner, client, _, _ = harness
+    run = enqueue(store)[0]
+    client.status_results = [status_response(progress()), status_response()]
+    client.raise_at = "end_1503"
+    client.result_response = {"data": {}}
+
+    runner.run_once("acct01")
+
+    attention = store.get(run["run_id"])
+    assert attention["state"] == "NEEDS_ATTENTION"
+    assert attention["error"].startswith("collection result is ambiguous")
+
+    assert runner.retry_collection_reconciliation("acct01") is True
+
+    failed = store.get(run["run_id"])
+    assert failed["state"] == "FAILED"
+    assert store.active_run("acct01") is None
+
+
+def test_collection_reconciliation_fails_run_when_matched_session_already_ended(
+    store,
+    harness,
+):
+    runner, client, _, _ = harness
+    run = enqueue(store)[0]
+    client.status_results = [status_response(progress()), status_response(progress())]
+    client.raise_at = "end_1503"
+    client.result_response = {"data": {}}
+
+    runner.run_once("acct01")
+    assert store.get(run["run_id"])["state"] == "NEEDS_ATTENTION"
+
+    assert runner.retry_collection_reconciliation("acct01") is True
+
+    assert store.get(run["run_id"])["state"] == "FAILED"
+
+
+def test_collection_reconciliation_waits_when_server_session_still_active(
+    store,
+    harness,
+):
+    runner, client, _, _ = harness
+    run = enqueue(store)[0]
+    client.status_results = [
+        status_response(progress()),
+        status_response(progress(end=9999)),
+    ]
+    client.raise_at = "end_1503"
+    client.result_response = {"data": {}}
+
+    runner.run_once("acct01")
+    assert store.get(run["run_id"])["state"] == "NEEDS_ATTENTION"
+
+    assert runner.retry_collection_reconciliation("acct01") is False
+    assert store.get(run["run_id"])["state"] == "NEEDS_ATTENTION"
 
 
 def test_two_snapshots_run_without_second_approval(store, harness):

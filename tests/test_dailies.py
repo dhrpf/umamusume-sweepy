@@ -439,3 +439,42 @@ def test_daily_shop_buys_only_gold_goods_cheapest_first_within_balance(tmp_path)
         [{"item_id": 59, "number": 250}],
         "2026/07/13 16:00:00",
     )
+
+
+class StaleGoldShopClient(ShopClient):
+    """item_map gold is stale (race rewards never update it); refresh via
+    load/index must happen before the purchase and feed the declared balance."""
+
+    def __init__(self):
+        super().__init__()
+        self.item_map = {59: 100}  # stale: races paid out since login
+        self.calls = []
+
+    def call(self, endpoint, payload):
+        self.calls.append(endpoint)
+        assert endpoint == "load/index"
+        self.item_map[59] = 400  # refresh_cached_account_state on item_list
+        return {"data": {"item_list": [{"item_id": 59, "number": 400}]}}
+
+
+def test_daily_shop_refreshes_gold_before_purchase(tmp_path):
+    runner = DailiesRunner(tmp_path)
+    runner._load_shop_catalog = lambda: (
+        {501: 7001, 502: 7002},
+        {
+            7001: {"pay_item": 59, "pay_num": 100, "limit": 1, "reward_item": 91, "reward_num": 1},
+            7002: {"pay_item": 59, "pay_num": 50, "limit": 1, "reward_item": 92, "reward_num": 1},
+        },
+    )
+    client = StaleGoldShopClient()
+
+    result = runner._daily_shop(client)
+
+    assert result == {"bought": [7002, 7001], "spend": {59: 150}, "rewards": 1}
+    assert client.calls == ["load/index"]
+    exchange_items, balances, _ = client.purchase
+    assert balances == [{"item_id": 59, "number": 400}]
+    assert exchange_items == [
+        {"exchange_id": 7002, "count": 1, "ex_param": {"open_count": 3}},
+        {"exchange_id": 7001, "count": 1, "ex_param": {"open_count": 2}},
+    ]

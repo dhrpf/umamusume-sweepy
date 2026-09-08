@@ -4336,6 +4336,26 @@ async def get_start_state():
 async def get_raw_load():
     return {"error": "raw load/index response storage disabled"}
 
+@app.post("/api/debug/idle-end")
+async def debug_idle_end():
+    """One-off: retry idle_single_mode/end + progress-log ack for a ghost
+    career the runner refuses to re-collect (see scripts/idle_collect_ghost.py)."""
+    if not active_client:
+        return {"success": False, "detail": "Not logged in"}
+    try:
+        end = active_client.call('idle_single_mode/end', {})
+    except Exception as e:
+        return {"success": False, "detail": f"end failed: {e}"}
+    data = end.get('data') or {}
+    chara = data.get('chara_info') or data.get('single_mode_chara_light') or {}
+    try:
+        active_client.call('idle_single_mode/check_progress_log', {})
+        acked = True
+    except Exception:
+        acked = False
+    return {"success": True, "end_rc": end.get('response_code'),
+            "acked": acked, "chara_keys": list(chara)[:10]}
+
 @app.get("/api/images/{image_name}")
 async def get_image(image_name: str):
     name_no_ext = image_name.split('?')[0].replace('.png', '')

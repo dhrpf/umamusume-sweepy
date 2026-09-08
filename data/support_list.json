@@ -404,10 +404,20 @@
     "rarity": "R",
     "type": "Guts"
   },
+  "10082": {
+    "name": "Symboli Kris S",
+    "rarity": "R",
+    "type": "Stamina"
+  },
   "10083": {
     "name": "Light Hello",
     "rarity": "R",
     "type": "Friends"
+  },
+  "10084": {
+    "name": "Tanino Gimlet",
+    "rarity": "R",
+    "type": "Power"
   },
   "20001": {
     "name": "Fuji Kiseki",
@@ -656,6 +666,11 @@
   },
   "20051": {
     "name": "K.S.Miracle",
+    "rarity": "SR",
+    "type": "Guts"
+  },
+  "20052": {
+    "name": "Tsurumaru Tsuyoshi",
     "rarity": "SR",
     "type": "Guts"
   },
@@ -1219,9 +1234,19 @@
     "rarity": "SSR",
     "type": "Guts"
   },
+  "30118": {
+    "name": "Symboli Kris S",
+    "rarity": "SSR",
+    "type": "Stamina"
+  },
   "30121": {
     "name": "Mihono Bourbon",
     "rarity": "SSR",
     "type": "Speed"
+  },
+  "30145": {
+    "name": "Tanino Gimlet",
+    "rarity": "SSR",
+    "type": "Power"
   }
 }

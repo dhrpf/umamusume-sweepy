@@ -426,6 +426,37 @@ def test_heartbeat_renews_same_owner_and_release_is_owner_safe(
     assert service.release_lease() is True
 
 
+def test_heartbeat_reacquires_lapsed_lease_while_run_is_active(
+    service,
+    store,
+    job_store,
+    clock,
+):
+    service.start()
+    store.enqueue("acct01", setup_payload(), count=1, tp_mode="wait")
+    store.claim_next("acct01")  # moves the queued run into STARTING
+    clock["now"] += 121  # lease TTL expired during a long TP-regen sleep
+
+    renewed = service.heartbeat()
+
+    assert renewed["owner"] == "independent-training:acct01"
+    assert renewed["expires_at"] > clock["now"]
+
+
+def test_heartbeat_without_active_run_does_not_reacquire_lease(
+    service,
+    job_store,
+    clock,
+):
+    service.start()
+    clock["now"] += 121  # lease TTL expired while idle
+
+    with pytest.raises(WorkflowConflict):
+        service.heartbeat()
+
+    assert job_store.get_workflow_lease("acct01") is None
+
+
 def test_cancel_and_reconcile_obey_run_state(service, store, runner):
     queued = service.enqueue(
         setup_payload(),

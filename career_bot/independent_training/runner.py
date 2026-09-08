@@ -25,6 +25,9 @@ _CHARA_FIELDS = (
 _COMPLETED_RECONCILIATION_ERROR = (
     "completed server run could not be reconciled"
 )
+_IDLE_STATUS_RECONCILIATION_ERROR = (
+    "idle status probe failed: API error 217"
+)
 
 
 def _progress(response: dict[str, Any]) -> dict[str, Any]:
@@ -300,22 +303,28 @@ class IndependentTrainingRunner:
 
     def retry_completed_reconciliation(self, account: str) -> bool:
         run = self.store.active_run(account)
+        error = str((run or {}).get("error") or "")
+        collect = error.startswith(_IDLE_STATUS_RECONCILIATION_ERROR)
         if (
             run is None
             or RunState(run["state"]) != RunState.NEEDS_ATTENTION
-            or run.get("error") != _COMPLETED_RECONCILIATION_ERROR
+            or (
+                error != _COMPLETED_RECONCILIATION_ERROR
+                and not collect
+            )
             or float(run.get("server_end_time") or 0) <= 0
         ):
             return False
+        state = RunState.COLLECTING if collect else RunState.RUNNING
         resumed = self.store.transition(
             run["run_id"],
-            RunState.RUNNING,
+            state,
             expected_version=run["version"],
             error="",
             next_action="",
         )
         self._set_snapshot(
-            "RUNNING",
+            state.value,
             account=str(account),
             run_id=resumed["run_id"],
         )
@@ -447,13 +456,46 @@ class IndependentTrainingRunner:
             return False
 
         client = self.client_provider(account)
-        recovered = self._reconcile_collection_result(account, run, client)
-        if recovered is None:
-            return False
+        if self.load_progress_provider is not None:
+            confirmed = self.load_progress_provider(str(account)) or {}
+        else:
+            try:
+                status = client.independent_training_status()
+            except Exception:
+                return False
+            confirmed = _progress(status)
+        has_matching_session = bool(confirmed) and self._matches(run, confirmed)
+        if has_matching_session:
+            confirmed_end = _server_timestamp(
+                _nested_progress_value(confirmed, "end_time") or 0
+            )
+            if confirmed_end > float(self.clock()):
+                return False
+
+            recovered = self._reconcile_collection_result(account, run, client)
+            if recovered is not None:
+                self._set_snapshot(
+                    "FINALIZING",
+                    account=str(account),
+                    run_id=recovered["run_id"],
+                )
+                return True
+
+        failed = self.store.transition(
+            run["run_id"],
+            RunState.FAILED,
+            expected_version=run["version"],
+            error=(
+                "independent training ended outside the bot "
+                "(no matching server session); no final results collected"
+            ),
+            next_action="",
+        )
         self._set_snapshot(
-            "FINALIZING",
+            "FAILED",
             account=str(account),
-            run_id=recovered["run_id"],
+            run_id=failed["run_id"],
+            error=failed.get("error") or "",
         )
         return True
 
@@ -988,11 +1030,14 @@ class IndependentTrainingRunner:
         try:
             response = client.end_independent_training()
         except Exception as exc:
-            if "1503" in str(exc):
+            # 1503: end already processed; 217: server already ended the
+            # career (playing_state 3).  Both mean result is the next step.
+            if "1503" in str(exc) or "217" in str(exc):
                 recovered = self._reconcile_collection_result(
                     account,
                     marked,
                     client,
+                    replay_tail=False,
                 )
                 if recovered is not None:
                     return self._finalize(account, recovered)
@@ -1003,6 +1048,15 @@ class IndependentTrainingRunner:
             )
         chara = _minimal_chara(response)
         if not chara:
+            # An end was just attempted in this method; no replay needed.
+            recovered = self._reconcile_collection_result(
+                account,
+                marked,
+                client,
+                replay_tail=False,
+            )
+            if recovered is not None:
+                return self._finalize(account, recovered)
             return self._needs_attention(
                 account,
                 marked,
@@ -1033,7 +1087,22 @@ class IndependentTrainingRunner:
         account: str,
         run: dict[str, Any],
         client,
+        *,
+        replay_tail: bool = True,
     ) -> dict[str, Any] | None:
+        # A career the server already ended (playing_state 3) refuses a plain
+        # result probe with 217.  Replay the tail of the collect sequence
+        # tolerantly: end (idempotent-ish, 205/217 once consumed), ack the
+        # progress log, then claim the result.
+        if replay_tail:
+            try:
+                client.end_independent_training()
+            except Exception:
+                pass
+            try:
+                client.check_independent_training_progress_log()
+            except Exception:
+                pass
         try:
             response = client.independent_training_result()
         except Exception:
