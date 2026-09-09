@@ -455,6 +455,18 @@
     "late": 7,
     "end": 7
   },
+  "102102": {
+    "turf": 7,
+    "dirt": 2,
+    "short": 1,
+    "mile": 3,
+    "medium": 7,
+    "long": 7,
+    "front": 1,
+    "pace": 7,
+    "late": 7,
+    "end": 7
+  },
   "102201": {
     "turf": 7,
     "dirt": 1,
@@ -660,6 +672,18 @@
     "end": 7
   },
   "103401": {
+    "turf": 7,
+    "dirt": 7,
+    "short": 2,
+    "mile": 6,
+    "medium": 7,
+    "long": 7,
+    "front": 1,
+    "pace": 6,
+    "late": 6,
+    "end": 7
+  },
+  "103402": {
     "turf": 7,
     "dirt": 7,
     "short": 2,

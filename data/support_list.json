@@ -1239,6 +1239,16 @@
     "rarity": "SSR",
     "type": "Stamina"
   },
+  "30119": {
+    "name": "Mejiro Ardan",
+    "rarity": "SSR",
+    "type": "Speed"
+  },
+  "30120": {
+    "name": "Yaeno Muteki",
+    "rarity": "SSR",
+    "type": "Guts"
+  },
   "30121": {
     "name": "Mihono Bourbon",
     "rarity": "SSR",
@@ -1248,5 +1258,10 @@
     "name": "Tanino Gimlet",
     "rarity": "SSR",
     "type": "Power"
+  },
+  "30146": {
+    "name": "Oguri Cap",
+    "rarity": "SSR",
+    "type": "Wisdom"
   }
 }

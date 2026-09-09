@@ -25,9 +25,18 @@ _CHARA_FIELDS = (
 _COMPLETED_RECONCILIATION_ERROR = (
     "completed server run could not be reconciled"
 )
+# 217: career ended server-side but is unclaimed (load/index reports it,
+# playing_state 3); the claim path is end → result.
 _IDLE_STATUS_RECONCILIATION_ERROR = (
-    "idle status probe failed: API error 217"
+    "idle status probe failed: API error 217",
 )
+# 391: the career clock just ran out (seen 3s past end_time) and
+# ``idle_single_mode/status`` is no longer answerable.  Do NOT replay end
+# blindly: the server may have cleaned the expired career up entirely (end
+# then answers 102).  First confirm a claimable career actually exists —
+# load/index window, else a tolerant read-only result probe — and only
+# resolve the run as FAILED when both come up empty.
+_IDLE_STATUS_EXPIRED_ERROR = "idle status probe failed: API error 391"
 
 
 def _progress(response: dict[str, Any]) -> dict[str, Any]:
@@ -304,16 +313,17 @@ class IndependentTrainingRunner:
     def retry_completed_reconciliation(self, account: str) -> bool:
         run = self.store.active_run(account)
         error = str((run or {}).get("error") or "")
-        collect = error.startswith(_IDLE_STATUS_RECONCILIATION_ERROR)
+        expired = error.startswith(_IDLE_STATUS_EXPIRED_ERROR)
         if (
             run is None
             or RunState(run["state"]) != RunState.NEEDS_ATTENTION
-            or (
-                error != _COMPLETED_RECONCILIATION_ERROR
-                and not collect
-            )
             or float(run.get("server_end_time") or 0) <= 0
         ):
+            return False
+        if expired:
+            return self._reconcile_expired_career(account, run)
+        collect = error.startswith(_IDLE_STATUS_RECONCILIATION_ERROR)
+        if error != _COMPLETED_RECONCILIATION_ERROR and not collect:
             return False
         state = RunState.COLLECTING if collect else RunState.RUNNING
         resumed = self.store.transition(
@@ -327,6 +337,66 @@ class IndependentTrainingRunner:
             state.value,
             account=str(account),
             run_id=resumed["run_id"],
+        )
+        return True
+
+    def _reconcile_expired_career(self, account: str, run: dict) -> bool:
+        """Resolve a run whose idle-status probe hit 391.
+
+        391 only proves ``idle_single_mode/status`` stopped answering for
+        the expired career; it does not prove the career is claimable.  Check
+        for a claimable career before replaying any end call:
+        1. ``load/index`` still reports the matching window (end passed) →
+           claim via the proven end → result path.
+        2. Else a tolerant read-only result probe (covers the edge where
+           load/index drops an unclaimed window).
+        3. Neither exists → the server cleaned the career up; the run
+           resolves as FAILED so the slot clears and the queue resumes.
+        """
+        confirmed = self._load_index_confirmation(account, run)
+        if confirmed is not None:
+            resumed = self.store.transition(
+                run["run_id"],
+                RunState.COLLECTING,
+                expected_version=run["version"],
+                error="",
+                next_action="",
+            )
+            self._set_snapshot(
+                "COLLECTING",
+                account=str(account),
+                run_id=resumed["run_id"],
+            )
+            return True
+        client = self.client_provider(account)
+        recovered = self._reconcile_collection_result(
+            account,
+            run,
+            client,
+            replay_tail=False,
+        )
+        if recovered is not None:
+            self._set_snapshot(
+                "FINALIZING",
+                account=str(account),
+                run_id=recovered["run_id"],
+            )
+            return True
+        failed = self.store.transition(
+            run["run_id"],
+            RunState.FAILED,
+            expected_version=run["version"],
+            error=(
+                "server career expired with no claimable result "
+                "(idle status 391; load/index and result both empty)"
+            ),
+            next_action="",
+        )
+        self._set_snapshot(
+            "FAILED",
+            account=str(account),
+            run_id=failed["run_id"],
+            error=failed.get("error") or "",
         )
         return True
 

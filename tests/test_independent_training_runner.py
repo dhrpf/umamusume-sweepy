@@ -123,6 +123,8 @@ class FakeClient:
 
     def independent_training_result(self):
         self.calls.append("result")
+        if self.raise_at == "result_102":
+            raise RuntimeError("API error 102 on idle_single_mode/result")
         return self.result_response
 
     def check_independent_training_progress_log(self):
@@ -459,6 +461,56 @@ def test_reconcile_collects_after_idle_status_217(store, harness):
     assert resumed["collection_attempted"] is False
     assert resumed["error"] == ""
     assert runner.snapshot()["state"] == "COLLECTING"
+
+
+def _park_expired_391(store):
+    run = enqueue(store)[0]
+    starting = store.claim_next("acct01")
+    started = store.mark_start_attempted(run["run_id"], starting["version"])
+    running = store.transition(
+        run["run_id"],
+        "RUNNING",
+        expected_version=started["version"],
+        server_start_time=10,
+        server_end_time=90,
+    )
+    store.transition(
+        run["run_id"],
+        "NEEDS_ATTENTION",
+        expected_version=running["version"],
+        error=(
+            "idle status probe failed: API error 391 on "
+            "idle_single_mode/status"
+        ),
+        next_action="reconcile",
+    )
+    return run
+
+
+def test_reconcile_391_claims_when_result_still_pending(store, harness):
+    runner, client, _, _ = harness
+    run = _park_expired_391(store)
+
+    assert runner.retry_completed_reconciliation("acct01") is True
+
+    resumed = store.get(run["run_id"])
+    assert resumed["state"] == "FINALIZING"
+    assert "result" in client.calls
+    assert "end" not in client.calls
+
+
+def test_reconcile_391_fails_when_no_claimable_career(store, harness):
+    runner, client, _, _ = harness
+    client.raise_at = "result_102"
+    run = _park_expired_391(store)
+
+    assert runner.retry_completed_reconciliation("acct01") is True
+
+    resumed = store.get(run["run_id"])
+    assert resumed["state"] == "FAILED"
+    assert "idle status 391" in resumed["error"]
+    assert "end" not in client.calls
+    assert runner.snapshot()["state"] == "FAILED"
 
 
 @pytest.mark.parametrize(
