@@ -189,7 +189,11 @@ SENSITIVE_ERROR_KEYS = {"auth_key", "steam_session_ticket", "sid", "udid", "devi
 #            start_session + load/index relogin loops on these forever.
 #   201:     session aged out. Independent training idles for hours between
 #            runs, so the first call of the next run lands on a dead session.
-STALE_CREDENTIAL_CODES = {201, 390, 394}
+#   391:     same ticket-rejection family (seen on pre_single_mode/index and
+#            load/index while start_session still returns 1). Also answered
+#            by idle_single_mode/status for an expired career — the extra
+#            ticket refresh there is bounded by retry_501 and harmless.
+STALE_CREDENTIAL_CODES = {201, 390, 391, 394}
 
 
 def redact_for_console(value, key=""):

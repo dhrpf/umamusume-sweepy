@@ -118,6 +118,32 @@ def _minimal_chara(response: dict[str, Any]) -> dict[str, Any]:
     return {key: chara[key] for key in _CHARA_FIELDS if key in chara}
 
 
+def _start_rejection_message(
+    account: str,
+    exc: Exception,
+    refresh_account,
+) -> str:
+    """Human-readable message for a rejected idle_single_mode/start.
+
+    2511 semantics are unconfirmed server-side; one observed cause is a
+    full veteran roster.  When the code shows up, report the current
+    trained-chara count so the owner can tell without opening the game.
+    """
+    message = f"start result is ambiguous: {exc}"
+    if "2511" not in str(exc):
+        return message
+    try:
+        response = refresh_account(account) or {}
+    except Exception:
+        return message
+    trained = (response.get("data") or {}).get("trained_chara") or []
+    return (
+        f"start rejected with 2511: trained_chara count = {len(trained)} "
+        "(veteran roster may be full; discard/archive a veteran, then "
+        f"reconcile): {exc}"
+    )
+
+
 class IndependentTrainingRunner:
     def __init__(
         self,
@@ -891,7 +917,7 @@ class IndependentTrainingRunner:
             self._needs_attention(
                 account,
                 marked,
-                f"start result is ambiguous: {exc}",
+                _start_rejection_message(account, exc, self.refresh_account),
             )
             return self.store.get(run["run_id"])
 

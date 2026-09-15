@@ -674,6 +674,11 @@
     "rarity": "SR",
     "type": "Guts"
   },
+  "20053": {
+    "name": "Narita Top Road",
+    "rarity": "SR",
+    "type": "Power"
+  },
   "30001": {
     "name": "Special Week",
     "rarity": "SSR",
@@ -1251,6 +1256,11 @@
   },
   "30121": {
     "name": "Mihono Bourbon",
+    "rarity": "SSR",
+    "type": "Speed"
+  },
+  "30122": {
+    "name": "Eishin Flash",
     "rarity": "SSR",
     "type": "Speed"
   },

@@ -4804,6 +4804,7 @@ if __name__ == "__main__":
     kill_listeners_on_port(PORT)
     if not refresh_auth_before_serving():
         raise SystemExit(1)
-    auto_login_from_cache()
+    if auto_login_from_cache():
+        independent_service.status()
     print(f"Access the Web UI at: http://127.0.0.1:{PORT}", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="error")
