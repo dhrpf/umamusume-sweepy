@@ -463,7 +463,7 @@ def test_reconcile_collects_after_idle_status_217(store, harness):
     assert runner.snapshot()["state"] == "COLLECTING"
 
 
-def _park_expired_391(store):
+def _park_expired_391(store, code=391):
     run = enqueue(store)[0]
     starting = store.claim_next("acct01")
     started = store.mark_start_attempted(run["run_id"], starting["version"])
@@ -479,7 +479,7 @@ def _park_expired_391(store):
         "NEEDS_ATTENTION",
         expected_version=running["version"],
         error=(
-            "idle status probe failed: API error 391 on "
+            f"idle status probe failed: API error {code} on "
             "idle_single_mode/status"
         ),
         next_action="reconcile",
@@ -508,9 +508,18 @@ def test_reconcile_391_fails_when_no_claimable_career(store, harness):
 
     resumed = store.get(run["run_id"])
     assert resumed["state"] == "FAILED"
-    assert "idle status 391" in resumed["error"]
+    assert "idle status unanswerable" in resumed["error"]
     assert "end" not in client.calls
     assert runner.snapshot()["state"] == "FAILED"
+
+
+def test_reconcile_204_uses_the_same_expired_career_path(store, harness):
+    runner, client, _, _ = harness
+    _park_expired_391(store, code=204)
+
+    assert runner.retry_completed_reconciliation("acct01") is True
+
+    assert client.calls == ["result"]
 
 
 @pytest.mark.parametrize(
@@ -933,6 +942,36 @@ def test_resolves_tp_cost_at_start_and_sends_it_to_server(
     assert "use_tp" not in store.list_runs("acct01")[0]["setup"]
     assert runner.snapshot()["detected_tp_cost"] == 15
     assert runner.snapshot()["tp_cost_source"] == "campaign"
+
+
+@pytest.mark.parametrize(
+    ("scenario_id", "server_time", "expected_tp"),
+    [(1, 1790308366, 15), (3, 1790308366, 30), (3, 1790780400, 15)],
+)
+def test_ura_only_tp_event_overrides_other_scenarios(
+    store, account_state, scenario_id, server_time, expected_tp,
+):
+    client = FakeClient()
+    client.last_server_time = server_time
+    client.start_result = status_response(progress(end=3100))
+    runner = IndependentTrainingRunner(
+        store,
+        client_provider=lambda account: client,
+        finalizer_provider=lambda account: FakeFinalizer(client),
+        account_state_provider=lambda account: account_state,
+        refresh_account=lambda account: None,
+        recover_tp=lambda account: False,
+        tp_cost_provider=lambda account: TpCostResolution(15, "campaign"),
+        clock=lambda: 100,
+    )
+    setup = setup_payload()
+    setup["scenario_id"] = scenario_id
+    store.enqueue("acct01", setup, count=1, tp_mode="wait")
+
+    runner.run_once("acct01")
+
+    assert client.start_kwargs[0]["setup"]["use_tp"] == expected_tp
+    assert runner.snapshot()["detected_tp_cost"] == expected_tp
 
 
 def test_start_uses_wire_races_without_mutating_queued_setup(

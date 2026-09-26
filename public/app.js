@@ -3539,6 +3539,8 @@ const els = {
         }
         let dailiesPoll = null;
         let dailiesVetsLoaded = false;
+        const dailyRacerStorageKey = 'uma_daily_racer';
+        const dailyLegendStorageKey = 'uma_daily_legend';
 
         const APT_GRADES = { 1: 'G', 2: 'F', 3: 'E', 4: 'D', 5: 'C', 6: 'B', 7: 'A', 8: 'S' };
         // Order matches career_bot/dailies.py:_STYLE_APT_KEYS, whose max() picks the racing style.
@@ -3625,11 +3627,12 @@ const els = {
                 dailiesVetsLoaded = true;
                 return;
             }
-            let selectedId = Number(els.dailyVeteran?.value || 0);
-            if (!veterans.some(v => Number(v.instance_id) === selectedId)) {
-                selectedId = Number(veterans[0]?.instance_id || 0);
-                if (els.dailyVeteran) els.dailyVeteran.value = String(selectedId);
+            let selectedId = Number(els.dailyVeteran?.value || 0)
+                || Number(readLocalSetting(localStorage.getItem(dailyRacerStorageKey), 0)) || 0;
+            if (!all.some(v => Number(v.instance_id) === selectedId)) {
+                selectedId = Number(all[0]?.instance_id || 0);
             }
+            if (els.dailyVeteran) els.dailyVeteran.value = String(selectedId);
             host.innerHTML = veterans.length
                 ? veterans.map(v => dailyRacerCard(v, selectedId)).join('')
                 : `<div class="console-empty">No veteran matches “${escapeHtml(query)}”.</div>`;
@@ -3639,6 +3642,7 @@ const els = {
         function selectDailyRacer(id) {
             if (!els.dailyVeteran) return;
             els.dailyVeteran.value = String(id);
+            writeLocalSetting(dailyRacerStorageKey, Number(id) || 0);
             els.dailyRacerPick?.querySelectorAll('.racer-card').forEach(card => {
                 const on = Number(card.dataset.racerId) === Number(id);
                 card.classList.toggle('selected', on);
@@ -3689,7 +3693,8 @@ const els = {
 
         async function loadLegendOptions() {
             if (!els.dailyLegendId) return;
-            const previous = els.dailyLegendId.value;
+            const previous = els.dailyLegendId.value
+                || String(readLocalSetting(localStorage.getItem(dailyLegendStorageKey), 0) || 0);
             els.dailyLegendId.innerHTML = '<option value="0">Loading available bosses…</option>';
             try {
                 const response = await fetch("/api/dailies/legend_options", { method: 'POST' });
@@ -4055,6 +4060,9 @@ const els = {
         els.dailiesRun?.addEventListener('click', runDailies);
         els.dailiesStop?.addEventListener('click', stopDailies);
         els.dailyRacerSearch?.addEventListener('input', renderDailyRacers);
+        els.dailyLegendId?.addEventListener('change', () => {
+            writeLocalSetting(dailyLegendStorageKey, Number(els.dailyLegendId?.value) || 0);
+        });
         els.dailyRacerPick?.addEventListener('click', event => {
             const card = event.target.closest('.racer-card');
             if (card) selectDailyRacer(card.dataset.racerId);

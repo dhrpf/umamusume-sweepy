@@ -30,13 +30,17 @@ _COMPLETED_RECONCILIATION_ERROR = (
 _IDLE_STATUS_RECONCILIATION_ERROR = (
     "idle status probe failed: API error 217",
 )
-# 391: the career clock just ran out (seen 3s past end_time) and
+# 391/204: the career clock just ran out (seen 3s and 4s past end_time) and
 # ``idle_single_mode/status`` is no longer answerable.  Do NOT replay end
 # blindly: the server may have cleaned the expired career up entirely (end
 # then answers 102).  First confirm a claimable career actually exists —
 # load/index window, else a tolerant read-only result probe — and only
 # resolve the run as FAILED when both come up empty.
-_IDLE_STATUS_EXPIRED_ERROR = "idle status probe failed: API error 391"
+_IDLE_STATUS_EXPIRED_ERRORS = (
+    "idle status probe failed: API error 391",
+    # Same refusal under a different code, seen ~4s past end_time.
+    "idle status probe failed: API error 204",
+)
 
 
 def _progress(response: dict[str, Any]) -> dict[str, Any]:
@@ -339,7 +343,7 @@ class IndependentTrainingRunner:
     def retry_completed_reconciliation(self, account: str) -> bool:
         run = self.store.active_run(account)
         error = str((run or {}).get("error") or "")
-        expired = error.startswith(_IDLE_STATUS_EXPIRED_ERROR)
+        expired = error.startswith(_IDLE_STATUS_EXPIRED_ERRORS)
         if (
             run is None
             or RunState(run["state"]) != RunState.NEEDS_ATTENTION
@@ -367,10 +371,11 @@ class IndependentTrainingRunner:
         return True
 
     def _reconcile_expired_career(self, account: str, run: dict) -> bool:
-        """Resolve a run whose idle-status probe hit 391.
+        """Resolve a run whose idle-status probe hit 391 or 204.
 
-        391 only proves ``idle_single_mode/status`` stopped answering for
-        the expired career; it does not prove the career is claimable.  Check
+        Such a probe only proves ``idle_single_mode/status`` stopped
+        answering for the expired career; it does not prove the career is
+        claimable.  Check
         for a claimable career before replaying any end call:
         1. ``load/index`` still reports the matching window (end passed) →
            claim via the proven end → result path.
@@ -414,7 +419,7 @@ class IndependentTrainingRunner:
             expected_version=run["version"],
             error=(
                 "server career expired with no claimable result "
-                "(idle status 391; load/index and result both empty)"
+                "(idle status unanswerable; load/index and result both empty)"
             ),
             next_action="",
         )
@@ -884,6 +889,17 @@ class IndependentTrainingRunner:
                     f"independent race setup unavailable: {exc}"
                 ) from exc
         required_tp = self._resolve_tp_cost(account)
+        # Current URA Finale-only half-TP event; other scenarios pay full TP.
+        if (
+            int(setup["scenario_id"]) != 1
+            and 1790175600
+            <= int(getattr(client, "last_server_time", 0) or 0)
+            <= 1790780399
+        ):
+            required_tp = 30
+            with self._snapshot_lock:
+                self._snapshot["detected_tp_cost"] = required_tp
+                self._snapshot["tp_cost_source"] = "event_ura_only"
         if not self._prepare_tp(account, run, required_tp):
             return run
         setup["use_tp"] = required_tp
